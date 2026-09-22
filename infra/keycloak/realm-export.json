@@ -1,0 +1,70 @@
+{
+  "realm": "platform",
+  "enabled": true,
+  "displayName": "Platform",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "backend-api",
+      "name": "Backend API",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "change-me-in-production",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "frontend-app",
+      "name": "Frontend App",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "pkceCodeChallengeMethod": "S256",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3000/silent-check-sso.html"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000"
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "Platform administrator" },
+      { "name": "user", "description": "Standard platform user" }
+    ]
+  },
+  "users": [
+    {
+      "username": "admin@platform.dev",
+      "email": "admin@platform.dev",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "admin123", "temporary": false }
+      ],
+      "realmRoles": ["admin", "user"]
+    },
+    {
+      "username": "user@platform.dev",
+      "email": "user@platform.dev",
+      "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "user123", "temporary": false }
+      ],
+      "realmRoles": ["user"]
+    }
+  ]
+}
