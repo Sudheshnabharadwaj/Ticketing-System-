@@ -40,7 +40,7 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_DB: dev-mem
+      KC_DB: dev-file
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ./infra/keycloak:/opt/keycloak/data/import
