@@ -1,7 +1,8 @@
 """Async S3 / MinIO file storage client."""
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any
 
 import aioboto3
 from botocore.exceptions import ClientError
@@ -16,7 +17,7 @@ _session = aioboto3.Session()
 
 
 @asynccontextmanager
-async def _s3_client() -> AsyncGenerator[object, None]:
+async def _s3_client() -> AsyncGenerator[Any, None]:
     async with _session.client(
         "s3",
         endpoint_url=settings.s3_endpoint_url,
@@ -34,7 +35,7 @@ async def upload_file(
 ) -> str:
     """Upload bytes to S3/MinIO and return the object key."""
     async with _s3_client() as client:
-        await client.put_object(  # type: ignore[union-attr]
+        await client.put_object(
             Bucket=settings.s3_bucket_name,
             Key=object_key,
             Body=file_bytes,
@@ -47,19 +48,19 @@ async def upload_file(
 async def generate_presigned_url(object_key: str, expires_in: int = 3600) -> str:
     """Generate a time-limited pre-signed GET URL."""
     async with _s3_client() as client:
-        url: str = await client.generate_presigned_url(  # type: ignore[union-attr]
+        url = await client.generate_presigned_url(
             "get_object",
             Params={"Bucket": settings.s3_bucket_name, "Key": object_key},
             ExpiresIn=expires_in,
         )
-    return url
+    return str(url)
 
 
 async def delete_file(object_key: str) -> None:
     """Delete an object from S3/MinIO."""
     async with _s3_client() as client:
         try:
-            await client.delete_object(  # type: ignore[union-attr]
+            await client.delete_object(
                 Bucket=settings.s3_bucket_name,
                 Key=object_key,
             )

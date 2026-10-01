@@ -48,6 +48,8 @@ def configure_logging(debug: bool = False) -> None:
     )
 
 
-def get_logger(name: str | None = None) -> structlog.BoundLogger:
+def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return a named structlog logger."""
-    return structlog.get_logger(name)
+    if name is not None:
+        return structlog.stdlib.get_logger(name)
+    return structlog.stdlib.get_logger()

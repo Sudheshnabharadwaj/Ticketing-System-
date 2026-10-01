@@ -4,7 +4,8 @@ import os
 
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-from typing import Annotated, Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Annotated, Any
 
 import pytest
 import pytest_asyncio

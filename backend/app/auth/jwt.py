@@ -1,6 +1,6 @@
 """JWT validation against Keycloak JWKS endpoint."""
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from jose import JWTError, jwt
@@ -54,11 +54,14 @@ async def decode_token(token: str) -> dict[str, Any]:
 
 def _decode_with_jwks(token: str, jwks: dict[str, Any]) -> dict[str, Any]:
     """Decode token using the provided JWKS key set."""
-    return jwt.decode(
-        token,
-        jwks,
-        algorithms=["RS256"],
-        audience=settings.keycloak_client_id,
-        issuer=settings.keycloak_issuer,
-        options={"verify_exp": True},
+    return cast(
+        dict[str, Any],
+        jwt.decode(
+            token,
+            jwks,
+            algorithms=["RS256"],
+            audience=settings.keycloak_client_id,
+            issuer=settings.keycloak_issuer,
+            options={"verify_exp": True},
+        ),
     )

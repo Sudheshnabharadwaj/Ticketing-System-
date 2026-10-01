@@ -1,6 +1,7 @@
 "use client";
 
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import Alert from "@mui/material/Alert";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -8,15 +9,25 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Container from "@mui/material/Container";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { login } from "@/lib/auth";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     setLoading(true);
-    await login(); // redirects to Keycloak
+    setError(null);
+    try {
+      await login(); // redirects to Keycloak
+    } catch (err: unknown) {
+      setLoading(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(
+        `Unable to connect to Keycloak auth server (${msg || "connection failure"}). Please verify http://localhost:8080 is accessible.`
+      );
+    }
   };
 
   return (
@@ -57,6 +68,12 @@ export default function LoginPage() {
               Sign in to your Platform account to continue
             </Typography>
           </Box>
+
+          {error && (
+            <Alert severity="error" sx={{ width: "100%", textAlign: "left" }}>
+              {error}
+            </Alert>
+          )}
 
           <Button
             fullWidth

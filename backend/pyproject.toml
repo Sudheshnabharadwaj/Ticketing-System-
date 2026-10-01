@@ -15,7 +15,8 @@ dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     # ── Validation / settings ────────────────────────────
-    "pydantic>=2.7.0",
+    "pydantic[email]>=2.7.0",
+    "email-validator>=2.0.0",
     "pydantic-settings>=2.3.0",
     # ── Database ─────────────────────────────────────────
     "sqlalchemy[asyncio]>=2.0.30",

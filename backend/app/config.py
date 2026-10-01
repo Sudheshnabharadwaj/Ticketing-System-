@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = (
-        "postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_db"
+        "postgresql+asyncpg://platform:platform_secret@localhost:5433/platform_db"
     )
 
     # ── Redis ─────────────────────────────────────────────────────────────────

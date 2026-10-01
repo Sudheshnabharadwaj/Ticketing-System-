@@ -1,5 +1,6 @@
 """FastAPI auth dependencies — extract and validate the current user."""
 
+from collections.abc import Callable, Coroutine
 from typing import Annotated, Any
 
 from fastapi import Depends, Security
@@ -33,7 +34,7 @@ async def get_current_user(
     return payload
 
 
-def require_role(*roles: str):  # noqa: ANN201
+def require_role(*roles: str) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
     """Dependency factory — raises 403 if the token lacks any of the required roles.
 
     Usage:

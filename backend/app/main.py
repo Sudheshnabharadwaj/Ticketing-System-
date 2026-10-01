@@ -50,6 +50,19 @@ def create_app() -> FastAPI:
     # ── Exception handlers ───────────────────────────────────────────────────
     register_exception_handlers(app)
 
+    # ── Root endpoint ────────────────────────────────────────────────────────
+    @app.get("/", tags=["Root"])
+    def root() -> dict[str, str]:
+        """Root endpoint displaying API metadata and docs links."""
+        return {
+            "name": "Platform API",
+            "version": "0.1.0",
+            "status": "online",
+            "docs": "/docs",
+            "redoc": "/redoc",
+            "health": "/api/v1/health",
+        }
+
     # ── Routers ──────────────────────────────────────────────────────────────
     app.include_router(v1_router)
 

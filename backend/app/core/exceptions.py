@@ -3,7 +3,6 @@
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-
 # ── Custom exceptions ────────────────────────────────────────────────────────
 
 class AppError(Exception):
