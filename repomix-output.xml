@@ -1,0 +1,3344 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.github/
+  workflows/
+    backend-ci.yml
+    docker-build.yml
+    frontend-ci.yml
+backend/
+  alembic/
+    versions/
+      .gitkeep
+      0001_initial_users.py
+    env.py
+    script.py.mako
+  app/
+    api/
+      v1/
+        __init__.py
+        health.py
+        router.py
+        users.py
+      __init__.py
+    auth/
+      __init__.py
+      dependencies.py
+      jwt.py
+    core/
+      __init__.py
+      exceptions.py
+      logging.py
+      telemetry.py
+    db/
+      models/
+        __init__.py
+        user.py
+      __init__.py
+      base.py
+      session.py
+    schemas/
+      __init__.py
+      user.py
+    services/
+      __init__.py
+      user_service.py
+    storage/
+      __init__.py
+      s3.py
+    worker/
+      tasks/
+        __init__.py
+        example.py
+      __init__.py
+      celery_app.py
+    __init__.py
+    config.py
+    main.py
+  tests/
+    api/
+      __init__.py
+      test_health.py
+    __init__.py
+    conftest.py
+  alembic.ini
+  Dockerfile
+  pyproject.toml
+frontend/
+  src/
+    app/
+      auth/
+        login/
+          page.tsx
+      dashboard/
+        layout.tsx
+        page.tsx
+      layout.tsx
+      page.tsx
+    components/
+      layout/
+        AppBar.tsx
+        AppShell.tsx
+        Sidebar.tsx
+      providers/
+        QueryProvider.tsx
+        ThemeProvider.tsx
+      ui/
+        LoadingSpinner.tsx
+    hooks/
+      useCurrentUser.ts
+    lib/
+      api.ts
+      auth.ts
+      query-keys.ts
+    types/
+      index.ts
+  Dockerfile
+  next.config.ts
+  package.json
+  tsconfig.json
+infra/
+  keycloak/
+    realm-export.json
+.editorconfig
+.env.example
+.gitignore
+docker-compose.yml
+Makefile
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".github/workflows/backend-ci.yml">
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ["backend/**"]
+  pull_request:
+    branches: [main, develop]
+    paths: ["backend/**"]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check app tests
+
+      - name: Format check (ruff)
+        run: ruff format --check app tests
+
+      - name: Type check (mypy)
+        run: mypy app
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: platform_secret
+          POSTGRES_DB: platform_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_test
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/1
+      CELERY_RESULT_BACKEND: redis://localhost:6379/2
+      KEYCLOAK_URL: http://localhost:8080
+      KEYCLOAK_REALM: platform
+      KEYCLOAK_CLIENT_ID: backend-api
+      KEYCLOAK_CLIENT_SECRET: test-secret
+      S3_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET_NAME: platform-files
+      APP_ENV: development
+      DEBUG: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest tests -v --cov=app --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: backend/coverage.xml
+</file>
+
+<file path=".github/workflows/docker-build.yml">
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  build-backend:
+    name: Build & Push Backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          target: prod
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-frontend:
+    name: Build & Push Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          target: prod
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+</file>
+
+<file path=".github/workflows/frontend-ci.yml">
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ["frontend/**"]
+  pull_request:
+    branches: [main, develop]
+    paths: ["frontend/**"]
+
+defaults:
+  run:
+    working-directory: frontend
+
+jobs:
+  lint-typecheck-build:
+    name: Lint, Type Check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Type check (tsc)
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+          NEXT_PUBLIC_KEYCLOAK_REALM: platform
+          NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: frontend-app
+</file>
+
+<file path="backend/alembic/versions/.gitkeep">
+
+</file>
+
+<file path="backend/alembic/versions/0001_initial_users.py">
+"""initial users table
+
+Revision ID: 0001_initial_users
+Revises:
+Create Date: 2026-09-22 12:00:00.000000
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers, used by Alembic.
+revision: str = '0001_initial_users'
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        'users',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('keycloak_id', sa.String(length=255), nullable=False),
+        sa.Column('email', sa.String(length=320), nullable=False),
+        sa.Column('full_name', sa.String(length=255), nullable=True),
+        sa.Column('avatar_url', sa.Text(), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+        sa.Column('is_superuser', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column(
+            'created_at',
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            'updated_at',
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    op.create_index('ix_users_keycloak_id', 'users', ['keycloak_id'], unique=True)
+    op.create_index('ix_users_email', 'users', ['email'], unique=True)
+
+
+def downgrade() -> None:
+    op.drop_index('ix_users_email', table_name='users')
+    op.drop_index('ix_users_keycloak_id', table_name='users')
+    op.drop_table('users')
+</file>
+
+<file path="backend/alembic/env.py">
+"""Alembic environment — async SQLAlchemy with autogenerate support."""
+
+import asyncio
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.config import get_settings
+from app.db.base import Base
+
+# Import all models so autogenerate can detect them
+from app.db.models import user  # noqa: F401
+
+config = context.config
+settings = get_settings()
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
+def run_migrations_offline() -> None:
+    context.configure(
+        url=settings.database_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    connectable = create_async_engine(settings.database_url, echo=False)
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(
+            lambda conn: context.configure(
+                connection=conn,
+                target_metadata=target_metadata,
+                compare_type=True,
+            )
+        )
+        async with connection.begin():
+            await connection.run_sync(lambda _: context.run_migrations())
+
+    await connectable.dispose()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    asyncio.run(run_migrations_online())
+</file>
+
+<file path="backend/alembic/script.py.mako">
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+"""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+revision: str = ${repr(up_revision)}
+down_revision: Union[str, None] = ${repr(down_revision)}
+branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
+
+
+def upgrade() -> None:
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade() -> None:
+    ${downgrades if downgrades else "pass"}
+</file>
+
+<file path="backend/app/api/v1/__init__.py">
+
+</file>
+
+<file path="backend/app/api/v1/health.py">
+"""Health check API endpoints."""
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_db
+
+router = APIRouter(tags=["Health"])
+
+
+@router.get("/health", summary="Liveness probe")
+async def health() -> dict[str, str]:
+    """Returns 200 immediately — used by load balancers as a liveness probe."""
+    return {"status": "ok"}
+
+
+@router.get("/ready", summary="Readiness probe")
+async def ready(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    """Checks DB connectivity — used as a readiness probe before serving traffic."""
+    await db.execute(text("SELECT 1"))
+    return {"status": "ready"}
+</file>
+
+<file path="backend/app/api/v1/router.py">
+"""Aggregate all v1 API routes."""
+
+from fastapi import APIRouter
+
+from app.api.v1 import health, users
+
+router = APIRouter(prefix="/api/v1")
+
+router.include_router(health.router)
+router.include_router(users.router)
+</file>
+
+<file path="backend/app/api/v1/users.py">
+"""Users API endpoints."""
+
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import CurrentUser, require_role
+from app.db.session import get_db
+from app.schemas.user import UserListResponse, UserResponse, UserUpdate
+from app.services import user_service
+
+router = APIRouter(prefix="/users", tags=["Users"])
+
+
+@router.get("/me", response_model=UserResponse, summary="Get current user profile")
+async def get_me(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    """Upsert the calling user in the database and return their profile."""
+    user = await user_service.get_or_create_user(db, current_user)
+    return UserResponse.model_validate(user)
+
+
+@router.patch("/me", response_model=UserResponse, summary="Update current user profile")
+async def update_me(
+    data: UserUpdate,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    user = await user_service.get_or_create_user(db, current_user)
+    updated = await user_service.update_user(db, user.id, data)
+    return UserResponse.model_validate(updated)
+
+
+@router.get(
+    "/",
+    response_model=UserListResponse,
+    summary="List all users (admin only)",
+    dependencies=[Depends(require_role("admin"))],
+)
+async def list_users(
+    skip: int = 0,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+) -> UserListResponse:
+    users, total = await user_service.list_users(db, skip=skip, limit=limit)
+    return UserListResponse(
+        items=[UserResponse.model_validate(u) for u in users],
+        total=total,
+        page=skip // limit + 1,
+        size=limit,
+    )
+
+
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Get user by ID (admin only)",
+    dependencies=[Depends(require_role("admin"))],
+)
+async def get_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    user = await user_service.get_user_by_id(db, user_id)
+    return UserResponse.model_validate(user)
+</file>
+
+<file path="backend/app/api/__init__.py">
+
+</file>
+
+<file path="backend/app/auth/__init__.py">
+
+</file>
+
+<file path="backend/app/auth/dependencies.py">
+"""FastAPI auth dependencies — extract and validate the current user."""
+
+from typing import Annotated, Any
+
+from fastapi import Depends, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.auth.jwt import decode_token
+from app.core.exceptions import ForbiddenError, UnauthorizedError
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def get_token_payload(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer)],
+) -> dict[str, Any]:
+    """Extract and validate the Bearer token from the Authorization header."""
+    if credentials is None:
+        raise UnauthorizedError("No authorization token provided")
+    return await decode_token(credentials.credentials)
+
+
+async def get_current_user(
+    payload: Annotated[dict[str, Any], Depends(get_token_payload)],
+) -> dict[str, Any]:
+    """Return the decoded token payload as the 'current user' context.
+
+    Downstream services can enrich this with a DB User record if needed.
+    """
+    sub: str | None = payload.get("sub")
+    if not sub:
+        raise UnauthorizedError("Token missing subject claim")
+    return payload
+
+
+def require_role(*roles: str):  # noqa: ANN201
+    """Dependency factory — raises 403 if the token lacks any of the required roles.
+
+    Usage:
+        @router.get("/admin", dependencies=[Depends(require_role("admin"))])
+    """
+    async def _check(
+        payload: Annotated[dict[str, Any], Depends(get_current_user)],
+    ) -> dict[str, Any]:
+        realm_roles: list[str] = (
+            payload.get("realm_access", {}).get("roles", [])
+        )
+        if not any(role in realm_roles for role in roles):
+            raise ForbiddenError(
+                f"Required role(s): {', '.join(roles)}"
+            )
+        return payload
+
+    return _check
+
+
+# ── Convenience type aliases ─────────────────────────────────────────────────
+CurrentUser = Annotated[dict[str, Any], Depends(get_current_user)]
+</file>
+
+<file path="backend/app/auth/jwt.py">
+"""JWT validation against Keycloak JWKS endpoint."""
+
+from typing import Any
+
+import httpx
+from jose import JWTError, jwt
+
+from app.config import get_settings
+from app.core.exceptions import UnauthorizedError
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+settings = get_settings()
+
+# Module-level JWKS cache (refreshed on decode failure)
+_jwks_cache: dict[str, Any] | None = None
+
+
+async def _fetch_jwks() -> dict[str, Any]:
+    """Fetch and cache the JWKS from Keycloak."""
+    global _jwks_cache
+    async with httpx.AsyncClient() as client:
+        response = await client.get(settings.keycloak_jwks_url, timeout=10.0)
+        response.raise_for_status()
+        _jwks_cache = response.json()
+        return _jwks_cache
+
+
+async def decode_token(token: str) -> dict[str, Any]:
+    """Decode and validate a Keycloak-issued JWT.
+
+    Fetches JWKS on the first call and retries once on key-not-found errors
+    (handles Keycloak key rotation gracefully).
+    """
+    global _jwks_cache
+
+    if _jwks_cache is None:
+        await _fetch_jwks()
+
+    try:
+        payload = _decode_with_jwks(token, _jwks_cache)  # type: ignore[arg-type]
+    except JWTError:
+        # Attempt a JWKS refresh (key rotation)
+        logger.info("JWT decode failed — refreshing JWKS")
+        await _fetch_jwks()
+        try:
+            payload = _decode_with_jwks(token, _jwks_cache)  # type: ignore[arg-type]
+        except JWTError as exc:
+            logger.warning("JWT validation failed", error=str(exc))
+            raise UnauthorizedError("Invalid or expired token") from exc
+
+    return payload
+
+
+def _decode_with_jwks(token: str, jwks: dict[str, Any]) -> dict[str, Any]:
+    """Decode token using the provided JWKS key set."""
+    return jwt.decode(
+        token,
+        jwks,
+        algorithms=["RS256"],
+        audience=settings.keycloak_client_id,
+        issuer=settings.keycloak_issuer,
+        options={"verify_exp": True},
+    )
+</file>
+
+<file path="backend/app/core/__init__.py">
+
+</file>
+
+<file path="backend/app/core/exceptions.py">
+"""Global exception handlers and custom exception classes."""
+
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
+
+
+# ── Custom exceptions ────────────────────────────────────────────────────────
+
+class AppError(Exception):
+    """Base application error."""
+
+    def __init__(self, message: str, status_code: int = status.HTTP_400_BAD_REQUEST) -> None:
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+class NotFoundError(AppError):
+    def __init__(self, resource: str, id: object = None) -> None:
+        detail = f"{resource} not found" if id is None else f"{resource} '{id}' not found"
+        super().__init__(detail, status.HTTP_404_NOT_FOUND)
+
+
+class UnauthorizedError(AppError):
+    def __init__(self, detail: str = "Authentication required") -> None:
+        super().__init__(detail, status.HTTP_401_UNAUTHORIZED)
+
+
+class ForbiddenError(AppError):
+    def __init__(self, detail: str = "Insufficient permissions") -> None:
+        super().__init__(detail, status.HTTP_403_FORBIDDEN)
+
+
+class ConflictError(AppError):
+    def __init__(self, detail: str = "Resource already exists") -> None:
+        super().__init__(detail, status.HTTP_409_CONFLICT)
+
+
+# ── Handler registration ─────────────────────────────────────────────────────
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Register all global exception handlers on the FastAPI app."""
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.message, "type": type(exc).__name__},
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Sentry will capture this via its middleware; we just return a safe response.
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An unexpected error occurred.", "type": "InternalServerError"},
+        )
+</file>
+
+<file path="backend/app/core/logging.py">
+"""Structured logging setup using structlog."""
+
+import logging
+import sys
+
+import structlog
+
+
+def configure_logging(debug: bool = False) -> None:
+    """Configure structlog for JSON output in production, console in dev."""
+    log_level = logging.DEBUG if debug else logging.INFO
+
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+
+    if debug:
+        # Pretty console output for local dev
+        processors: list[structlog.types.Processor] = [
+            *shared_processors,
+            structlog.dev.ConsoleRenderer(),
+        ]
+    else:
+        # JSON output for production / log aggregators
+        processors = [
+            *shared_processors,
+            structlog.processors.dict_tracebacks,
+            structlog.processors.JSONRenderer(),
+        ]
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(sys.stdout),
+        cache_logger_on_first_use=True,
+    )
+
+    # Also configure stdlib logging so third-party libs emit structured logs
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=log_level,
+    )
+
+
+def get_logger(name: str | None = None) -> structlog.BoundLogger:
+    """Return a named structlog logger."""
+    return structlog.get_logger(name)
+</file>
+
+<file path="backend/app/core/telemetry.py">
+"""OpenTelemetry setup — tracing + FastAPI instrumentation."""
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+
+
+def configure_telemetry(
+    service_name: str = "platform-backend",
+    otlp_endpoint: str | None = None,
+    debug: bool = False,
+) -> None:
+    """Initialise OpenTelemetry tracing.
+
+    In debug mode, spans are printed to stdout.
+    In production, they are exported to an OTLP endpoint (e.g. Jaeger / Tempo).
+    """
+    resource = Resource.create({"service.name": service_name})
+    provider = TracerProvider(resource=resource)
+
+    if debug or not otlp_endpoint:
+        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    else:
+        exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+
+    trace.set_tracer_provider(provider)
+
+
+def instrument_app(app: object) -> None:  # app: FastAPI
+    """Attach FastAPI auto-instrumentation after telemetry is configured."""
+    FastAPIInstrumentor.instrument_app(app)  # type: ignore[arg-type]
+</file>
+
+<file path="backend/app/db/models/__init__.py">
+
+</file>
+
+<file path="backend/app/db/models/user.py">
+"""User ORM model."""
+
+import uuid
+
+from sqlalchemy import Boolean, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+
+class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Platform user — synced from Keycloak on first login."""
+
+    __tablename__ = "users"
+
+    # Keycloak subject claim (sub) — the canonical external ID
+    keycloak_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<User id={self.id} email={self.email!r}>"
+</file>
+
+<file path="backend/app/db/__init__.py">
+
+</file>
+
+<file path="backend/app/db/base.py">
+"""SQLAlchemy declarative base and shared mixins."""
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import DateTime, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    """Shared declarative base for all ORM models."""
+    pass
+
+
+class TimestampMixin:
+    """Adds created_at / updated_at audit columns to any model."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class UUIDPrimaryKeyMixin:
+    """UUID v4 primary key — avoids sequential integer enumeration."""
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+</file>
+
+<file path="backend/app/db/session.py">
+"""Async SQLAlchemy session factory."""
+
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.config import get_settings
+
+settings = get_settings()
+
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+    autocommit=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency — yields a database session per request."""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+</file>
+
+<file path="backend/app/schemas/__init__.py">
+
+</file>
+
+<file path="backend/app/schemas/user.py">
+"""Pydantic v2 schemas for User."""
+
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, EmailStr
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str | None = None
+    avatar_url: str | None = None
+
+
+class UserCreate(UserBase):
+    keycloak_id: str
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    avatar_url: str | None = None
+    is_active: bool | None = None
+
+
+class UserResponse(UserBase):
+    id: uuid.UUID
+    keycloak_id: str
+    is_active: bool
+    is_superuser: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int
+    page: int
+    size: int
+</file>
+
+<file path="backend/app/services/__init__.py">
+
+</file>
+
+<file path="backend/app/services/user_service.py">
+"""User service — business logic layer."""
+
+import uuid
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import NotFoundError
+from app.core.logging import get_logger
+from app.db.models.user import User
+from app.schemas.user import UserCreate, UserUpdate
+
+logger = get_logger(__name__)
+
+
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise NotFoundError("User", user_id)
+    return user
+
+
+async def get_user_by_keycloak_id(db: AsyncSession, keycloak_id: str) -> User | None:
+    result = await db.execute(
+        select(User).where(User.keycloak_id == keycloak_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_or_create_user(db: AsyncSession, token_payload: dict[str, Any]) -> User:
+    """Upsert a user record from a decoded Keycloak token.
+
+    Called on first login — syncs email, full name, and avatar from the JWT claims.
+    """
+    keycloak_id: str = token_payload["sub"]
+    existing = await get_user_by_keycloak_id(db, keycloak_id)
+
+    if existing:
+        return existing
+
+    user_data = UserCreate(
+        keycloak_id=keycloak_id,
+        email=token_payload.get("email", ""),
+        full_name=token_payload.get("name"),
+        avatar_url=token_payload.get("picture"),
+    )
+    user = User(**user_data.model_dump())
+    db.add(user)
+    await db.flush()
+    logger.info("Created new user", keycloak_id=keycloak_id, email=user.email)
+    return user
+
+
+async def list_users(
+    db: AsyncSession, *, skip: int = 0, limit: int = 20
+) -> tuple[list[User], int]:
+    count_result = await db.execute(select(User))
+    total = len(count_result.scalars().all())
+
+    result = await db.execute(select(User).offset(skip).limit(limit))
+    users = list(result.scalars().all())
+    return users, total
+
+
+async def update_user(
+    db: AsyncSession, user_id: uuid.UUID, data: UserUpdate
+) -> User:
+    user = await get_user_by_id(db, user_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    await db.flush()
+    return user
+</file>
+
+<file path="backend/app/storage/__init__.py">
+
+</file>
+
+<file path="backend/app/storage/s3.py">
+"""Async S3 / MinIO file storage client."""
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+import aioboto3
+from botocore.exceptions import ClientError
+
+from app.config import get_settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+settings = get_settings()
+
+_session = aioboto3.Session()
+
+
+@asynccontextmanager
+async def _s3_client() -> AsyncGenerator[object, None]:
+    async with _session.client(
+        "s3",
+        endpoint_url=settings.s3_endpoint_url,
+        aws_access_key_id=settings.s3_access_key,
+        aws_secret_access_key=settings.s3_secret_key,
+        region_name=settings.s3_region,
+    ) as client:
+        yield client
+
+
+async def upload_file(
+    file_bytes: bytes,
+    object_key: str,
+    content_type: str = "application/octet-stream",
+) -> str:
+    """Upload bytes to S3/MinIO and return the object key."""
+    async with _s3_client() as client:
+        await client.put_object(  # type: ignore[union-attr]
+            Bucket=settings.s3_bucket_name,
+            Key=object_key,
+            Body=file_bytes,
+            ContentType=content_type,
+        )
+    logger.info("File uploaded", key=object_key, bucket=settings.s3_bucket_name)
+    return object_key
+
+
+async def generate_presigned_url(object_key: str, expires_in: int = 3600) -> str:
+    """Generate a time-limited pre-signed GET URL."""
+    async with _s3_client() as client:
+        url: str = await client.generate_presigned_url(  # type: ignore[union-attr]
+            "get_object",
+            Params={"Bucket": settings.s3_bucket_name, "Key": object_key},
+            ExpiresIn=expires_in,
+        )
+    return url
+
+
+async def delete_file(object_key: str) -> None:
+    """Delete an object from S3/MinIO."""
+    async with _s3_client() as client:
+        try:
+            await client.delete_object(  # type: ignore[union-attr]
+                Bucket=settings.s3_bucket_name,
+                Key=object_key,
+            )
+        except ClientError as exc:
+            logger.error("Failed to delete file", key=object_key, error=str(exc))
+            raise
+</file>
+
+<file path="backend/app/worker/tasks/__init__.py">
+
+</file>
+
+<file path="backend/app/worker/tasks/example.py">
+"""Example background tasks — replace with domain-specific tasks."""
+
+from app.core.logging import get_logger
+from app.worker.celery_app import celery_app
+
+logger = get_logger(__name__)
+
+
+@celery_app.task(bind=True, name="tasks.send_welcome_email", max_retries=3)
+def send_welcome_email(self, user_id: str, email: str) -> dict[str, str]:
+    """Send a welcome email to a newly registered user.
+
+    This is a placeholder — integrate your email provider (SES, SendGrid, etc.)
+    """
+    try:
+        logger.info("Sending welcome email", user_id=user_id, email=email)
+        # TODO: integrate email provider
+        return {"status": "sent", "user_id": user_id}
+    except Exception as exc:
+        logger.error("Failed to send welcome email", error=str(exc))
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
+
+
+@celery_app.task(name="tasks.process_file_upload")
+def process_file_upload(object_key: str, user_id: str) -> dict[str, str]:
+    """Post-process a file after upload (e.g., virus scan, thumbnail generation).
+
+    This is a placeholder — integrate your processing pipeline here.
+    """
+    logger.info("Processing file upload", key=object_key, user_id=user_id)
+    # TODO: implement file processing logic
+    return {"status": "processed", "key": object_key}
+</file>
+
+<file path="backend/app/worker/__init__.py">
+
+</file>
+
+<file path="backend/app/worker/celery_app.py">
+"""Celery application instance."""
+
+from celery import Celery
+
+from app.config import get_settings
+
+settings = get_settings()
+
+celery_app = Celery(
+    "platform",
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
+    include=["app.worker.tasks.example"],
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_track_started=True,
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    # Retry policy defaults
+    task_default_retry_delay=60,
+    task_max_retries=3,
+)
+</file>
+
+<file path="backend/app/__init__.py">
+"""Package init files for clean imports."""
+</file>
+
+<file path="backend/app/config.py">
+"""Application configuration via Pydantic Settings (environment-driven)."""
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import AnyHttpUrl, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # ── App ──────────────────────────────────────────────────────────────────
+    app_env: Literal["development", "staging", "production"] = "development"
+    app_secret_key: str = "change-me-in-production-32-chars!!"
+    debug: bool = False
+    allowed_origins: list[str] = ["http://localhost:3000"]
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",")]
+        return v
+
+    # ── Database ─────────────────────────────────────────────────────────────
+    database_url: str = (
+        "postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_db"
+    )
+
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
+
+    # ── Keycloak ──────────────────────────────────────────────────────────────
+    keycloak_url: AnyHttpUrl = "http://localhost:8080"  # type: ignore[assignment]
+    keycloak_realm: str = "platform"
+    keycloak_client_id: str = "backend-api"
+    keycloak_client_secret: str = "change-me"
+
+    @property
+    def keycloak_jwks_url(self) -> str:
+        return (
+            f"{self.keycloak_url}/realms/{self.keycloak_realm}"
+            "/protocol/openid-connect/certs"
+        )
+
+    @property
+    def keycloak_issuer(self) -> str:
+        return f"{self.keycloak_url}/realms/{self.keycloak_realm}"
+
+    # ── S3 / MinIO ────────────────────────────────────────────────────────────
+    s3_endpoint_url: str = "http://localhost:9000"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket_name: str = "platform-files"
+    s3_region: str = "us-east-1"
+
+    # ── Sentry ────────────────────────────────────────────────────────────────
+    sentry_dsn: str = ""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a cached singleton Settings instance."""
+    return Settings()
+</file>
+
+<file path="backend/app/main.py">
+"""FastAPI application factory."""
+
+import sentry_sdk
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1.router import router as v1_router
+from app.config import get_settings
+from app.core.exceptions import register_exception_handlers
+from app.core.logging import configure_logging
+from app.core.telemetry import configure_telemetry, instrument_app
+
+settings = get_settings()
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+configure_logging(debug=settings.debug)
+
+# ── Sentry ───────────────────────────────────────────────────────────────────
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        traces_sample_rate=0.2,
+        profiles_sample_rate=0.1,
+    )
+
+# ── OpenTelemetry ────────────────────────────────────────────────────────────
+configure_telemetry(debug=settings.debug)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Platform API",
+        version="0.1.0",
+        description="Phase 1 backend API — FastAPI + PostgreSQL + Keycloak",
+        docs_url="/docs" if settings.debug else None,
+        redoc_url="/redoc" if settings.debug else None,
+        openapi_url="/openapi.json" if settings.debug else None,
+    )
+
+    # ── CORS ─────────────────────────────────────────────────────────────────
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # ── Exception handlers ───────────────────────────────────────────────────
+    register_exception_handlers(app)
+
+    # ── Routers ──────────────────────────────────────────────────────────────
+    app.include_router(v1_router)
+
+    # ── OpenTelemetry instrumentation ─────────────────────────────────────────
+    instrument_app(app)
+
+    return app
+
+
+app = create_app()
+</file>
+
+<file path="backend/tests/api/__init__.py">
+
+</file>
+
+<file path="backend/tests/api/test_health.py">
+"""Tests for health check endpoints."""
+
+import pytest
+from httpx import AsyncClient
+
+
+@pytest.mark.asyncio
+async def test_health_returns_ok(client: AsyncClient):
+    response = await client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_ready(client: AsyncClient):
+    response = await client.get("/api/v1/ready")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+</file>
+
+<file path="backend/tests/__init__.py">
+
+</file>
+
+<file path="backend/tests/conftest.py">
+"""pytest fixtures — test database and async test client."""
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.db.base import Base
+from app.db.session import get_db
+from app.main import app
+
+TEST_DATABASE_URL = "postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_test"
+
+test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def setup_test_db():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    async with TestSessionLocal() as session:
+        yield session
+        await session.rollback()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession):
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+</file>
+
+<file path="backend/alembic.ini">
+[alembic]
+script_location = alembic
+prepend_sys_path = .
+version_path_separator = os
+sqlalchemy.url = postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_db
+</file>
+
+<file path="backend/Dockerfile">
+# ── Stage: base ─────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_SYSTEM_PYTHON=1
+
+WORKDIR /app
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# ── Stage: deps ─────────────────────────────────────────────────────────────
+FROM base AS deps
+
+COPY pyproject.toml ./
+RUN uv pip install --system -e ".[dev]"
+
+# ── Stage: dev (used by docker compose) ─────────────────────────────────────
+FROM deps AS dev
+# Source is mounted as a volume — no COPY needed
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# ── Stage: prod ─────────────────────────────────────────────────────────────
+FROM deps AS prod
+COPY . .
+RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser /app
+USER appuser
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+</file>
+
+<file path="backend/pyproject.toml">
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "platform-backend"
+version = "0.1.0"
+description = "Platform API — FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+    # ── Web framework ────────────────────────────────────
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    # ── Validation / settings ────────────────────────────
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    # ── Database ─────────────────────────────────────────
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    # ── Cache / queue ────────────────────────────────────
+    "redis[hiredis]>=5.0.0",
+    "celery[redis]>=5.4.0",
+    # ── Auth / JWT ───────────────────────────────────────
+    "python-jose[cryptography]>=3.3.0",
+    "httpx>=0.27.0",
+    # ── File storage ─────────────────────────────────────
+    "aioboto3>=13.0.0",
+    # ── Observability ────────────────────────────────────
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "opentelemetry-exporter-otlp>=1.25.0",
+    "sentry-sdk[fastapi]>=2.5.0",
+    "structlog>=24.2.0",
+    # ── Utilities ────────────────────────────────────────
+    "python-multipart>=0.0.9",
+    "tenacity>=8.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.27.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "types-redis>=4.6.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+</file>
+
+<file path="frontend/src/app/auth/login/page.tsx">
+"use client";
+
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import Avatar from "@mui/material/Avatar";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
+import Container from "@mui/material/Container";
+import Paper from "@mui/material/Paper";
+import Typography from "@mui/material/Typography";
+import { useEffect, useState } from "react";
+import { login } from "@/lib/auth";
+
+export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    await login(); // redirects to Keycloak
+  };
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background:
+          "radial-gradient(ellipse 60% 60% at 50% 0%, rgba(99,102,241,0.2), transparent)",
+      }}
+    >
+      <Container maxWidth="xs">
+        <Paper
+          elevation={0}
+          sx={{
+            p: 4,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 3,
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 3,
+            backdropFilter: "blur(20px)",
+          }}
+        >
+          <Avatar sx={{ bgcolor: "primary.main", width: 56, height: 56 }}>
+            <LockOutlinedIcon />
+          </Avatar>
+
+          <Box textAlign="center">
+            <Typography variant="h5" fontWeight={700} gutterBottom>
+              Welcome back
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Sign in to your Platform account to continue
+            </Typography>
+          </Box>
+
+          <Button
+            fullWidth
+            variant="contained"
+            size="large"
+            onClick={handleLogin}
+            disabled={loading}
+            sx={{ py: 1.5 }}
+            startIcon={
+              loading ? <CircularProgress size={20} color="inherit" /> : null
+            }
+          >
+            {loading ? "Redirecting…" : "Sign in with SSO"}
+          </Button>
+
+          <Typography variant="caption" color="text.disabled" textAlign="center">
+            Secured by Keycloak — OAuth 2.0 + OpenID Connect
+          </Typography>
+        </Paper>
+      </Container>
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/app/dashboard/layout.tsx">
+import type { Metadata } from "next";
+import { AppShell } from "@/components/layout/AppShell";
+import type { ReactNode } from "react";
+
+export const metadata: Metadata = {
+  title: { template: "%s | Platform", default: "Dashboard" },
+};
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  return <AppShell>{children}</AppShell>;
+}
+</file>
+
+<file path="frontend/src/app/dashboard/page.tsx">
+"use client";
+
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import GroupIcon from "@mui/icons-material/Group";
+import TaskAltIcon from "@mui/icons-material/TaskAlt";
+import FolderIcon from "@mui/icons-material/Folder";
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Grid from "@mui/material/Grid";
+import Skeleton from "@mui/material/Skeleton";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import type { SvgIconComponent } from "@mui/icons-material";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+interface StatCardProps {
+  title: string;
+  value: string;
+  delta: string;
+  positive: boolean;
+  Icon: SvgIconComponent;
+  color: string;
+}
+
+function StatCard({ title, value, delta, positive, Icon, color }: StatCardProps) {
+  return (
+    <Card
+      sx={{
+        height: "100%",
+        position: "relative",
+        overflow: "visible",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          borderRadius: "12px 12px 0 0",
+          background: color,
+        },
+      }}
+    >
+      <CardContent>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="flex-start"
+        >
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              {title}
+            </Typography>
+            <Typography variant="h4" fontWeight={700}>
+              {value}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              background: color,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: 0.9,
+            }}
+          >
+            <Icon sx={{ color: "#fff" }} />
+          </Box>
+        </Stack>
+        <Chip
+          label={delta}
+          size="small"
+          color={positive ? "success" : "error"}
+          variant="outlined"
+          sx={{ mt: 1.5, fontWeight: 600 }}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+const STATS: Omit<StatCardProps, "">[] = [
+  {
+    title: "Active Projects",
+    value: "12",
+    delta: "+2 this week",
+    positive: true,
+    Icon: FolderIcon,
+    color: "linear-gradient(135deg, #6366f1, #818cf8)",
+  },
+  {
+    title: "Team Members",
+    value: "34",
+    delta: "+5 this month",
+    positive: true,
+    Icon: GroupIcon,
+    color: "linear-gradient(135deg, #14b8a6, #2dd4bf)",
+  },
+  {
+    title: "Tasks Completed",
+    value: "248",
+    delta: "+18 today",
+    positive: true,
+    Icon: TaskAltIcon,
+    color: "linear-gradient(135deg, #f59e0b, #fbbf24)",
+  },
+  {
+    title: "Velocity",
+    value: "94%",
+    delta: "-3% vs last sprint",
+    positive: false,
+    Icon: TrendingUpIcon,
+    color: "linear-gradient(135deg, #ef4444, #f87171)",
+  },
+];
+
+export default function DashboardPage() {
+  const { data: user, isLoading } = useCurrentUser();
+
+  const greeting = isLoading ? (
+    <Skeleton width={300} height={40} />
+  ) : (
+    <Typography variant="h4" fontWeight={700}>
+      Good day, {user?.full_name?.split(" ")[0] ?? "there"} 👋
+    </Typography>
+  );
+
+  return (
+    <Box>
+      {/* Header */}
+      <Stack spacing={0.5} sx={{ mb: 4 }}>
+        {greeting}
+        <Typography variant="body1" color="text.secondary">
+          Here&apos;s what&apos;s happening across your workspace today.
+        </Typography>
+      </Stack>
+
+      {/* Stat cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {STATS.map((stat) => (
+          <Grid item xs={12} sm={6} lg={3} key={stat.title}>
+            <StatCard {...stat} />
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Placeholder content */}
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={8}>
+          <Card sx={{ height: 320 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
+                Activity Feed
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Recent project activity will appear here.
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card sx={{ height: 320 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} gutterBottom>
+                Upcoming Deadlines
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Tasks due soon will appear here.
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/app/layout.tsx">
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { QueryProvider } from "@/components/providers/QueryProvider";
+
+const inter = Inter({ subsets: ["latin"], display: "swap" });
+
+export const metadata: Metadata = {
+  title: {
+    template: "%s | Platform",
+    default: "Platform",
+  },
+  description: "Your all-in-one platform for managing projects and teams.",
+  robots: { index: false }, // Set to index: true when ready for production
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className={inter.className}>
+      <body>
+        <ThemeProvider>
+          <QueryProvider>
+            {children}
+          </QueryProvider>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="frontend/src/app/page.tsx">
+import type { Metadata } from "next";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Container from "@mui/material/Container";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Welcome | Platform",
+  description: "The modern platform for high-performing teams.",
+};
+
+export default function HomePage() {
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        background:
+          "radial-gradient(ellipse 80% 80% at 50% -20%, rgba(99,102,241,0.3), transparent)",
+      }}
+    >
+      <Container maxWidth="md">
+        <Stack spacing={4} alignItems="center" textAlign="center">
+          <Typography
+            variant="h1"
+            sx={{
+              fontSize: { xs: "2.5rem", md: "4rem" },
+              fontWeight: 800,
+              background: "linear-gradient(135deg, #6366f1 0%, #14b8a6 100%)",
+              backgroundClip: "text",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Build faster. Ship confidently.
+          </Typography>
+
+          <Typography
+            variant="h5"
+            color="text.secondary"
+            sx={{ maxWidth: 560, fontWeight: 400 }}
+          >
+            Platform gives your team the tools to plan, collaborate, and deliver
+            great products — all in one place.
+          </Typography>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Button
+              component={Link}
+              href="/dashboard"
+              variant="contained"
+              size="large"
+              sx={{ px: 4, py: 1.5, fontSize: "1rem" }}
+            >
+              Get Started
+            </Button>
+            <Button
+              component={Link}
+              href="/auth/login"
+              variant="outlined"
+              size="large"
+              sx={{ px: 4, py: 1.5, fontSize: "1rem" }}
+            >
+              Sign In
+            </Button>
+          </Stack>
+        </Stack>
+      </Container>
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/components/layout/AppBar.tsx">
+"use client";
+
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
+import MenuIcon from "@mui/icons-material/Menu";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import AppBar from "@mui/material/AppBar";
+import Avatar from "@mui/material/Avatar";
+import Badge from "@mui/material/Badge";
+import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import Toolbar from "@mui/material/Toolbar";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+
+import { useColorMode } from "@/components/providers/ThemeProvider";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+interface TopAppBarProps {
+  onMenuToggle?: () => void;
+  drawerWidth?: number;
+}
+
+export function TopAppBar({ onMenuToggle, drawerWidth = 240 }: TopAppBarProps) {
+  const { mode, toggleColorMode } = useColorMode();
+  const { data: user } = useCurrentUser();
+
+  return (
+    <AppBar
+      position="fixed"
+      elevation={0}
+      sx={{
+        width: { sm: `calc(100% - ${drawerWidth}px)` },
+        ml: { sm: `${drawerWidth}px` },
+        backdropFilter: "blur(20px)",
+        borderBottom: "1px solid",
+        borderColor: "divider",
+        background: "transparent",
+        backgroundColor: (t) =>
+          t.palette.mode === "dark"
+            ? "rgba(15,15,26,0.8)"
+            : "rgba(248,250,252,0.8)",
+      }}
+    >
+      <Toolbar>
+        <IconButton
+          color="inherit"
+          edge="start"
+          onClick={onMenuToggle}
+          sx={{ mr: 2, display: { sm: "none" } }}
+        >
+          <MenuIcon />
+        </IconButton>
+
+        <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700 }}>
+          Platform
+        </Typography>
+
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Tooltip title="Toggle theme">
+            <IconButton onClick={toggleColorMode} color="inherit">
+              {mode === "dark" ? <Brightness7Icon /> : <Brightness4Icon />}
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Notifications">
+            <IconButton color="inherit">
+              <Badge badgeContent={3} color="error">
+                <NotificationsIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title={user?.full_name ?? "Account"}>
+            <IconButton sx={{ p: 0, ml: 1 }}>
+              {user?.avatar_url ? (
+                <Avatar src={user.avatar_url} sx={{ width: 36, height: 36 }} />
+              ) : (
+                <Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main" }}>
+                  <AccountCircleIcon />
+                </Avatar>
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Toolbar>
+    </AppBar>
+  );
+}
+</file>
+
+<file path="frontend/src/components/layout/AppShell.tsx">
+"use client";
+
+import Box from "@mui/material/Box";
+import Toolbar from "@mui/material/Toolbar";
+import { useState, type ReactNode } from "react";
+import { TopAppBar } from "./AppBar";
+import { DRAWER_WIDTH, Sidebar } from "./Sidebar";
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+      <TopAppBar
+        onMenuToggle={() => setMobileOpen((o) => !o)}
+        drawerWidth={DRAWER_WIDTH}
+      />
+      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          width: { sm: `calc(100% - ${DRAWER_WIDTH}px)` },
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Toolbar />
+        <Box sx={{ flex: 1, p: { xs: 2, md: 3 } }}>{children}</Box>
+      </Box>
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/components/layout/Sidebar.tsx">
+"use client";
+
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import FolderIcon from "@mui/icons-material/Folder";
+import PeopleIcon from "@mui/icons-material/People";
+import SettingsIcon from "@mui/icons-material/Settings";
+import Box from "@mui/material/Box";
+import Divider from "@mui/material/Divider";
+import Drawer from "@mui/material/Drawer";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
+import Toolbar from "@mui/material/Toolbar";
+import Typography from "@mui/material/Typography";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ElementType } from "react";
+
+export const DRAWER_WIDTH = 240;
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: ElementType;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", icon: DashboardIcon },
+  { label: "Projects", href: "/projects", icon: FolderIcon },
+  { label: "Team", href: "/team", icon: PeopleIcon },
+];
+
+const BOTTOM_ITEMS: NavItem[] = [
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
+];
+
+function NavList({ items }: { items: NavItem[] }) {
+  const pathname = usePathname();
+
+  return (
+    <List dense>
+      {items.map(({ label, href, icon: Icon }) => {
+        const active = pathname.startsWith(href);
+        return (
+          <ListItem key={href} disablePadding sx={{ px: 1, mb: 0.5 }}>
+            <ListItemButton
+              component={Link}
+              href={href}
+              selected={active}
+              sx={{
+                borderRadius: 2,
+                "&.Mui-selected": {
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                  "& .MuiListItemIcon-root": { color: "primary.contrastText" },
+                  "&:hover": { bgcolor: "primary.dark" },
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <Icon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary={label} />
+            </ListItemButton>
+          </ListItem>
+        );
+      })}
+    </List>
+  );
+}
+
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
+
+function DrawerContent() {
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <Toolbar sx={{ px: 2 }}>
+        <Typography variant="h6" fontWeight={800} color="primary">
+          ⬡ Platform
+        </Typography>
+      </Toolbar>
+      <Divider />
+
+      <Box sx={{ flex: 1, overflow: "auto", pt: 1 }}>
+        <NavList items={NAV_ITEMS} />
+      </Box>
+
+      <Divider />
+      <Box sx={{ pb: 1 }}>
+        <NavList items={BOTTOM_ITEMS} />
+      </Box>
+    </Box>
+  );
+}
+
+export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+  return (
+    <Box
+      component="nav"
+      sx={{ width: { sm: DRAWER_WIDTH }, flexShrink: { sm: 0 } }}
+    >
+      {/* Mobile */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: "block", sm: "none" },
+          "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
+        }}
+      >
+        <DrawerContent />
+      </Drawer>
+
+      {/* Desktop */}
+      <Drawer
+        variant="permanent"
+        sx={{
+          display: { xs: "none", sm: "block" },
+          "& .MuiDrawer-paper": {
+            width: DRAWER_WIDTH,
+            boxSizing: "border-box",
+            borderRight: "1px solid",
+            borderColor: "divider",
+          },
+        }}
+        open
+      >
+        <DrawerContent />
+      </Drawer>
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/components/providers/QueryProvider.tsx">
+"use client";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { useState, type ReactNode } from "react";
+
+export function QueryProvider({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000, // 1 minute
+            retry: 1,
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
+  );
+}
+</file>
+
+<file path="frontend/src/components/providers/ThemeProvider.tsx">
+"use client";
+
+import CssBaseline from "@mui/material/CssBaseline";
+import { ThemeProvider as MuiThemeProvider, createTheme } from "@mui/material/styles";
+import { useMemo, useState, createContext, useContext, type ReactNode } from "react";
+
+type ColorMode = "light" | "dark";
+
+interface ColorModeContextType {
+  mode: ColorMode;
+  toggleColorMode: () => void;
+}
+
+export const ColorModeContext = createContext<ColorModeContextType>({
+  mode: "dark",
+  toggleColorMode: () => {},
+});
+
+export const useColorMode = () => useContext(ColorModeContext);
+
+function buildTheme(mode: ColorMode) {
+  return createTheme({
+    palette: {
+      mode,
+      primary: {
+        main: "#6366f1", // Indigo-500
+        light: "#818cf8",
+        dark: "#4f46e5",
+      },
+      secondary: {
+        main: "#14b8a6", // Teal-500
+      },
+      background:
+        mode === "dark"
+          ? { default: "#0f0f1a", paper: "#1a1a2e" }
+          : { default: "#f8fafc", paper: "#ffffff" },
+    },
+    typography: {
+      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+      h1: { fontWeight: 700 },
+      h2: { fontWeight: 700 },
+      h3: { fontWeight: 600 },
+    },
+    shape: { borderRadius: 12 },
+    components: {
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            textTransform: "none",
+            fontWeight: 600,
+            borderRadius: 8,
+          },
+        },
+      },
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            backgroundImage: "none",
+            boxShadow:
+              mode === "dark"
+                ? "0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.5)"
+                : "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+          },
+        },
+      },
+    },
+  });
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [mode, setMode] = useState<ColorMode>("dark");
+
+  const colorMode = useMemo(
+    () => ({
+      mode,
+      toggleColorMode: () =>
+        setMode((prev) => (prev === "light" ? "dark" : "light")),
+    }),
+    [mode]
+  );
+
+  const theme = useMemo(() => buildTheme(mode), [mode]);
+
+  return (
+    <ColorModeContext.Provider value={colorMode}>
+      <MuiThemeProvider theme={theme}>
+        <CssBaseline />
+        {children}
+      </MuiThemeProvider>
+    </ColorModeContext.Provider>
+  );
+}
+</file>
+
+<file path="frontend/src/components/ui/LoadingSpinner.tsx">
+"use client";
+
+import CircularProgress from "@mui/material/CircularProgress";
+import Box from "@mui/material/Box";
+
+interface LoadingSpinnerProps {
+  fullPage?: boolean;
+  size?: number;
+}
+
+export function LoadingSpinner({ fullPage = false, size = 40 }: LoadingSpinnerProps) {
+  if (fullPage) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+        }}
+      >
+        <CircularProgress size={size} />
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+      <CircularProgress size={size} />
+    </Box>
+  );
+}
+</file>
+
+<file path="frontend/src/hooks/useCurrentUser.ts">
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import type { User } from "@/types";
+
+async function fetchCurrentUser(): Promise<User> {
+  const { data } = await apiClient.get<User>("/api/v1/users/me");
+  return data;
+}
+
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: queryKeys.users.me(),
+    queryFn: fetchCurrentUser,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: false,             // don't retry on 401
+  });
+}
+</file>
+
+<file path="frontend/src/lib/api.ts">
+/**
+ * Axios instance pre-configured for the Platform API.
+ * Automatically attaches the Keycloak Bearer token to every request.
+ */
+
+import axios from "axios";
+import { getAccessToken } from "./auth";
+
+export const apiClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  timeout: 30_000,
+});
+
+// Request interceptor — inject auth token
+apiClient.interceptors.request.use(async (config) => {
+  if (typeof window !== "undefined") {
+    const token = await getAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Response interceptor — surface error messages
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const message =
+      error.response?.data?.detail ?? error.message ?? "An unexpected error occurred";
+    return Promise.reject(new Error(message));
+  }
+);
+</file>
+
+<file path="frontend/src/lib/auth.ts">
+/**
+ * Keycloak PKCE auth helpers.
+ *
+ * Keycloak-js is initialized once as a singleton and re-used across the app.
+ * In SSR (Next.js), Keycloak must only be initialized client-side.
+ */
+
+import type Keycloak from "keycloak-js";
+
+let _keycloak: Keycloak | null = null;
+
+export async function getKeycloak(): Promise<Keycloak> {
+  if (typeof window === "undefined") {
+    throw new Error("Keycloak can only be used in the browser");
+  }
+
+  if (_keycloak) return _keycloak;
+
+  const KeycloakLib = (await import("keycloak-js")).default;
+
+  _keycloak = new KeycloakLib({
+    url: process.env.NEXT_PUBLIC_KEYCLOAK_URL ?? "http://localhost:8080",
+    realm: process.env.NEXT_PUBLIC_KEYCLOAK_REALM ?? "platform",
+    clientId: process.env.NEXT_PUBLIC_KEYCLOAK_CLIENT_ID ?? "frontend-app",
+  });
+
+  return _keycloak;
+}
+
+export async function initKeycloak(): Promise<boolean> {
+  const kc = await getKeycloak();
+  return kc.init({
+    onLoad: "check-sso",
+    silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+    pkceMethod: "S256",
+  });
+}
+
+export async function login(): Promise<void> {
+  const kc = await getKeycloak();
+  await kc.login({ redirectUri: `${window.location.origin}/dashboard` });
+}
+
+export async function logout(): Promise<void> {
+  const kc = await getKeycloak();
+  await kc.logout({ redirectUri: window.location.origin });
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  const kc = await getKeycloak();
+  try {
+    await kc.updateToken(30); // refresh if expiring within 30s
+    return kc.token ?? null;
+  } catch {
+    return null;
+  }
+}
+</file>
+
+<file path="frontend/src/lib/query-keys.ts">
+/**
+ * Centralized TanStack Query key factory.
+ * Using a factory pattern makes invalidation predictable and refactorable.
+ */
+
+export const queryKeys = {
+  users: {
+    all: () => ["users"] as const,
+    me: () => ["users", "me"] as const,
+    byId: (id: string) => ["users", id] as const,
+    list: (params?: { page?: number; size?: number }) =>
+      ["users", "list", params] as const,
+  },
+} as const;
+</file>
+
+<file path="frontend/src/types/index.ts">
+/**
+ * Shared TypeScript types across the frontend.
+ * Keep in sync with backend Pydantic schemas.
+ */
+
+export interface User {
+  id: string;
+  keycloak_id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface ApiError {
+  detail: string;
+  type: string;
+}
+</file>
+
+<file path="frontend/Dockerfile">
+# ── Stage: base ─────────────────────────────────────────────────────────────
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# ── Stage: deps ─────────────────────────────────────────────────────────────
+FROM base AS deps
+COPY package.json package-lock.json* ./
+RUN npm ci --prefer-offline
+
+# ── Stage: dev (hot reload, mounted volume) ──────────────────────────────────
+FROM base AS dev
+COPY package.json package-lock.json* ./
+RUN npm install
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
+# ── Stage: builder ───────────────────────────────────────────────────────────
+FROM deps AS builder
+COPY . .
+RUN npm run build
+
+# ── Stage: prod (standalone output) ─────────────────────────────────────────
+FROM node:20-alpine AS prod
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+CMD ["node", "server.js"]
+</file>
+
+<file path="frontend/next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  output: "standalone",
+  async rewrites() {
+    return [
+      {
+        // Proxy /api/v1/* to the backend during local dev
+        source: "/api/v1/:path*",
+        destination: `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/:path*`,
+      },
+    ];
+  },
+};
+
+export default nextConfig;
+</file>
+
+<file path="frontend/package.json">
+{
+  "name": "platform-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "@mui/material": "^5.16.0",
+    "@mui/icons-material": "^5.16.0",
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "@emotion/server": "^11.11.0",
+    "@tanstack/react-query": "^5.51.0",
+    "@tanstack/react-query-devtools": "^5.51.0",
+    "keycloak-js": "^24.0.5",
+    "axios": "^1.7.0",
+    "notistack": "^3.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.0",
+    "prettier": "^3.3.0",
+    "@typescript-eslint/eslint-plugin": "^7.16.0",
+    "@typescript-eslint/parser": "^7.16.0"
+  }
+}
+</file>
+
+<file path="frontend/tsconfig.json">
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path=".editorconfig">
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+trim_trailing_whitespace = false
+</file>
+
+<file path=".env.example">
+# ─── PostgreSQL ───────────────────────────────────────────
+POSTGRES_USER=platform
+POSTGRES_PASSWORD=platform_secret
+POSTGRES_DB=platform_db
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql+asyncpg://platform:platform_secret@postgres:5432/platform_db
+
+# ─── Redis ────────────────────────────────────────────────
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/1
+CELERY_RESULT_BACKEND=redis://redis:6379/2
+
+# ─── Keycloak ─────────────────────────────────────────────
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_REALM=platform
+KEYCLOAK_CLIENT_ID=backend-api
+KEYCLOAK_CLIENT_SECRET=change-me-in-production
+KEYCLOAK_JWKS_URL=http://keycloak:8080/realms/platform/protocol/openid-connect/certs
+
+# ─── MinIO / S3 ───────────────────────────────────────────
+S3_ENDPOINT_URL=http://minio:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET_NAME=platform-files
+S3_REGION=us-east-1
+
+# ─── App ──────────────────────────────────────────────────
+APP_ENV=development
+APP_SECRET_KEY=change-me-in-production-32-chars!!
+DEBUG=true
+ALLOWED_ORIGINS=http://localhost:3000
+
+# ─── Sentry ───────────────────────────────────────────────
+SENTRY_DSN=
+
+# ─── Frontend (Next.js public vars) ───────────────────────
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080
+NEXT_PUBLIC_KEYCLOAK_REALM=platform
+NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=frontend-app
+</file>
+
+<file path=".gitignore">
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.env
+.venv
+venv/
+env/
+.uv/
+*.log
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ─── Node / Next.js ───────────────────────────────────────
+node_modules/
+.next/
+out/
+.npm
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Docker ───────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── IDE / OS ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Secrets ──────────────────────────────────────────────
+*.pem
+*.key
+.env.local
+.env.*.local
+secrets/
+</file>
+
+<file path="Makefile">
+.PHONY: help dev down logs migrate makemigrations lint format test build
+
+# ── Colours ─────────────────────────────────────────────────────────────────
+CYAN  := \033[0;36m
+RESET := \033[0m
+
+help: ## Show this help message
+	@echo ""
+	@echo "  $(CYAN)Platform — Makefile targets$(RESET)"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-20s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+dev: ## Start all services in dev mode (detached)
+	cp -n .env.example .env 2>/dev/null || true
+	docker compose up -d --build
+
+down: ## Stop and remove all containers
+	docker compose down
+
+down-volumes: ## Stop containers AND remove volumes (⚠ destroys data)
+	docker compose down -v
+
+logs: ## Tail logs for all services
+	docker compose logs -f
+
+logs-backend: ## Tail backend logs only
+	docker compose logs -f backend
+
+logs-worker: ## Tail celery worker logs only
+	docker compose logs -f celery-worker
+
+logs-frontend: ## Tail frontend logs only
+	docker compose logs -f frontend
+
+ps: ## Show running containers
+	docker compose ps
+
+# ── Database ─────────────────────────────────────────────────────────────────
+migrate: ## Apply all pending Alembic migrations
+	docker compose exec backend alembic upgrade head
+
+makemigrations: ## Generate a new Alembic migration (MSG="description")
+	docker compose exec backend alembic revision --autogenerate -m "$(MSG)"
+
+downgrade: ## Roll back last Alembic migration
+	docker compose exec backend alembic downgrade -1
+
+db-shell: ## Open a psql shell
+	docker compose exec postgres psql -U platform platform_db
+
+# ── Backend ───────────────────────────────────────────────────────────────────
+lint-backend: ## Lint backend with ruff
+	docker compose exec backend ruff check app tests
+
+format-backend: ## Format backend with ruff
+	docker compose exec backend ruff format app tests
+
+typecheck-backend: ## Type-check backend with mypy
+	docker compose exec backend mypy app
+
+test-backend: ## Run backend tests with pytest
+	docker compose exec backend pytest tests -v
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+lint-frontend: ## Lint frontend with ESLint
+	docker compose exec frontend npm run lint
+
+typecheck-frontend: ## Type-check frontend with tsc
+	docker compose exec frontend npm run typecheck
+
+# ── Combined ──────────────────────────────────────────────────────────────────
+lint: lint-backend lint-frontend ## Lint everything
+test: test-backend ## Run all tests
+</file>
+
+<file path="README.md">
+# Platform
+
+A production-ready Phase 1 monorepo — **Next.js + FastAPI + PostgreSQL + Redis + Keycloak + MinIO + Celery**.
+
+---
+
+## Architecture
+
+```
+frontend/     Next.js 14 · App Router · MUI · TanStack Query · Keycloak JS
+backend/      FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · Celery
+infra/        Keycloak realm config · MinIO init
+.github/      Backend CI · Frontend CI · Docker build
+```
+
+## Quick Start
+
+### Prerequisites
+- Docker Desktop 4.x+
+- Make (optional but recommended)
+
+### 1. Clone and configure
+```bash
+git clone <your-repo>
+cd platform
+cp .env.example .env   # edit secrets as needed
+```
+
+### 2. Start everything
+```bash
+make dev
+# or: docker compose up -d --build
+```
+
+### 3. Apply database migrations
+```bash
+make migrate
+# or: docker compose exec backend alembic upgrade head
+```
+
+### Service URLs
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| API Docs (dev) | http://localhost:8000/docs |
+| Keycloak Admin | http://localhost:8080 (admin / admin) |
+| MinIO Console | http://localhost:9001 (minioadmin / minioadmin) |
+
+### Seed Credentials (Keycloak)
+
+| User | Password | Roles |
+|---|---|---|
+| admin@platform.dev | admin123 | admin, user |
+| user@platform.dev | user123 | user |
+
+---
+
+## Development Workflow
+
+```bash
+make logs               # tail all service logs
+make logs-backend       # backend only
+make lint               # lint backend + frontend
+make test               # run all tests
+make makemigrations MSG="add projects table"   # generate migration
+make migrate            # apply migrations
+```
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14 + React 18 + TypeScript |
+| UI | Material UI 5 |
+| Data fetching | TanStack Query v5 |
+| Backend | FastAPI + Pydantic v2 |
+| ORM | SQLAlchemy 2.x (async) |
+| Migrations | Alembic |
+| Database | PostgreSQL 16 |
+| Cache | Redis 7 |
+| File storage | MinIO (S3-compatible) |
+| Background jobs | Celery + Redis |
+| Auth | Keycloak 24 (OAuth2 + OIDC + PKCE) |
+| Containerization | Docker + Docker Compose |
+| CI/CD | GitHub Actions |
+| Observability | OpenTelemetry + Sentry + structlog |
+</file>
+
+<file path="infra/keycloak/realm-export.json">
+{
+  "realm": "platform",
+  "enabled": true,
+  "displayName": "Platform",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "backend-api",
+      "name": "Backend API",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "change-me-in-production",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "frontend-app",
+      "name": "Frontend App",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3000/silent-check-sso.html"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000"
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "Platform administrator" },
+      { "name": "user", "description": "Standard platform user" }
+    ]
+  },
+  "users": [
+    {
+      "username": "admin@platform.dev",
+      "email": "admin@platform.dev",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "admin123", "temporary": false }
+      ],
+      "realmRoles": ["admin", "user"]
+    },
+    {
+      "username": "user@platform.dev",
+      "email": "user@platform.dev",
+      "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "user123", "temporary": false }
+      ],
+      "realmRoles": ["user"]
+    }
+  ]
+}
+</file>
+
+<file path="docker-compose.yml">
+services:
+  # ── PostgreSQL ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-platform_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Keycloak ────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: dev-file
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ── MinIO ───────────────────────────────────────────────
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ── MinIO init (creates bucket) ─────────────────────────
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin} &&
+        mc mb --ignore-existing local/${S3_BUCKET_NAME:-platform-files} &&
+        echo 'Bucket ready.'
+      "
+
+  # ── Backend (FastAPI) ───────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform_secret}@postgres:5432/${POSTGRES_DB:-platform_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-platform}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-backend-api}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-change-me}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-platform-files}
+      APP_ENV: development
+      DEBUG: "true"
+      ALLOWED_ORIGINS: "http://localhost:3000"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # ── Celery Worker ───────────────────────────────────────
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform_secret}@postgres:5432/${POSTGRES_DB:-platform_db}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-platform}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-platform-files}
+      APP_ENV: development
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Frontend (Next.js) ──────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    command: npm run dev
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+      NEXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-platform}
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: frontend-app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+</file>
+
+</files>
