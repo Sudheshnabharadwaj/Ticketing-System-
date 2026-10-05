@@ -19,18 +19,29 @@ class Settings(BaseSettings):
     app_env: Literal["development", "staging", "production"] = "development"
     app_secret_key: str = "change-me-in-production-32-chars!!"
     debug: bool = False
-    allowed_origins: list[str] = ["http://localhost:3000"]
+    allowed_origins: list[str] | str = ["http://localhost:3000"]
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
-    def parse_origins(cls, v: str | list[str]) -> list[str]:
+    def parse_origins(cls, v: object) -> list[str]:
         if isinstance(v, str):
-            return [o.strip() for o in v.split(",")]
-        return v
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(o).strip() for o in parsed]
+                except Exception:
+                    pass
+            return [o.strip() for o in v.split(",") if o.strip()]
+        if isinstance(v, (list, tuple)):
+            return [str(o).strip() for o in v]
+        return [str(v)]
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = (
-        "postgresql+asyncpg://platform:platform_secret@localhost:5432/platform_db"
+        "postgresql+asyncpg://platform:platform_secret@localhost:5433/platform_db"
     )
 
     # ── Redis ─────────────────────────────────────────────────────────────────

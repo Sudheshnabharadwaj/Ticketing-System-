@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm --prefix admin run dev",
+    "dev:admin": "npm --prefix admin run dev",
+    "dev:employee": "npm --prefix employee run dev",
+    "dev:teamlead": "npm --prefix teamlead run dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -3,9 +3,9 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from alembic import context
 from app.config import get_settings
 from app.db.base import Base
 
@@ -15,7 +15,7 @@ from app.db.models import user  # noqa: F401
 config = context.config
 settings = get_settings()
 
-if config.config_file_name is not None:
+if config.config_file_name is not None and config.get_section("formatters"):
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

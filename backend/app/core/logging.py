@@ -36,7 +36,7 @@ def configure_logging(debug: bool = False) -> None:
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(sys.stdout),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
@@ -48,6 +48,8 @@ def configure_logging(debug: bool = False) -> None:
     )
 
 
-def get_logger(name: str | None = None) -> structlog.BoundLogger:
+def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return a named structlog logger."""
-    return structlog.get_logger(name)
+    if name is not None:
+        return structlog.stdlib.get_logger(name)
+    return structlog.stdlib.get_logger()

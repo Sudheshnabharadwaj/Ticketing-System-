@@ -1,9 +1,7 @@
 """User ORM model."""
 
-import uuid
 
 from sqlalchemy import Boolean, String, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin

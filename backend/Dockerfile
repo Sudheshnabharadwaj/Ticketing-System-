@@ -2,19 +2,15 @@
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_SYSTEM_PYTHON=1
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
-
-# Install uv
-RUN pip install --no-cache-dir uv
 
 # ── Stage: deps ─────────────────────────────────────────────────────────────
 FROM base AS deps
 
 COPY pyproject.toml ./
-RUN uv pip install --system -e ".[dev]"
+RUN pip install --no-cache-dir -e ".[dev]"
 
 # ── Stage: dev (used by docker compose) ─────────────────────────────────────
 FROM deps AS dev

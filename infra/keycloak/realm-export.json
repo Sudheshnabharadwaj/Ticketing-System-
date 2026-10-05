@@ -24,7 +24,6 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "pkceCodeChallengeMethod": "S256",
       "redirectUris": [
         "http://localhost:3000/*",
         "http://localhost:3000/silent-check-sso.html"
@@ -33,7 +32,8 @@
         "http://localhost:3000"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:3000"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
       }
     }
   ],

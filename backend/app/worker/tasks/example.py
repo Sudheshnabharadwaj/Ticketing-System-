@@ -1,13 +1,15 @@
 """Example background tasks — replace with domain-specific tasks."""
 
+from celery import Task
+
 from app.core.logging import get_logger
 from app.worker.celery_app import celery_app
 
 logger = get_logger(__name__)
 
 
-@celery_app.task(bind=True, name="tasks.send_welcome_email", max_retries=3)
-def send_welcome_email(self, user_id: str, email: str) -> dict[str, str]:
+@celery_app.task(bind=True, name="tasks.send_welcome_email", max_retries=3)  # type: ignore[untyped-decorator]
+def send_welcome_email(self: Task, user_id: str, email: str) -> dict[str, str]:
     """Send a welcome email to a newly registered user.
 
     This is a placeholder — integrate your email provider (SES, SendGrid, etc.)
@@ -18,10 +20,10 @@ def send_welcome_email(self, user_id: str, email: str) -> dict[str, str]:
         return {"status": "sent", "user_id": user_id}
     except Exception as exc:
         logger.error("Failed to send welcome email", error=str(exc))
-        raise self.retry(exc=exc, countdown=2**self.request.retries * 60)
+        raise self.retry(exc=exc, countdown=2**self.request.retries * 60) from exc
 
 
-@celery_app.task(name="tasks.process_file_upload")
+@celery_app.task(name="tasks.process_file_upload")  # type: ignore[untyped-decorator]
 def process_file_upload(object_key: str, user_id: str) -> dict[str, str]:
     """Post-process a file after upload (e.g., virus scan, thumbnail generation).
 

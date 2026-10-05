@@ -50,7 +50,7 @@ export default function HomePage() {
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <Button
               component={Link}
-              href="/dashboard"
+              href="/auth/signup"
               variant="contained"
               size="large"
               sx={{ px: 4, py: 1.5, fontSize: "1rem" }}
@@ -66,6 +66,89 @@ export default function HomePage() {
             >
               Sign In
             </Button>
+          </Stack>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mt: 4, width: "100%", justifyContent: "center" }}>
+            <Box
+              component="a"
+              href="http://localhost:5173"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                backdropFilter: "blur(8px)",
+                textDecoration: "none",
+                color: "inherit",
+                flex: 1,
+                textAlign: "left",
+                transition: "all 0.2s",
+                "&:hover": { borderColor: "primary.main", transform: "translateY(-2px)" },
+              }}
+            >
+              <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                Admin Portal →
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                User management, SLA rules, workflow configs & metrics (Port 5173)
+              </Typography>
+            </Box>
+
+            <Box
+              component="a"
+              href="http://localhost:4173"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                backdropFilter: "blur(8px)",
+                textDecoration: "none",
+                color: "inherit",
+                flex: 1,
+                textAlign: "left",
+                transition: "all 0.2s",
+                "&:hover": { borderColor: "teal", transform: "translateY(-2px)" },
+              }}
+            >
+              <Typography variant="subtitle1" fontWeight={700} sx={{ color: "#14b8a6" }}>
+                Employee Portal →
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Raise tickets, track assigned work, notifications & KB (Port 4173)
+              </Typography>
+            </Box>
+
+            <Box
+              component="a"
+              href="http://localhost:4174"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+                backdropFilter: "blur(8px)",
+                textDecoration: "none",
+                color: "inherit",
+                flex: 1,
+                textAlign: "left",
+                transition: "all 0.2s",
+                "&:hover": { borderColor: "warning.main", transform: "translateY(-2px)" },
+              }}
+            >
+              <Typography variant="subtitle1" fontWeight={700} color="warning.main">
+                Team Lead Portal →
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Team tickets, triage, employee workload, escalations & reports (Port 4174)
+              </Typography>
+            </Box>
           </Stack>
         </Stack>
       </Container>

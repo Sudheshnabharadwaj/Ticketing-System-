@@ -2,6 +2,7 @@
 
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import FolderIcon from "@mui/icons-material/Folder";
+import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import Box from "@mui/material/Box";
@@ -17,6 +18,7 @@ import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ElementType } from "react";
+import { logout } from "@/lib/auth";
 
 export const DRAWER_WIDTH = 240;
 
@@ -77,6 +79,10 @@ interface SidebarProps {
 }
 
 function DrawerContent() {
+  const handleLogout = async () => {
+    await logout();
+  };
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <Toolbar sx={{ px: 2 }}>
@@ -88,11 +94,91 @@ function DrawerContent() {
 
       <Box sx={{ flex: 1, overflow: "auto", pt: 1 }}>
         <NavList items={NAV_ITEMS} />
+        <Divider sx={{ my: 1.5 }} />
+        <Typography variant="overline" sx={{ px: 2, color: "text.secondary", fontWeight: 700, letterSpacing: 1 }}>
+          Role Portals
+        </Typography>
+        <List dense>
+          <ListItem disablePadding sx={{ px: 1, mb: 0.5 }}>
+            <ListItemButton
+              component="a"
+              href="http://localhost:5173"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ borderRadius: 2 }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: "primary.main" }}>
+                <PeopleIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Admin Portal"
+                secondary="Port 5173"
+                primaryTypographyProps={{ variant: "body2", fontWeight: 600 }}
+                secondaryTypographyProps={{ variant: "caption" }}
+              />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding sx={{ px: 1, mb: 0.5 }}>
+            <ListItemButton
+              component="a"
+              href="http://localhost:4173"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ borderRadius: 2 }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: "#14b8a6" }}>
+                <FolderIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Employee Portal"
+                secondary="Port 4173"
+                primaryTypographyProps={{ variant: "body2", fontWeight: 600 }}
+                secondaryTypographyProps={{ variant: "caption" }}
+              />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding sx={{ px: 1, mb: 0.5 }}>
+            <ListItemButton
+              component="a"
+              href="http://localhost:4174"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ borderRadius: 2 }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: "warning.main" }}>
+                <DashboardIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Team Lead Portal"
+                secondary="Port 4174"
+                primaryTypographyProps={{ variant: "body2", fontWeight: 600 }}
+                secondaryTypographyProps={{ variant: "caption" }}
+              />
+            </ListItemButton>
+          </ListItem>
+        </List>
       </Box>
 
       <Divider />
       <Box sx={{ pb: 1 }}>
         <NavList items={BOTTOM_ITEMS} />
+        <List dense>
+          <ListItem disablePadding sx={{ px: 1 }}>
+            <ListItemButton
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                color: "error.main",
+                "&:hover": { bgcolor: "error.main", color: "#fff", "& .MuiListItemIcon-root": { color: "#fff" } },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: "error.main" }}>
+                <LogoutIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Sign Out" />
+            </ListItemButton>
+          </ListItem>
+        </List>
       </Box>
     </Box>
   );
