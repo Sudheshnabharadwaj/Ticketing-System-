@@ -1,10 +1,14 @@
 """FastAPI application factory."""
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.router import router as v1_router
+from app.api.v1.health import check_database_health
+from app.db.session import get_db
 from app.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
@@ -61,7 +65,20 @@ def create_app() -> FastAPI:
             "docs": "/docs",
             "redoc": "/redoc",
             "health": "/api/v1/health",
+            "db_health": "/api/health/db",
         }
+
+    # ── Database Health Check Endpoints ─────────────────────────────────────
+    @app.get("/api/health/db", tags=["Health"], summary="Database connectivity health check")
+    @app.get("/health/db", tags=["Health"], summary="Database connectivity health check")
+    async def global_database_health(db: AsyncSession = Depends(get_db)):
+        """
+        Database health probe:
+        - 200: { "status": "healthy", "database": "connected", "timestamp": "<server_time>" }
+        - 500: { "status": "unhealthy", "database": "disconnected", "error": "<error_message>" }
+        """
+        is_healthy, payload = await check_database_health(db)
+        return JSONResponse(status_code=200 if is_healthy else 500, content=payload)
 
     # ── Routers ──────────────────────────────────────────────────────────────
     app.include_router(v1_router)
