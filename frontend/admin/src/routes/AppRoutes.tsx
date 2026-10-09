@@ -183,7 +183,9 @@ export const AppRoutes: React.FC = () => {
       >
         <Route path="/knowledge-base" element={<EmployeeKB />} />
         <Route path="/tickets" element={<EmployeeMyTickets />} />
+        <Route path="/tickets/:id" element={<AssignedTicketDetails />} />
         <Route path="/assigned-tickets" element={<EmployeeAssignedTickets />} />
+        <Route path="/assigned-tickets/:id" element={<AssignedTicketDetails />} />
         <Route path="/create-ticket" element={<CreateTicket />} />
         <Route path="/notifications" element={<EmployeeNotifications />} />
         <Route path="/profile" element={<EmployeeProfile />} />

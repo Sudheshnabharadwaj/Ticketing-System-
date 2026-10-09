@@ -41,7 +41,7 @@ function mapDbTicket(row: any): EmployeeTicket {
     status: (row.status || 'Open') as TicketStatus,
     createdAt: row.created_at ? row.created_at.replace('T', ' ').slice(0, 16) : new Date().toISOString().replace('T', ' ').slice(0, 16),
     updatedAt: row.updated_at ? row.updated_at.replace('T', ' ').slice(0, 16) : new Date().toISOString().replace('T', ' ').slice(0, 16),
-    assignedTo: row.assigned_agent || '',
+    assignedTo: row.assigned_agent || row.assigned_to || '',
     assignedBy: row.assigned_by || '',
     assignedDate: row.assigned_date ? row.assigned_date.replace('T', ' ').slice(0, 16) : undefined,
     sla: row.sla_remaining || row.sla_status || 'Within SLA',
@@ -51,6 +51,10 @@ function mapDbTicket(row: any): EmployeeTicket {
   };
   (t as any).employee = row.employee;
   (t as any).employee_email = row.employee_email;
+  (t as any).employee_id = row.employee_id;
+  (t as any).assigned_agent = row.assigned_agent;
+  (t as any).assigned_agent_id = row.assigned_agent_id;
+  (t as any).assigned_to = row.assigned_to;
   return t;
 }
 
@@ -91,30 +95,62 @@ export const EmployeeService = {
 
   getAssignedTickets(): EmployeeTicket[] {
     const user = getEmployeeSessionUser();
-    const userEmail = (user?.email || '').trim().toLowerCase();
-    const userName = (user?.name || '').trim().toLowerCase();
+    if (!user) return [];
+    const userEmail = (user.email || '').trim().toLowerCase();
+    const userName = (user.name || '').trim().toLowerCase();
+    const userId = (user.id || '').trim().toLowerCase();
+    const empId = ((user as any).employeeId || '').trim().toLowerCase();
 
-    return ticketsCache.filter((t) => {
-      if (t.assignedTo && (t.assignedTo.toLowerCase() === userName || t.assignedTo.toLowerCase() === userEmail)) return true;
-      if (t.assignedBy) return true;
+    return ticketsCache.filter((t: any) => {
+      const assigned = (t.assignedTo || t.assigned_agent || t.assigned_to || '').trim().toLowerCase();
+      const agentId = (t.assigned_agent_id || '').trim().toLowerCase();
+
+      // Skip tickets that are unassigned
+      if (!assigned || assigned === 'unassigned') return false;
+
+      // Match by User ID or Employee ID
+      if (userId && (agentId === userId || assigned === userId)) return true;
+      if (empId && (agentId === empId || assigned === empId)) return true;
+
+      // Match by Email
+      if (userEmail && (assigned === userEmail || assigned.includes(userEmail))) return true;
+
+      // Match by Name
+      if (userName && (assigned === userName || assigned.includes(userName) || userName.includes(assigned))) return true;
+
       return false;
     });
   },
 
   getMyTickets(): EmployeeTicket[] {
     const user = getEmployeeSessionUser();
-    const userEmail = (user?.email || '').trim().toLowerCase();
-    const userName = (user?.name || '').trim().toLowerCase();
-
-    if (!userEmail && !userName) return ticketsCache;
+    if (!user) return [];
+    const userEmail = (user.email || '').trim().toLowerCase();
+    const userName = (user.name || '').trim().toLowerCase();
+    const userId = (user.id || '').trim().toLowerCase();
+    const empId = ((user as any).employeeId || '').trim().toLowerCase();
 
     return ticketsCache.filter((t: any) => {
       const email = (t.employee_email || t.employeeEmail || t.requesterEmail || '').trim().toLowerCase();
       const name = (t.employee || t.requesterName || '').trim().toLowerCase();
-      if (userEmail && email === userEmail) return true;
-      if (userName && name && name.includes(userName)) return true;
+      const id = (t.employee_id || t.employeeId || '').trim().toLowerCase();
+
+      if (userEmail && (email === userEmail || email.includes(userEmail))) return true;
+      if (userId && (id === userId || id.includes(userId))) return true;
+      if (empId && (id === empId || id.includes(empId))) return true;
+      if (userName && name && (name === userName || name.includes(userName) || userName.includes(name))) return true;
       return false;
     });
+  },
+
+  getEmployeeTickets(): EmployeeTicket[] {
+    const my = this.getMyTickets();
+    const assigned = this.getAssignedTickets();
+    const map = new Map<string, EmployeeTicket>();
+    // Prioritize assigned tickets first, then my tickets
+    assigned.forEach(t => map.set(t.id, t));
+    my.forEach(t => map.set(t.id, t));
+    return Array.from(map.values());
   },
 
   getTicketById(idOrNum: string): EmployeeTicket | undefined {
@@ -541,13 +577,13 @@ export const EmployeeService = {
   },
 
   getSummaryStats() {
-    const tickets = this.getTickets();
+    const employeeTickets = this.getEmployeeTickets();
     const myTicketsCount = this.getMyTickets().length;
     const assignedTicketsCount = this.getAssignedTickets().length;
-    const open = tickets.filter((t) => t.status === 'Open').length;
-    const inProgress = tickets.filter((t) => t.status === 'In Progress').length;
-    const pending = tickets.filter((t) => t.status === 'Pending' || t.status === 'Escalated').length;
-    const resolved = tickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
+    const open = employeeTickets.filter((t) => t.status === 'Open').length;
+    const inProgress = employeeTickets.filter((t) => t.status === 'In Progress').length;
+    const pending = employeeTickets.filter((t) => t.status === 'Pending' || t.status === 'Escalated').length;
+    const resolved = employeeTickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
 
     return { myTicketsCount, assignedTicketsCount, open, inProgress, pending, resolved };
   },

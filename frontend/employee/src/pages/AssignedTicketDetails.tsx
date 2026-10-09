@@ -43,13 +43,20 @@ export const AssignedTicketDetails: React.FC = () => {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const loadTicket = () => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadTicket = async () => {
     if (!id) return;
-    const found = EmployeeService.getTicketById(id);
+    setIsLoading(true);
+    let found = EmployeeService.getTicketById(id);
+    if (!found) {
+      found = await EmployeeService.getTicketByIdAsync(id);
+    }
     if (found) {
       setTicket({ ...found });
       setSelectedStatus(found.status);
     }
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -63,6 +70,15 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   }, [toastMessage]);
 
+  if (isLoading) {
+    return (
+      <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center max-w-lg mx-auto mt-12 shadow-2xs font-sans">
+        <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm font-semibold text-slate-700">Loading ticket details...</p>
+      </div>
+    );
+  }
+
   if (!ticket) {
     return (
       <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center max-w-lg mx-auto mt-12 shadow-2xs font-sans">
@@ -73,7 +89,7 @@ export const AssignedTicketDetails: React.FC = () => {
         </p>
         <Button
           variant="primary"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/employee/dashboard')}
           className="bg-[#0284C7] hover:bg-[#0369a1] text-white"
         >
           Back to Dashboard
