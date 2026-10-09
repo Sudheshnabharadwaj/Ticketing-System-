@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Ticket, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { supabase } from '../../services/supabaseClient';
 
 export const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -10,7 +11,7 @@ export const ForgotPasswordPage: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
       setError('Email address is required');
@@ -21,10 +22,46 @@ export const ForgotPasswordPage: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const { data: dbUser, error: queryErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (queryErr || !dbUser) {
+        setError('No registered account found with this email address.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      await supabase
+        .from('users')
+        .update({ invite_token: `reset-${resetCode}` })
+        .eq('email', cleanEmail);
+
+      const resetUrl = `${window.location.origin}/admin/auth/reset-password?email=${encodeURIComponent(cleanEmail)}&code=${resetCode}`;
+      await fetch('http://localhost:8000/api/v1/notifications/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          name: dbUser.name || 'Admin',
+          reset_code: resetCode,
+          reset_url: resetUrl,
+          portal: 'Admin Portal'
+        })
+      });
+
       setIsSubmitted(true);
-    }, 600);
+    } catch (err: any) {
+      console.warn('Password reset request error:', err);
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -53,7 +90,7 @@ export const ForgotPasswordPage: React.FC = () => {
                 We sent password reset instructions to <strong className="text-slate-900">{email}</strong>. Please check your inbox.
               </p>
               <div className="pt-2">
-                <Link to="/admin/auth/reset-password">
+                <Link to={`/admin/auth/reset-password?email=${encodeURIComponent(email.trim())}`}>
                   <Button variant="outline" className="w-full justify-center">
                     Proceed to Reset Password
                   </Button>

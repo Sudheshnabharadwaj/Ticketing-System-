@@ -1,346 +1,326 @@
-import type { User, Ticket, DashboardStats, AddUserFormData, UserRole, UserDepartment } from '../types';
-import { savePlatformUser, getPlatformUsers } from './unifiedAuth';
+import type { User, Ticket, DashboardStats, AddUserFormData, UserRole, UserDepartment, SLAStatus } from '../types';
+import { getCurrentSessionUser } from './unifiedAuth';
+import { supabase } from './supabaseClient';
 
-// Initial Mock Users Data
-export const mockUsers: User[] = [
-  {
-    id: 'usr-1',
-    name: 'Hyma',
-    email: 'hyma@company.com',
-    phone: '+1 (555) 019-2834',
-    department: 'IT Support',
-    role: 'Admin',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-01-15'
-  },
-  {
-    id: 'usr-2',
-    name: 'Manikanta',
-    email: 'manikanta@company.com',
-    phone: '+1 (555) 014-9921',
-    department: 'IT Support',
-    role: 'Team Lead',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-02-01'
-  },
-  {
-    id: 'usr-3',
-    name: 'Adi',
-    email: 'adi@company.com',
-    phone: '+1 (555) 018-3342',
-    department: 'HR',
-    role: 'Team Lead',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-03-10'
-  },
-  {
-    id: 'usr-4',
-    name: 'Sudha',
-    email: 'sudha@company.com',
-    phone: '+1 (555) 012-7744',
-    department: 'Finance',
-    role: 'Employee',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-04-12'
-  },
-  {
-    id: 'usr-5',
-    name: 'Mounika',
-    email: 'mounika@company.com',
-    phone: '+1 (555) 016-5589',
-    department: 'Operations',
-    role: 'Employee',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-09-20'
-  },
-  {
-    id: 'usr-6',
-    name: 'Kotesh',
-    email: 'kotesh@company.com',
-    phone: '+1 (555) 017-8899',
-    department: 'IT Support',
-    role: 'Employee',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-08-14'
-  },
-  {
-    id: 'usr-7',
-    name: 'Uday',
-    email: 'uday@company.com',
-    phone: '+1 (555) 013-4411',
-    department: 'Facilities',
-    role: 'Employee',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-07-02'
-  }
-];
-
-// Initial Mock Tickets Data
-export const mockTickets: Ticket[] = [
-  {
-    id: 't-101',
-    ticketNumber: 'TICK-1001',
-    title: 'VPN Connection Failure on MacOS Sequoia',
-    description: 'User unable to establish secure gateway tunnel after system update.',
-    requesterName: 'Sudha',
-    requesterEmail: 'sudha@company.com',
-    assignedTo: 'Manikanta',
-    department: 'IT Support',
-    category: 'Network & Connectivity',
-    priority: 'High',
-    status: 'In Progress',
-    slaStatus: 'Normal',
-    createdAt: '2026-09-22 09:30',
-    dueDate: '2026-09-22 17:30'
-  },
-  {
-    id: 't-102',
-    ticketNumber: 'TICK-1002',
-    title: 'Payroll Software Access Denied',
-    description: 'Finance department user lacks permission for Q3 audit logs.',
-    requesterName: 'Mounika',
-    requesterEmail: 'mounika@company.com',
-    assignedTo: 'Hyma',
-    department: 'Finance',
-    category: 'Access & Permissions',
-    priority: 'Urgent',
-    status: 'Escalated',
-    slaStatus: 'SLA Risk',
-    createdAt: '2026-09-21 14:15',
-    dueDate: '2026-09-22 18:00'
-  },
-  {
-    id: 't-103',
-    ticketNumber: 'TICK-1003',
-    title: 'New Employee Laptop Setup - Onboarding',
-    description: 'Hardware provisioning for incoming Sr. Product Designer.',
-    requesterName: 'Adi',
-    requesterEmail: 'adi@company.com',
-    assignedTo: 'Manikanta',
-    department: 'HR',
-    category: 'Hardware Procurement',
-    priority: 'Medium',
-    status: 'Open',
-    slaStatus: 'Normal',
-    createdAt: '2026-09-22 11:00',
-    dueDate: '2026-09-24 12:00'
-  },
-  {
-    id: 't-104',
-    ticketNumber: 'TICK-1004',
-    title: 'Database Timeout Error during Export',
-    description: 'Production DB server connection resets during heavy CSV dumps.',
-    requesterName: 'Kotesh',
-    requesterEmail: 'kotesh@company.com',
-    assignedTo: 'Hyma',
-    department: 'IT Support',
-    category: 'Infrastructure',
-    priority: 'Urgent',
-    status: 'Escalated',
-    slaStatus: 'SLA Breached',
-    createdAt: '2026-09-19 16:45',
-    dueDate: '2026-09-20 16:45'
-  },
-  {
-    id: 't-105',
-    ticketNumber: 'TICK-1005',
-    title: 'Building Pass Replacement Request',
-    description: 'Physical badge replacement required after lost wallet.',
-    requesterName: 'Uday',
-    requesterEmail: 'uday@company.com',
-    assignedTo: 'Sudha',
-    department: 'Facilities',
-    category: 'Physical Security',
-    priority: 'Low',
-    status: 'Resolved',
-    slaStatus: 'Normal',
-    createdAt: '2026-09-20 08:20',
-    dueDate: '2026-09-22 17:00'
-  },
-  {
-    id: 't-106',
-    ticketNumber: 'TICK-1006',
-    title: 'Warehouse Logistics Dispatch Delay',
-    description: 'Inventory sync issue causing order processing delays.',
-    requesterName: 'Mounika',
-    requesterEmail: 'mounika@company.com',
-    assignedTo: 'Mounika',
-    department: 'Operations',
-    category: 'Supply Chain',
-    priority: 'High',
-    status: 'In Progress',
-    slaStatus: 'Normal',
-    createdAt: '2026-09-23 10:15',
-    dueDate: '2026-09-25 10:15'
-  }
-];
-
-export const mockDashboardStats: DashboardStats = {
-  totalTickets: 148,
-  totalUsers: 64,
-  openTickets: 32,
-  escalatedTickets: 8,
-  slaRiskCount: 5,
-  slaBreachedCount: 3,
-  resolvedTodayCount: 19
-};
-
-const STORAGE_KEY_ADMIN_TICKETS = 'admin_standalone_tickets';
-
-function getStoredTickets(): Ticket[] {
-  const cached = localStorage.getItem(STORAGE_KEY_ADMIN_TICKETS);
-  if (!cached) {
-    localStorage.setItem(STORAGE_KEY_ADMIN_TICKETS, JSON.stringify(mockTickets));
-    return mockTickets;
-  }
-  try {
-    return JSON.parse(cached);
-  } catch {
-    return mockTickets;
-  }
+function mapSlaStatus(raw?: string): SLAStatus {
+  if (!raw) return 'Normal';
+  const lower = raw.toLowerCase();
+  if (lower.includes('breach')) return 'SLA Breached';
+  if (lower.includes('risk')) return 'SLA Risk';
+  return 'Normal';
 }
 
-function saveStoredTickets(tickets: Ticket[]) {
-  localStorage.setItem(STORAGE_KEY_ADMIN_TICKETS, JSON.stringify(tickets));
-}
+// Compatibility empty exports (no mock data used)
+export const mockUsers: User[] = [];
+export const mockTickets: Ticket[] = [];
 
-// API Service Functions
 export const AdminApiService = {
   async getDashboardStats(): Promise<DashboardStats> {
-    const tickets = getStoredTickets();
-    const openTickets = tickets.filter(t => t.status === 'Open').length;
-    const escalatedTickets = tickets.filter(t => t.status === 'Escalated').length;
-    const slaRiskCount = tickets.filter(t => t.slaStatus === 'SLA Risk').length;
-    const slaBreachedCount = tickets.filter(t => t.slaStatus === 'SLA Breached').length;
+    try {
+      const { data: dbTickets } = await supabase.from('tickets').select('id, status, sla_status');
+      const { data: dbUsers } = await supabase.from('users').select('id');
 
-    return new Promise((resolve) =>
-      setTimeout(
-        () =>
-          resolve({
-            totalTickets: tickets.length,
-            totalUsers: 64,
-            openTickets,
-            escalatedTickets,
-            slaRiskCount,
-            slaBreachedCount,
-            resolvedTodayCount: 19,
-          }),
-        100
-      )
-    );
+      const tickets: any[] = dbTickets || [];
+      const openTickets = tickets.filter(t => (t.status || '').toLowerCase() === 'open').length;
+      const escalatedTickets = tickets.filter(t => (t.status || '').toLowerCase() === 'escalated').length;
+      const slaRiskCount = tickets.filter(t => (t.sla_status || '').toLowerCase().includes('risk')).length;
+      const slaBreachedCount = tickets.filter(t => (t.sla_status || '').toLowerCase().includes('breach')).length;
+      const resolvedTodayCount = tickets.filter(t => ['resolved', 'closed'].includes((t.status || '').toLowerCase())).length;
+
+      return {
+        totalTickets: tickets.length,
+        totalUsers: dbUsers ? dbUsers.length : 0,
+        openTickets,
+        escalatedTickets,
+        slaRiskCount,
+        slaBreachedCount,
+        resolvedTodayCount,
+      };
+    } catch (e) {
+      console.error('Error fetching dashboard stats from Supabase:', e);
+      return {
+        totalTickets: 0,
+        totalUsers: 0,
+        openTickets: 0,
+        escalatedTickets: 0,
+        slaRiskCount: 0,
+        slaBreachedCount: 0,
+        resolvedTodayCount: 0,
+      };
+    }
   },
 
   async getUsers(): Promise<User[]> {
     try {
-      const token = localStorage.getItem('auth_token') || sessionStorage.getItem('token');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/v1/users', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.items) && data.items.length > 0) {
-          return data.items.map((u: { id: string; full_name?: string | null; email: string; is_superuser?: boolean; is_active?: boolean; created_at?: string }) => ({
-            id: u.id,
-            name: u.full_name || u.email.split('@')[0],
-            email: u.email,
-            phone: '+1 (555) 000-0000',
-            department: 'IT Support',
-            role: u.is_superuser ? 'Admin' : 'Employee',
-            status: u.is_active ? 'Active' : 'Inactive',
-            createdAt: u.created_at ? u.created_at.split('T')[0] : '2026-01-01',
-          }));
-        }
+      const { data: dbUsers, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && dbUsers) {
+        return dbUsers.map((u: any) => ({
+          id: u.id,
+          employeeId: u.id,
+          name: u.name || (u.email ? u.email.split('@')[0] : 'User'),
+          email: u.email,
+          phone: u.phone || '+1 (555) 000-0000',
+          department: (u.department || 'IT Support') as UserDepartment,
+          role: (u.role === 'admin' ? 'Admin' : u.role === 'teamlead' ? 'Team Lead' : 'Employee') as UserRole,
+          teamLead: u.team_lead || undefined,
+          status: (u.status || 'Active') as 'Active' | 'Pending Invitation' | 'Inactive',
+          inviteToken: u.invite_token || undefined,
+          avatarUrl: u.avatar || '',
+          createdAt: u.created_at ? u.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        }));
       }
-    } catch {
-      // Backend not available or unauthorized; fall back to local mock data
+    } catch (e) {
+      console.error('Supabase getUsers error:', e);
     }
-    const platformUsers = getPlatformUsers();
-    const combined: User[] = platformUsers.map(p => ({
-      id: p.id,
-      name: p.name,
-      email: p.email,
-      phone: p.phone || '+1 (555) 000-0000',
-      department: (p.department || 'IT Support') as UserDepartment,
-      role: (p.role === 'admin' ? 'Admin' : p.role === 'teamlead' ? 'Team Lead' : 'Employee') as UserRole,
-      status: p.status,
-      avatarUrl: p.avatarUrl || '',
-      createdAt: p.createdAt || '2026-01-01',
-    }));
-    return new Promise((resolve) => setTimeout(() => resolve(combined), 100));
+    return [];
   },
 
   async addUser(data: AddUserFormData): Promise<User> {
-    return new Promise((resolve) => {
-      const newUser: User = {
-        id: `usr-${Date.now()}`,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        department: data.department,
-        role: data.role,
-        status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
-        createdAt: new Date().toISOString().split('T')[0]
-      };
-      mockUsers.unshift(newUser);
+    const cleanEmpId = (data.employeeId || '').trim().toUpperCase() || `EMP-${Date.now().toString().slice(-4)}`;
+    const userId = cleanEmpId;
+    let mappedRole: 'admin' | 'teamlead' | 'employee' = 'employee';
+    if (data.role === 'Admin') mappedRole = 'admin';
+    else if (data.role === 'Team Lead') mappedRole = 'teamlead';
 
-      let mappedRole: 'admin' | 'teamlead' | 'employee' = 'employee';
-      if (data.role === 'Admin') mappedRole = 'admin';
-      else if (data.role === 'Team Lead') mappedRole = 'teamlead';
+    const inviteToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
 
-      savePlatformUser({
-        id: newUser.id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        department: data.department,
-        role: mappedRole,
-        password: data.password || 'Password123',
-        status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
-        createdAt: newUser.createdAt,
+    const newUser: User = {
+      id: userId,
+      employeeId: cleanEmpId,
+      name: data.name,
+      email: data.email.trim().toLowerCase(),
+      phone: data.phone,
+      department: data.department,
+      role: data.role,
+      teamLead: data.teamLead,
+      status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
+      inviteToken: inviteToken,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+
+    const { error } = await supabase.from('users').insert([{
+      id: userId,
+      name: data.name,
+      email: data.email.trim().toLowerCase(),
+      phone: data.phone || '',
+      department: data.department,
+      role: mappedRole,
+      status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
+      password: data.password || 'Password123',
+      invite_token: inviteToken,
+      invite_sent_at: new Date().toISOString(),
+    }]);
+
+    if (error) {
+      console.error('Supabase addUser error:', error);
+      throw new Error(error.message);
+    }
+
+    (newUser as any).inviteToken = inviteToken;
+
+    // Dispatch verification & onboarding invitation notification
+    try {
+      const inviteUrl = 'http://localhost:8000/api/v1/notifications/send-invite';
+      const cleanEmail = data.email.trim().toLowerCase();
+      let targetPortalUrl = `http://localhost:3000/signup?token=${inviteToken}&email=${encodeURIComponent(cleanEmail)}&role=${mappedRole}`;
+      if (mappedRole === 'teamlead') {
+        targetPortalUrl = `http://localhost:4174/login?email=${encodeURIComponent(cleanEmail)}`;
+      } else if (mappedRole === 'employee') {
+        targetPortalUrl = `http://localhost:4173/signin?email=${encodeURIComponent(cleanEmail)}`;
+      }
+
+      const notifyResp = await fetch(inviteUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          email: cleanEmail,
+          employee_id: cleanEmpId,
+          role: data.role,
+          department: data.department,
+          invite_token: inviteToken,
+          signup_url: targetPortalUrl,
+          password: data.password || 'Password123'
+        })
       });
+      if (notifyResp.ok) {
+        const notifyData = await notifyResp.json();
+        (newUser as any).emailNotification = notifyData;
+      }
+    } catch (notifyErr) {
+      console.warn('Could not dispatch invitation notification:', notifyErr);
+    }
 
-      resolve(newUser);
+    return newUser;
+  },
+
+  async resendInvite(user: { name: string; email: string; employeeId?: string; role?: string; department?: string; inviteToken?: string; password?: string }) {
+    const inviteUrl = 'http://localhost:8000/api/v1/notifications/send-invite';
+    let token = user.inviteToken;
+    const cleanEmail = user.email.trim().toLowerCase();
+    if (!token) {
+      token = `inv-${Math.random().toString(36).substring(2, 10)}`;
+      await supabase.from('users').update({ invite_token: token, invite_sent_at: new Date().toISOString() }).eq('email', cleanEmail);
+    }
+    const roleNorm = (user.role || 'employee').toLowerCase().replace(' ', '');
+    let signupUrl = `http://localhost:3000/signup?token=${token}&email=${encodeURIComponent(cleanEmail)}&role=${roleNorm}`;
+    if (roleNorm.includes('teamlead') || roleNorm.includes('lead')) {
+      signupUrl = `http://localhost:4174/login?email=${encodeURIComponent(cleanEmail)}`;
+    } else if (roleNorm.includes('employee') || roleNorm.includes('emp')) {
+      signupUrl = `http://localhost:4173/signin?email=${encodeURIComponent(cleanEmail)}`;
+    }
+
+    const resp = await fetch(inviteUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: user.name,
+        email: cleanEmail,
+        employee_id: user.employeeId || '',
+        role: user.role || 'Employee',
+        department: user.department || 'IT Support',
+        invite_token: token,
+        signup_url: signupUrl,
+        password: user.password || 'Password123'
+      })
     });
+    return await resp.json();
+  },
+
+  async manuallyActivateUser(userId: string) {
+    const { error } = await supabase
+      .from('users')
+      .update({
+        status: 'Active',
+        invite_token: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
+  async getSmtpStatus() {
+    try {
+      const resp = await fetch('http://localhost:8000/api/v1/notifications/smtp-status');
+      if (resp.ok) return await resp.json();
+    } catch {}
+    return {
+      is_configured: false,
+      has_password: false,
+      instructions: 'Backend notification server is starting or unreachable.'
+    };
+  },
+
+  async updateSmtpConfig(config: any) {
+    const resp = await fetch('http://localhost:8000/api/v1/notifications/smtp-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    return await resp.json();
+  },
+
+  async testSmtp(testEmail: string) {
+    const resp = await fetch('http://localhost:8000/api/v1/notifications/smtp-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ test_email: testEmail })
+    });
+    return await resp.json();
   },
 
   async getTickets(filterType?: string): Promise<Ticket[]> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const tickets = getStoredTickets();
-        if (!filterType || filterType === 'all') {
-          resolve(tickets);
-        } else if (filterType === 'open') {
-          resolve(tickets.filter(t => t.status === 'Open'));
-        } else if (filterType === 'escalated') {
-          resolve(tickets.filter(t => t.status === 'Escalated'));
-        } else if (filterType === 'sla-risk') {
-          resolve(tickets.filter(t => t.slaStatus === 'SLA Risk'));
-        } else if (filterType === 'sla-breached') {
-          resolve(tickets.filter(t => t.slaStatus === 'SLA Breached'));
-        } else {
-          resolve(tickets);
-        }
-      }, 100);
-    });
+    try {
+      const { data: dbTickets, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && dbTickets) {
+        const mapped: Ticket[] = dbTickets.map((t: any) => ({
+          id: t.id,
+          ticketNumber: t.id,
+          title: t.subject || 'No Subject',
+          description: t.description || '',
+          requesterName: t.employee || 'User',
+          requesterEmail: t.employee_email || '',
+          assignedTo: t.assigned_agent || 'Unassigned',
+          assignedTeamLead: t.assigned_by || 'Kotesh Goud (IT Support Team Lead)',
+          department: t.department || 'IT Support',
+          category: t.category || 'General Support',
+          priority: t.priority || 'Medium',
+          status: t.status || 'Open',
+          slaStatus: mapSlaStatus(t.sla_status),
+          createdAt: t.created_at ? t.created_at.replace('T', ' ').slice(0, 16) : '',
+          updatedAt: t.updated_at ? t.updated_at.replace('T', ' ').slice(0, 16) : '',
+          dueDate: t.created_at ? t.created_at.replace('T', ' ').slice(0, 16) : '',
+          attachments: t.attachments || [],
+        }));
+
+        if (!filterType || filterType === 'all') return mapped;
+        if (filterType === 'open') return mapped.filter(t => (t.status || '').toLowerCase() === 'open');
+        if (filterType === 'escalated') return mapped.filter(t => (t.status || '').toLowerCase() === 'escalated');
+        if (filterType === 'sla-risk') return mapped.filter(t => (t.slaStatus || '').toLowerCase().includes('risk'));
+        if (filterType === 'sla-breached') return mapped.filter(t => (t.slaStatus || '').toLowerCase().includes('breach'));
+        return mapped;
+      }
+    } catch (e) {
+      console.error('Supabase getTickets error:', e);
+    }
+    return [];
   },
 
   async getTicketById(idOrNum: string): Promise<Ticket | null> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const tickets = getStoredTickets();
-        const found = tickets.find(
-          (t) => t.id === idOrNum || t.ticketNumber.toLowerCase() === idOrNum.toLowerCase()
-        );
-        resolve(found || null);
-      }, 100);
-    });
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', idOrNum)
+        .maybeSingle();
+
+      if (!error && data) {
+        // Fetch comments and activities for ticket
+        const { data: dbActivities } = await supabase
+          .from('ticket_activities')
+          .select('*')
+          .eq('ticket_id', idOrNum)
+          .order('timestamp', { ascending: false });
+
+        return {
+          id: data.id,
+          ticketNumber: data.id,
+          title: data.subject || 'No Subject',
+          description: data.description || '',
+          requesterName: data.employee || 'User',
+          requesterEmail: data.employee_email || '',
+          assignedTo: data.assigned_agent || 'Unassigned',
+          assignedTeamLead: data.assigned_by || 'Kotesh Goud (IT Support Team Lead)',
+          department: data.department || 'IT Support',
+          category: data.category || 'General Support',
+          priority: data.priority || 'Medium',
+          status: data.status || 'Open',
+          slaStatus: mapSlaStatus(data.sla_status),
+          createdAt: data.created_at ? data.created_at.replace('T', ' ').slice(0, 16) : '',
+          updatedAt: data.updated_at ? data.updated_at.replace('T', ' ').slice(0, 16) : '',
+          dueDate: data.created_at ? data.created_at.replace('T', ' ').slice(0, 16) : '',
+          attachments: data.attachments || [],
+          history: (dbActivities || []).map((a: any) => ({
+            id: a.id,
+            author: a.user,
+            text: a.action,
+            timestamp: a.timestamp ? a.timestamp.replace('T', ' ').slice(0, 16) : '',
+          })),
+        };
+      }
+    } catch (e) {
+      console.error('Supabase getTicketById error:', e);
+    }
+    return null;
   },
 
   async createTicket(data: {
@@ -352,52 +332,103 @@ export const AdminApiService = {
     description: string;
     attachments?: string[];
     assignedTeamLead?: string;
+    teamLeads?: { id: string; name: string; role: string; employeeId: string; email: string }[];
+    employees?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   }): Promise<Ticket> {
-    return new Promise((resolve) => {
-      const tickets = getStoredTickets();
-      const now = new Date();
-      const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const nextNum = 1001 + tickets.length;
+    const nextNum = Math.floor(1000 + Math.random() * 9000);
+    const ticketId = `TKT-${nextNum}`;
 
-      const newTicket: Ticket = {
-        id: `t-${Date.now()}`,
-        ticketNumber: `TICK-${nextNum}`,
-        title: data.title,
-        description: data.description,
-        requesterName: 'Hyma (Admin)',
-        requesterEmail: 'hyma@company.com',
-        assignedTo: 'Hyma',
-        assignedTeamLead: data.assignedTeamLead || 'Sarah Connor (IT Support Team Lead)',
-        department: data.department || 'IT Support',
-        departments: data.departments,
-        category: data.category || 'General Support',
-        priority: data.priority || 'Medium',
-        status: 'Open',
-        slaStatus: 'Normal',
-        createdAt: formatted,
-        updatedAt: formatted,
-        dueDate: formatted,
-        attachments: data.attachments || [],
-        history: [
-          {
-            id: `h-${Date.now()}-1`,
-            author: 'Hyma (Admin)',
-            text: 'Ticket created.',
-            timestamp: formatted,
-          },
-          {
-            id: `h-${Date.now()}-2`,
-            author: 'System Routing Engine',
-            text: `Routed to Team Lead(s): ${data.assignedTeamLead || 'Sarah Connor'}`,
-            timestamp: formatted,
-          },
-        ],
-      };
+    const sessionUser = getCurrentSessionUser();
+    const creatorName = (sessionUser?.name && sessionUser.name.trim()) ? sessionUser.name.trim() : 'Administrator';
+    const creatorEmail = (sessionUser?.email && sessionUser.email.trim()) ? sessionUser.email.trim() : 'admin@platform.local';
 
-      const updatedList = [newTicket, ...tickets];
-      saveStoredTickets(updatedList);
-      resolve(newTicket);
-    });
+    const now = new Date();
+    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const teamLeadSummary = data.teamLeads && data.teamLeads.length > 0
+      ? data.teamLeads.map((tl) => `${tl.name} (${tl.role})`).join(', ')
+      : data.assignedTeamLead || 'Kotesh Goud (IT Support Team Lead)';
+
+    const employeeSummary = data.employees && data.employees.length > 0
+      ? data.employees.map((emp) => `${emp.name} (${emp.employeeId})`).join(', ')
+      : 'Unassigned';
+
+    const newTicket: Ticket = {
+      id: ticketId,
+      ticketNumber: ticketId,
+      title: data.title,
+      description: data.description,
+      requesterName: creatorName,
+      requesterEmail: creatorEmail,
+      assignedTo: employeeSummary !== 'Unassigned' ? employeeSummary : 'Unassigned',
+      assignedTeamLead: teamLeadSummary,
+      department: data.department || 'IT Support',
+      departments: data.departments,
+      category: data.category || 'General Support',
+      priority: data.priority || 'Medium',
+      status: 'Open',
+      slaStatus: 'Normal',
+      createdAt: formatted,
+      updatedAt: formatted,
+      dueDate: formatted,
+      attachments: data.attachments || [],
+      teamLeads: data.teamLeads,
+      employees: data.employees,
+      history: [
+        {
+          id: `h-${Date.now()}-1`,
+          author: creatorName,
+          text: 'Ticket created.',
+          timestamp: formatted,
+        },
+      ],
+    };
+
+    // Stored directly in Supabase Database
+    const { error: insError } = await supabase.from('tickets').insert([{
+      id: ticketId,
+      subject: data.title,
+      description: data.description,
+      employee: creatorName,
+      employee_email: creatorEmail,
+      department: data.department || 'IT Support',
+      category: data.category || 'General Support',
+      priority: data.priority || 'Medium',
+      status: 'Open',
+      assigned_agent: employeeSummary !== 'Unassigned' ? employeeSummary : 'Unassigned',
+      assigned_by: teamLeadSummary,
+      sla_status: 'Within SLA',
+      sla_remaining: '8h 00m remaining',
+      departments: data.departments || [],
+    }]);
+
+    if (insError) {
+      console.error('Supabase insert ticket error:', insError);
+      throw new Error(insError.message);
+    }
+
+    // Insert attachments into ticket_attachments table if provided
+    if (data.attachments && data.attachments.length > 0) {
+      const attRows = data.attachments.map((attStr, idx) => ({
+        id: `att-${Date.now()}-${idx}`,
+        ticket_id: ticketId,
+        name: attStr.split(' (')[0] || attStr,
+        size: (attStr.includes('(') ? attStr.split('(')[1].replace(')', '') : 'N/A'),
+        url: '',
+      }));
+      supabase.from('ticket_attachments').insert(attRows).then(() => {});
+    }
+
+    // Log initial activity in background without blocking user
+    supabase.from('ticket_activities').insert([{
+      id: `act-${Date.now()}`,
+      ticket_id: ticketId,
+      user: creatorName,
+      action: 'Ticket created',
+      timestamp: new Date().toISOString(),
+    }]).then(() => {});
+
+    return newTicket;
   },
 
   async updateTicket(
@@ -405,110 +436,92 @@ export const AdminApiService = {
     updates: Partial<Ticket>,
     activityNote?: string
   ): Promise<Ticket> {
-    return new Promise((resolve, reject) => {
-      const tickets = getStoredTickets();
-      const index = tickets.findIndex((t) => t.id === ticketId || t.ticketNumber === ticketId);
-      if (index === -1) {
-        reject(new Error('Ticket not found'));
-        return;
-      }
+    const dbUpdates: Record<string, any> = {};
+    if (updates.title) dbUpdates.subject = updates.title;
+    if (updates.description) dbUpdates.description = updates.description;
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.priority) dbUpdates.priority = updates.priority;
+    if (updates.assignedTo) dbUpdates.assigned_agent = updates.assignedTo;
+    if (updates.department) dbUpdates.department = updates.department;
 
-      const existing = tickets[index];
-      const history = [...(existing.history || [])];
+    if (Object.keys(dbUpdates).length > 0) {
+      const { error } = await supabase.from('tickets').update(dbUpdates).eq('id', ticketId);
+      if (error) console.error('Supabase update ticket error:', error);
+    }
 
-      const now = new Date();
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const sessionUser = getCurrentSessionUser();
+    const actorName = sessionUser?.name || 'Administrator';
 
-      if (activityNote) {
-        history.unshift({
-          id: `hist-${Date.now()}-${Math.random()}`,
-          author: 'Hyma (Admin)',
-          text: activityNote,
-          timestamp,
-        });
-      }
+    if (activityNote) {
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: activityNote,
+        timestamp: new Date().toISOString(),
+      }]);
+    }
 
-      const updated: Ticket = {
-        ...existing,
-        ...updates,
-        updatedAt: timestamp,
-        history,
-      };
+    const reloaded = await this.getTicketById(ticketId);
+    if (reloaded) return reloaded;
 
-      tickets[index] = updated;
-      saveStoredTickets(tickets);
-      resolve(updated);
-    });
+    return {
+      id: ticketId,
+      ticketNumber: ticketId,
+      title: updates.title || 'Ticket',
+      description: updates.description || '',
+      requesterName: updates.requesterName || actorName,
+      requesterEmail: updates.requesterEmail || '',
+      assignedTo: updates.assignedTo || 'Unassigned',
+      department: updates.department || 'IT Support',
+      category: updates.category || 'General',
+      priority: updates.priority || 'Medium',
+      status: updates.status || 'Open',
+      slaStatus: mapSlaStatus(updates.slaStatus),
+      createdAt: updates.createdAt || '',
+      updatedAt: new Date().toISOString(),
+      dueDate: '',
+      attachments: updates.attachments || [],
+      history: updates.history || [],
+    };
   },
 
   async addComment(ticketId: string, text: string, attachmentName?: string): Promise<Ticket | null> {
-    return new Promise((resolve) => {
-      const tickets = getStoredTickets();
-      const index = tickets.findIndex((t) => t.id === ticketId || t.ticketNumber === ticketId);
-      if (index === -1) {
-        resolve(null);
-        return;
-      }
+    const sessionUser = getCurrentSessionUser();
+    const author = sessionUser?.name || 'User';
 
-      const target = tickets[index];
-      const now = new Date();
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    await supabase.from('ticket_activities').insert([{
+      id: `act-${Date.now()}`,
+      ticket_id: ticketId,
+      user: author,
+      action: text,
+      timestamp: new Date().toISOString(),
+    }]);
 
-      if (!target.history) target.history = [];
-      target.history.unshift({
-        id: `h-${Date.now()}`,
-        author: 'Hyma (Admin)',
-        text,
-        timestamp,
-        attachment: attachmentName,
-      });
+    await supabase.from('ticket_comments').insert([{
+      id: `comm-${Date.now()}`,
+      ticket_id: ticketId,
+      author_name: author,
+      author_role: sessionUser?.role || 'admin',
+      message: text,
+      created_at: new Date().toISOString(),
+    }]);
 
-      if (attachmentName) {
-        if (!target.attachments) target.attachments = [];
-        if (!target.attachments.includes(attachmentName)) {
-          target.attachments.push(attachmentName);
-        }
-      }
-
-      target.updatedAt = timestamp;
-      tickets[index] = target;
-      saveStoredTickets(tickets);
-      resolve(target);
-    });
+    return this.getTicketById(ticketId);
   },
 
   async addAttachment(ticketId: string, fileName: string): Promise<Ticket | null> {
-    return new Promise((resolve) => {
-      const tickets = getStoredTickets();
-      const index = tickets.findIndex((t) => t.id === ticketId || t.ticketNumber === ticketId);
-      if (index === -1) {
-        resolve(null);
-        return;
-      }
+    const sessionUser = getCurrentSessionUser();
+    const author = sessionUser?.name || 'User';
 
-      const target = tickets[index];
-      const now = new Date();
-      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    await supabase.from('ticket_activities').insert([{
+      id: `act-${Date.now()}`,
+      ticket_id: ticketId,
+      user: author,
+      action: `Uploaded attachment: ${fileName}`,
+      timestamp: new Date().toISOString(),
+    }]);
 
-      if (!target.attachments) target.attachments = [];
-      if (!target.attachments.includes(fileName)) {
-        target.attachments.push(fileName);
-      }
-
-      if (!target.history) target.history = [];
-      target.history.unshift({
-        id: `h-${Date.now()}`,
-        author: 'Hyma (Admin)',
-        text: `Uploaded attachment: ${fileName}`,
-        timestamp,
-        attachment: fileName,
-      });
-
-      target.updatedAt = timestamp;
-      tickets[index] = target;
-      saveStoredTickets(tickets);
-      resolve(target);
-    });
+    return this.getTicketById(ticketId);
   },
 };
-

@@ -7,7 +7,6 @@ import {
   UserCheck,
   Users,
   AlertTriangle,
-  BarChart3,
   BookOpen,
   User,
   ChevronLeft,
@@ -44,8 +43,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     navigate('/login');
   };
 
-  const assignedCount = tickets.filter(
-    (t) => t.handledBy === 'teamlead' || t.assignedToType === 'teamlead' || t.assignedAgent === 'Alex Morgan'
+  const assignedCount = (tickets || []).filter(
+    (t) =>
+      (t.assignedAgent && user?.name && t.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
+      (t.assignedAgentId && user?.id && t.assignedAgentId === user.id) ||
+      t.handledBy === 'teamlead' ||
+      t.assignedToType === 'teamlead'
   ).length;
 
   const teamLeadNav = [
@@ -69,23 +72,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Sidebar Container */}
+      {/* Dark Navy Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full bg-slate-900 text-white flex flex-col justify-between transition-all duration-300 shadow-xl border-r border-slate-800/80 ${
-          collapsed ? 'lg:w-20' : 'lg:w-64'
-        } ${mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-50 bg-[#0F172A] border-r border-slate-800 text-slate-300 flex flex-col justify-between shrink-0 h-full shadow-2xl transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
+          collapsed && !mobileOpen ? 'w-20' : 'w-64'
+        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
-        <div>
+        <div className="flex flex-col min-h-0 flex-1">
           {/* Header Branding */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <div className="p-2 bg-sky-600 rounded-xl text-white shadow-md shrink-0 flex items-center justify-center">
-                <Ticket className="w-5 h-5" />
+          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A] shrink-0">
+            <div className="flex items-center space-x-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-xl bg-[#0284C7] flex items-center justify-center text-white shadow-xs shrink-0">
+                <Ticket className="w-4 h-4" />
               </div>
               {(!collapsed || mobileOpen) && (
                 <div className="truncate">
-                  <span className="font-bold text-base text-white tracking-tight leading-none block">{APP_NAME}</span>
-                  <span className="block text-[9px] text-sky-400 font-bold uppercase tracking-widest mt-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white tracking-tight leading-none block">{APP_NAME}</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-[#38BDF8] border border-sky-800/60 uppercase">
+                      Team Lead
+                    </span>
+                  </div>
+                  <span className="block text-[9px] text-[#38BDF8] font-bold uppercase tracking-wider mt-0.5">
                     IT SERVICE MANAGEMENT
                   </span>
                 </div>
@@ -94,8 +102,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Collapse Button Desktop */}
             <button
+              type="button"
               onClick={() => setCollapsed(!collapsed)}
-              className="hidden lg:flex p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             >
               {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -103,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Navigation Items */}
-          <nav className="p-3 space-y-1 mt-2">
+          <nav className="p-3 space-y-1 mt-1 overflow-y-auto flex-1">
             {teamLeadNav.map((item) => {
               const Icon = item.icon;
               return (
@@ -112,19 +121,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   to={item.path}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+                    `flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-all group ${
                       isActive
-                        ? 'bg-sky-600 text-white font-semibold shadow-md shadow-sky-600/30'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                        ? 'bg-[#0284C7] text-white font-medium shadow-2xs'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1E293B]'
                     }`
                   }
                 >
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110 text-sky-400 group-[.bg-sky-600]:text-white" />
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
                     {(!collapsed || mobileOpen) && <span className="truncate">{item.label}</span>}
                   </div>
                   {(!collapsed || mobileOpen) && item.badge !== undefined && item.badge > 0 && (
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-500/30 text-sky-200 border border-sky-400/30">
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
                       {item.badge}
                     </span>
                   )}
@@ -135,14 +144,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3.5 border-t border-slate-800/80 text-slate-400 text-xs">
+        <div className="p-3 border-t border-slate-800 text-slate-400 text-xs bg-[#0F172A] shrink-0">
           {(!collapsed || mobileOpen) ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2.5 overflow-hidden">
                 <UserAvatar name={user.name} avatar={user.avatar} size="md" />
                 <div className="truncate">
                   <p className="font-semibold text-white leading-tight truncate text-xs">{user.name}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{user.role.toUpperCase()}</p>
+                  <p className="text-[10px] text-[#38BDF8] font-semibold truncate tracking-wider">TEAM LEAD</p>
                 </div>
               </div>
               <button
@@ -161,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full flex justify-center p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
               title="Logout"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
             </button>
           )}
         </div>

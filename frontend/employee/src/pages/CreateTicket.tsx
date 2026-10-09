@@ -9,7 +9,8 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { AttachmentFilePicker, type AttachedFile } from '../components/ui/AttachmentFilePicker';
-import { TeamLeadSelector, type TeamLeadOption } from '../components/ui/TeamLeadSelector';
+import { TeamLeadEmployeeSelector } from '../components/ui/TeamLeadEmployeeSelector';
+import type { TeamLeadItem, EmployeeItem } from '../services/organizationService';
 
 const DEPARTMENT_OPTIONS = [
   'IT Support',
@@ -32,7 +33,10 @@ export const CreateTicket: React.FC = () => {
   const [priority, setPriority] = useState<TicketPriority>('Medium');
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [selectedTeamLeadIds, setSelectedTeamLeadIds] = useState<string[]>([]);
-  const [selectedTeamLeadObjs, setSelectedTeamLeadObjs] = useState<TeamLeadOption[]>([]);
+  const [selectedTeamLeadObjs, setSelectedTeamLeadObjs] = useState<TeamLeadItem[]>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [selectedEmployeeObjs, setSelectedEmployeeObjs] = useState<EmployeeItem[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdTicketId, setCreatedTicketId] = useState('');
@@ -51,38 +55,75 @@ export const CreateTicket: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject.trim() || !description.trim() || selectedDepartments.length === 0) return;
+    setValidationError(null);
 
+    // 17. VALIDATION
+    if (!subject.trim()) {
+      setValidationError('Subject is required');
+      return;
+    }
+    if (selectedDepartments.length === 0) {
+      setValidationError('Department is required');
+      return;
+    }
+    if (selectedTeamLeadIds.length === 0) {
+      setValidationError('Team Lead is required');
+      return;
+    }
     const finalCategory = category === 'Other' ? (customCategory.trim() || 'Other') : category;
+    if (!finalCategory.trim()) {
+      setValidationError('Category is required');
+      return;
+    }
+    if (!priority) {
+      setValidationError('Priority is required');
+      return;
+    }
+    if (!description.trim()) {
+      setValidationError('Description is required');
+      return;
+    }
+
     const finalDepartments = selectedDepartments.map((dept) =>
       dept === 'Other' ? (customDepartment.trim() || 'Other') : dept
     );
 
     const attachmentStrings = attachedFiles.map((f) => `${f.name} (${f.size})`);
 
-    const newTicket = EmployeeService.createTicket({
-      title: subject,
-      description,
-      category: finalCategory,
-      departments: finalDepartments,
-      priority,
-      attachments: attachmentStrings,
-      teamLeads: selectedTeamLeadObjs.map((tl) => ({
-        id: tl.id,
-        name: tl.name,
-        email: tl.email,
-        department: tl.department,
-        role: tl.role,
-      })),
-    });
+    try {
+      const newTicket = EmployeeService.createTicket({
+        title: subject.trim(),
+        description: description.trim(),
+        category: finalCategory,
+        departments: finalDepartments,
+        priority,
+        attachments: attachmentStrings,
+        teamLeads: selectedTeamLeadObjs.map((tl) => ({
+          id: tl.id,
+          name: tl.name,
+          email: tl.email,
+          department: tl.departmentName,
+          role: tl.role,
+        })),
+        employees: selectedEmployeeObjs.map((emp) => ({
+          id: emp.id,
+          name: emp.name,
+          email: emp.email,
+          role: emp.role,
+          employeeId: emp.employeeId,
+        })),
+      });
 
-    // Retrieve sent email logs for this ticket
-    const recentEmails = EmailService.getSentEmailLogs();
-    const emails = recentEmails.filter((em) => em.ticketId === newTicket.id);
+      // Retrieve sent email logs for this ticket
+      const recentEmails = EmailService.getSentEmailLogs();
+      const emails = recentEmails.filter((em) => em.ticketId === newTicket.id);
 
-    setCreatedTicketId(newTicket.id);
-    setSentEmailLogs(emails);
-    setIsSuccess(true);
+      setCreatedTicketId(newTicket.id);
+      setSentEmailLogs(emails);
+      setIsSuccess(true);
+    } catch {
+      setValidationError('Ticket created, but email notification failed.');
+    }
   };
 
   if (isSuccess) {
@@ -97,13 +138,13 @@ export const CreateTicket: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
                 <CheckCircle className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-bold text-slate-900">Ticket created successfully</h2>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-sky-50 text-[#0284C7] border border-sky-200">
+              <h2 className="text-xl font-bold text-slate-900">Ticket created successfully.</h2>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <Mail className="w-3.5 h-3.5" />
-                Email notifications sent to {sentEmailLogs.length} Team Lead{sentEmailLogs.length > 1 ? 's' : ''}
+                Email sent successfully.
               </div>
               <p className="text-xs text-slate-600 max-w-md mx-auto">
-                Email notifications have been delivered to all assigned department Team Leads:
+                Email notifications have been delivered to all assigned department Team Leads and tagged employees:
               </p>
               <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3 text-xs text-left max-w-md mx-auto space-y-1.5">
                 {sentEmailLogs.map((log) => (
@@ -122,7 +163,7 @@ export const CreateTicket: React.FC = () => {
                 <AlertCircle className="w-8 h-8" />
               </div>
               <h2 className="text-xl font-bold text-amber-800">
-                Ticket created successfully
+                Ticket created, but email notification failed.
               </h2>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
                 Your ticket was saved successfully in the support queue.
@@ -256,6 +297,13 @@ export const CreateTicket: React.FC = () => {
           </div>
         </div>
 
+        {validationError && (
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{validationError}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Subject Field */}
           <div>
@@ -326,13 +374,19 @@ export const CreateTicket: React.FC = () => {
             )}
           </div>
 
-          {/* Dynamic Team Lead Selection Component */}
-          <TeamLeadSelector
+          {/* Unified Team Lead & Employee Tagging Component */}
+          <TeamLeadEmployeeSelector
+            role="employee"
             selectedDepartments={activeDepartments}
             selectedTeamLeadIds={selectedTeamLeadIds}
             onSelectedTeamLeadsChange={(ids, objs) => {
               setSelectedTeamLeadIds(ids);
               setSelectedTeamLeadObjs(objs);
+            }}
+            selectedEmployeeIds={selectedEmployeeIds}
+            onSelectedEmployeesChange={(ids, objs) => {
+              setSelectedEmployeeIds(ids);
+              setSelectedEmployeeObjs(objs);
             }}
           />
 
@@ -413,7 +467,7 @@ export const CreateTicket: React.FC = () => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => navigate('/employee/dashboard')}
+              onClick={() => navigate('/dashboard')}
               className="border-slate-200 text-slate-600 font-semibold"
             >
               Cancel

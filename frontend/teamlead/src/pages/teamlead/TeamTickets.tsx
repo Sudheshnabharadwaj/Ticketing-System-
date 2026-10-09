@@ -93,7 +93,7 @@ export const TeamTickets: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 w-full max-w-full min-w-0 relative">
+    <div className="space-y-6 w-full max-w-full min-w-0 relative font-sans">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center space-x-2 text-xs animate-in slide-in-from-top-4 duration-200">
@@ -102,16 +102,20 @@ export const TeamTickets: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div>
-        <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Team Tickets Directory</h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Complete register of department tickets with real-time assignment and SLA tracking.
-        </p>
+      {/* Header Banner - Matching Admin Dashboard Style */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">
+            Team Tickets Directory
+          </h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Complete register of department tickets with real-time assignment and SLA tracking.
+          </p>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto w-full max-w-full">
+      {/* Tabs Bar Card */}
+      <div className="bg-white p-2 border border-slate-200 rounded-xl shadow-xs overflow-x-auto flex items-center gap-1.5">
         {tabs.map((tab) => {
           const count =
             tab === 'All'
@@ -125,16 +129,16 @@ export const TeamTickets: React.FC = () => {
                 setActiveTab(tab);
                 setCurrentPage(1);
               }}
-              className={`px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
+              className={`px-3.5 py-2 text-xs font-semibold whitespace-nowrap rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === tab
-                  ? 'border-sky-600 text-sky-600 font-bold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'bg-[#0284C7] text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               }`}
             >
               <span>{tab} Tickets</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] ${
-                  activeTab === tab ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  activeTab === tab ? 'bg-sky-950/30 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {count}
@@ -179,14 +183,14 @@ export const TeamTickets: React.FC = () => {
           action={
             <button
               onClick={handleResetFilters}
-              className="px-4 py-2 bg-sky-600 text-white font-medium text-xs rounded-lg hover:bg-sky-700 transition-colors cursor-pointer"
+              className="px-4 py-2 bg-[#0284C7] text-white font-medium text-xs rounded-lg hover:bg-[#0369a1] transition-colors cursor-pointer"
             >
               Reset Filters
             </button>
           }
         />
       ) : (
-        <div>
+        <div className="space-y-4">
           <TicketTable
             tickets={paginatedTickets}
             tableType="team"
@@ -199,19 +203,9 @@ export const TeamTickets: React.FC = () => {
             totalPages={totalPages}
             totalItems={filteredTickets.length}
             itemsPerPage={itemsPerPage}
-            onPageChange={(p) => setCurrentPage(p)}
+            onPageChange={(page) => setCurrentPage(page)}
           />
         </div>
-      )}
-
-      {/* Assign / Reassign Ticket Modal */}
-      {assignModalTicket && (
-        <AssignTicketModal
-          ticket={assignModalTicket}
-          isOpen={!!assignModalTicket}
-          onClose={() => setAssignModalTicket(null)}
-          onSuccessToast={handleAssignSuccessToast}
-        />
       )}
 
       {/* Ticket Details Modal */}
@@ -219,6 +213,16 @@ export const TeamTickets: React.FC = () => {
         <TicketDetailsModal
           ticket={selectedTicket}
           onClose={() => setSelectedTicket(null)}
+        />
+      )}
+
+      {/* Modal for Assigning Tickets from Table */}
+      {assignModalTicket && (
+        <AssignTicketModal
+          ticket={assignModalTicket}
+          isOpen={!!assignModalTicket}
+          onClose={() => setAssignModalTicket(null)}
+          onSuccessToast={handleAssignSuccessToast}
         />
       )}
     </div>

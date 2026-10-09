@@ -33,7 +33,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ userToEdit, onClos
     setStatus(userToEdit.status);
   }, [userToEdit]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     setGlobalError('');
@@ -51,7 +51,7 @@ export const EditUserModal: React.FC<EditUserModalProps> = ({ userToEdit, onClos
       return;
     }
 
-    const res = updateUser(userToEdit.id, {
+    const res = await updateUser(userToEdit.id, {
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim() || undefined,

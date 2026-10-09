@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { ShieldCheck, Eye, EyeOff, Lock, Mail, User, Users, Briefcase, ArrowRight } from 'lucide-react';
+import { supabase } from '../../services/supabaseClient';
 
 export const TeamLeadSignUp: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -22,7 +23,7 @@ export const TeamLeadSignUp: React.FC = () => {
     return <Navigate to="/teamlead/dashboard" replace />;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -44,44 +45,54 @@ export const TeamLeadSignUp: React.FC = () => {
     }
 
     setIsLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
 
-    setTimeout(() => {
-      // Register in platform users storage without auto-logging in
-      try {
-        const raw = localStorage.getItem('platform_all_users');
-        const users = raw ? JSON.parse(raw) : [];
-        const cleanEmail = email.trim().toLowerCase();
-        const existing = users.find((u: any) => u.email?.toLowerCase() === cleanEmail);
-        if (existing) {
-          setErrorMsg('An account with this email address already exists. Please log in instead.');
-          setIsLoading(false);
-          return;
-        }
+    try {
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle();
 
-        const newUser = {
-          id: `usr-teamlead-${Date.now()}`,
+      if (existing) {
+        setErrorMsg('An account with this email address already exists. Please log in instead.');
+        setIsLoading(false);
+        return;
+      }
+
+      const newUserId = `usr-tl-${Date.now()}`;
+      const { error: insErr } = await supabase
+        .from('users')
+        .insert([{
+          id: newUserId,
           name: fullName.trim(),
           email: cleanEmail,
           department,
+          designation: 'Team Lead',
+          team: teamName || 'Operations',
           role: 'teamlead',
           password,
           status: 'Active',
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-        users.unshift(newUser);
-        localStorage.setItem('platform_all_users', JSON.stringify(users));
-      } catch {}
+        }]);
+
+      if (insErr) {
+        setErrorMsg(`Registration error: ${insErr.message}`);
+        setIsLoading(false);
+        return;
+      }
 
       setIsLoading(false);
-      // Required flow: Sign Up -> Login -> Dashboard
       navigate('/login', {
         replace: true,
         state: {
-          registeredEmail: email.trim().toLowerCase(),
+          registeredEmail: cleanEmail,
           registrationSuccess: `Account created successfully for ${fullName.trim()}! Please sign in with your credentials.`
         }
       });
-    }, 450);
+    } catch (err: any) {
+      setErrorMsg('Unable to connect to database. Please try again.');
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   UserPlus,
@@ -13,7 +13,7 @@ import {
   BellRing,
   Menu
 } from 'lucide-react';
-import { logoutUser } from '../../services/unifiedAuth';
+import { logoutUser, getCurrentSessionUser } from '../../services/unifiedAuth';
 
 export interface NotificationItem {
   id: string;
@@ -30,11 +30,7 @@ interface TopNavigationProps {
   onToggleMobileSidebar?: () => void;
 }
 
-const defaultNotifications: NotificationItem[] = [
-  { id: '1', title: 'Ticket #TICK-1004 SLA Breached', time: '10m ago', type: 'urgent', isRead: false },
-  { id: '2', title: 'New User Hyma assigned as Admin', time: '1h ago', type: 'info', isRead: false },
-  { id: '3', title: '5 Tickets approaching SLA Risk limit', time: '2h ago', type: 'warning', isRead: false },
-];
+const defaultNotifications: NotificationItem[] = [];
 
 export const TopNavigation: React.FC<TopNavigationProps> = ({
   onSearch,
@@ -46,24 +42,60 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
   const [searchValue, setSearchValue] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [adminProfile, setAdminProfile] = useState<{ name: string; avatarUrl: string; role: string }>(() => {
-    const cached = localStorage.getItem('admin_profile_data');
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        return {
-          name: parsed.name || 'Hyma',
-          avatarUrl: parsed.avatarUrl || localStorage.getItem('admin_profile_avatar') || '',
-          role: parsed.role || 'Admin',
-        };
-      } catch {}
+  const location = useLocation();
+  const getSessionProfile = () => {
+    // Purge any stale legacy hyma entries
+    try {
+      const userRaw = localStorage.getItem('platform_current_user');
+      if (userRaw && (userRaw.toLowerCase().includes('hyma') || userRaw.toLowerCase().includes('admin@company.com'))) {
+        localStorage.removeItem('platform_current_user');
+      }
+      const cached = localStorage.getItem('admin_profile_data');
+      if (cached && (cached.toLowerCase().includes('hyma') || cached.toLowerCase().includes('admin@company.com'))) {
+        localStorage.removeItem('admin_profile_data');
+        localStorage.removeItem('admin_profile_avatar');
+      }
+    } catch {}
+
+    const session = getCurrentSessionUser();
+    const isTeamLeadPath = typeof window !== 'undefined' && (window.location.pathname.startsWith('/teamlead') || location.pathname.startsWith('/teamlead'));
+    const isEmployeePath = typeof window !== 'undefined' && (window.location.pathname.startsWith('/employee') || location.pathname.startsWith('/employee'));
+    
+    let roleLabel = 'Admin';
+    if (isTeamLeadPath) {
+      roleLabel = 'Team Lead';
+    } else if (isEmployeePath) {
+      roleLabel = 'Employee';
+    } else if (session?.role === 'teamlead') {
+      roleLabel = 'Team Lead';
+    } else if (session?.role === 'employee') {
+      roleLabel = 'Employee';
     }
+
+    const fallbackName = session?.name || 'Sudheshna Bharadwaj';
+
+    try {
+      const cached = localStorage.getItem('admin_profile_data');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.name && !parsed.name.toLowerCase().includes('hyma')) {
+          return {
+            name: parsed.name,
+            avatarUrl: parsed.avatarUrl || localStorage.getItem('admin_profile_avatar') || '',
+            role: roleLabel,
+          };
+        }
+      }
+    } catch {}
+
     return {
-      name: 'Hyma',
-      avatarUrl: localStorage.getItem('admin_profile_avatar') || '',
-      role: 'Admin',
+      name: fallbackName,
+      avatarUrl: localStorage.getItem('admin_profile_avatar') || session?.avatarUrl || '',
+      role: roleLabel,
     };
-  });
+  };
+
+  const [adminProfile, setAdminProfile] = useState<{ name: string; avatarUrl: string; role: string }>(getSessionProfile);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(
     initialNotificationsProp || defaultNotifications
@@ -74,23 +106,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
 
   useEffect(() => {
     const checkProfile = () => {
-      const cached = localStorage.getItem('admin_profile_data');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          setAdminProfile({
-            name: parsed.name || 'Hyma',
-            avatarUrl: parsed.avatarUrl || localStorage.getItem('admin_profile_avatar') || '',
-            role: parsed.role || 'Admin',
-          });
-          return;
-        } catch {}
-      }
-      setAdminProfile({
-        name: 'Hyma',
-        avatarUrl: localStorage.getItem('admin_profile_avatar') || '',
-        role: 'Admin',
-      });
+      setAdminProfile(getSessionProfile());
     };
     checkProfile();
     window.addEventListener('storage', checkProfile);
@@ -265,22 +281,34 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
 
               <div className="py-1">
                 <button
-                  onClick={() => { setShowProfileMenu(false); navigate('/admin/profile'); }}
+                  onClick={() => { setShowProfileMenu(false); navigate(adminProfile.role === 'Team Lead' ? '/teamlead/profile' : '/admin/profile'); }}
                   className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
                 >
                   <UserIcon className="w-3.5 h-3.5 text-slate-500" /> My Profile
+                </button>
+                <button
+                  onClick={() => { setShowProfileMenu(false); navigate('/teamlead/dashboard'); }}
+                  className="w-full text-left px-4 py-2 text-xs text-sky-700 hover:bg-sky-50 flex items-center gap-2 cursor-pointer font-semibold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-600" /> Team Lead Dashboard
+                </button>
+                <button
+                  onClick={() => { setShowProfileMenu(false); navigate('/admin/dashboard'); }}
+                  className="w-full text-left px-4 py-2 text-xs text-indigo-700 hover:bg-indigo-50 flex items-center gap-2 cursor-pointer font-semibold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" /> Admin Dashboard
+                </button>
+                <button
+                  onClick={() => { setShowProfileMenu(false); navigate('/employee/dashboard'); }}
+                  className="w-full text-left px-4 py-2 text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer font-semibold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Employee Dashboard
                 </button>
                 <button
                   onClick={() => { setShowProfileMenu(false); navigate('/admin/settings'); }}
                   className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
                 >
                   <Settings className="w-3.5 h-3.5 text-slate-500" /> Account Settings
-                </button>
-                <button
-                  onClick={() => { setShowProfileMenu(false); navigate('/admin/administration/security'); }}
-                  className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
-                >
-                  <Key className="w-3.5 h-3.5 text-slate-500" /> Change Password
                 </button>
                 <button
                   onClick={() => { setShowProfileMenu(false); setShowNotifications(true); }}

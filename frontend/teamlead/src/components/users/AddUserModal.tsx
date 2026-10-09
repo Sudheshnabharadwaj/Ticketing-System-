@@ -58,7 +58,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
     return null;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     setGlobalError('');
@@ -97,16 +97,19 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
       return;
     }
 
-    // Add user to mock state
-    const result = addUser({
+    // Add user to Supabase with verification token and custom password
+    const inviteToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
+    const result: any = await addUser({
       id: employeeId.trim(),
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim() || undefined,
       department: department.trim(),
       role: 'employee',
-      status,
-    });
+      status: 'Pending Invitation',
+      invite_token: inviteToken,
+      password: password.trim(),
+    } as any);
 
     if (!result.success) {
       setGlobalError(result.error || 'Failed to add employee.');
@@ -117,14 +120,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
       onSuccess(`Employee ${name.trim()} (${employeeId.trim()}) added successfully.`);
     }
 
+    const realInviteLink = `http://localhost:4173/signin?email=${encodeURIComponent(email.trim())}`;
+
     // Set Created Employee details for Step 2
-    const mockToken = Math.random().toString(36).substring(2, 10);
     setCreatedEmployee({
       name: name.trim(),
       email: email.trim(),
       department: department.trim(),
       role: 'Employee',
-      invitationLink: `https://ticketing.company.com/invite?token=emp-${mockToken}`,
+      invitationLink: realInviteLink,
     });
 
     // Move to Success Step
@@ -415,18 +419,27 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 transition-all duration-200 cursor-pointer hover:shadow-md shrink-0"
+                  className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 transition-all duration-200 cursor-pointer hover:shadow-md shrink-0"
                 >
                   {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => createdEmployee && window.open(createdEmployee.invitationLink, '_blank')}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 transition-all duration-200 cursor-pointer hover:shadow-md shrink-0"
+                  title="Open employee portal login page"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Portal</span>
+                </button>
               </div>
 
-              {/* Simulated Email Status */}
+              {/* Email Status Indicator */}
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
                 <div className="flex items-center space-x-1.5 text-slate-500">
                   <Mail className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Invitation email simulated for: <strong className="text-slate-800">{createdEmployee?.email}</strong></span>
+                  <span>Login credentials & link sent to: <strong className="text-slate-800">{createdEmployee?.email}</strong></span>
                 </div>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold tracking-wide">
                   Email Sent

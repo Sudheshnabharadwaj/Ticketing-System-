@@ -9,7 +9,8 @@ import { Table, type Column } from '../components/ui/Table';
 import type { Ticket, DashboardStats } from '../types';
 import { AdminApiService } from '../services/api';
 import { AttachmentFilePicker, type AttachedFile } from '../components/ui/AttachmentFilePicker';
-import { TeamLeadSelector, type TeamLeadOption } from '../components/ui/TeamLeadSelector';
+import { TeamLeadEmployeeSelector } from '../components/ui/TeamLeadEmployeeSelector';
+import type { TeamLeadItem, EmployeeItem } from '../services/organizationService';
 import {
   Ticket as TicketIcon,
   AlertTriangle,
@@ -19,7 +20,9 @@ import {
   Hourglass,
   PlusCircle,
   Check,
-  ArrowRight
+  CheckCircle,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 
 const DEPARTMENT_OPTIONS = [
@@ -50,7 +53,11 @@ export const DashboardPage: React.FC = () => {
   const [newDescription, setNewDescription] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [selectedTeamLeadIds, setSelectedTeamLeadIds] = useState<string[]>([]);
-  const [selectedTeamLeadObjs, setSelectedTeamLeadObjs] = useState<TeamLeadOption[]>([]);
+  const [selectedTeamLeadObjs, setSelectedTeamLeadObjs] = useState<TeamLeadItem[]>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [selectedEmployeeObjs, setSelectedEmployeeObjs] = useState<EmployeeItem[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{ message: string; emailMessage?: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleDepartment = (deptName: string) => {
@@ -84,46 +91,103 @@ export const DashboardPage: React.FC = () => {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newDescription.trim() || selectedDepartments.length === 0) return;
+    setValidationError(null);
 
+    // 17. VALIDATION
+    if (!newTitle.trim()) {
+      setValidationError('Subject is required');
+      return;
+    }
+    if (selectedDepartments.length === 0) {
+      setValidationError('Department is required');
+      return;
+    }
+    if (selectedTeamLeadIds.length === 0) {
+      setValidationError('Team Lead is required');
+      return;
+    }
     const finalCategory = newCategory === 'Other' ? (customCategory.trim() || 'Other') : newCategory;
+    if (!finalCategory.trim()) {
+      setValidationError('Category is required');
+      return;
+    }
+    if (!newPriority.trim()) {
+      setValidationError('Priority is required');
+      return;
+    }
+    if (!newDescription.trim()) {
+      setValidationError('Description is required');
+      return;
+    }
+
     const finalDepartments = selectedDepartments.map((dept) =>
       dept === 'Other' ? (customDepartment.trim() || 'Other') : dept
     );
     const mainDepartmentStr = finalDepartments.join(' & ');
 
-    const teamLeadSummary = selectedTeamLeadObjs.length > 0
-      ? selectedTeamLeadObjs.map((tl) => `${tl.name} (${tl.role})`).join(', ')
-      : 'Sarah Connor (IT Support Team Lead)';
-
     const attachmentStrings = attachedFiles.map((f) => `${f.name} (${f.size})`);
 
     setIsSubmitting(true);
-    await AdminApiService.createTicket({
-      title: newTitle.trim(),
-      category: finalCategory,
-      department: mainDepartmentStr,
-      departments: finalDepartments,
-      priority: newPriority,
-      description: newDescription.trim(),
-      attachments: attachmentStrings,
-      assignedTeamLead: teamLeadSummary,
-    });
+    try {
+      await AdminApiService.createTicket({
+        title: newTitle.trim(),
+        category: finalCategory,
+        department: mainDepartmentStr,
+        departments: finalDepartments,
+        priority: newPriority,
+        description: newDescription.trim(),
+        attachments: attachmentStrings,
+        teamLeads: selectedTeamLeadObjs.map((tl) => ({
+          id: tl.id,
+          employeeId: tl.employeeId,
+          name: tl.name,
+          role: tl.role,
+          email: tl.email,
+        })),
+        employees: selectedEmployeeObjs.map((emp) => ({
+          id: emp.id,
+          employeeId: emp.employeeId,
+          name: emp.name,
+          role: emp.role,
+          email: emp.email,
+        })),
+      });
 
-    setIsSubmitting(false);
-    setShowCreateModal(false);
-    setNewTitle('');
-    setNewDescription('');
-    setNewCategory('Hardware & Devices');
-    setCustomCategory('');
-    setSelectedDepartments(['IT Support']);
-    setCustomDepartment('');
-    setAttachedFiles([]);
-    setSelectedTeamLeadIds([]);
-    setSelectedTeamLeadObjs([]);
+      // 18. NOTIFICATION
+      setToastNotification({
+        message: 'Ticket created successfully.',
+        emailMessage: 'Email sent successfully.',
+      });
 
-    // Navigate to My Tickets page to see the newly created ticket
-    navigate('/admin/workspace/my-tickets');
+      // Reset Form
+      setNewTitle('');
+      setNewDescription('');
+      setNewCategory('Hardware & Devices');
+      setCustomCategory('');
+      setSelectedDepartments(['IT Support']);
+      setCustomDepartment('');
+      setAttachedFiles([]);
+      setSelectedTeamLeadIds([]);
+      setSelectedTeamLeadObjs([]);
+      setSelectedEmployeeIds([]);
+      setSelectedEmployeeObjs([]);
+      setValidationError(null);
+      setShowCreateModal(false);
+
+      // Refresh list
+      await loadData();
+
+      // Auto-hide toast after 4 seconds
+      setTimeout(() => {
+        setToastNotification(null);
+      }, 4000);
+    } catch {
+      setToastNotification({
+        message: 'Ticket created, but email notification failed.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredTickets = tickets.filter((t) => {
@@ -193,6 +257,26 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="space-y-6 font-sans">
+      {/* Toast Notification Banner */}
+      {toastNotification && (
+        <div className="fixed top-5 right-5 z-50 p-4 bg-white border border-emerald-200 rounded-2xl shadow-xl flex items-start gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-sm">
+          <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="text-xs font-bold text-slate-900">{toastNotification.message}</div>
+            {toastNotification.emailMessage && (
+              <div className="text-[11px] text-emerald-700 font-medium">{toastNotification.emailMessage}</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            className="text-slate-400 hover:text-slate-600 ml-auto cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
         <div>
@@ -346,6 +430,13 @@ export const DashboardPage: React.FC = () => {
               </button>
             </div>
 
+            {validationError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {validationError}
+              </div>
+            )}
+
             <form onSubmit={handleCreateSubmit} className="space-y-4">
               {/* Subject */}
               <div>
@@ -416,13 +507,19 @@ export const DashboardPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Team Lead Selection Component */}
-              <TeamLeadSelector
+              {/* Team Lead & Employee Selection Component */}
+              <TeamLeadEmployeeSelector
+                role="admin"
                 selectedDepartments={activeDepartments}
                 selectedTeamLeadIds={selectedTeamLeadIds}
+                selectedEmployeeIds={selectedEmployeeIds}
                 onSelectedTeamLeadsChange={(ids, objs) => {
                   setSelectedTeamLeadIds(ids);
                   setSelectedTeamLeadObjs(objs);
+                }}
+                onSelectedEmployeesChange={(ids, objs) => {
+                  setSelectedEmployeeIds(ids);
+                  setSelectedEmployeeObjs(objs);
                 }}
               />
 

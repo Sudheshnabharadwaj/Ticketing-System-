@@ -7,25 +7,20 @@ import {
   Users,
   Paperclip,
   Send,
-  CheckCircle2,
   FileText,
-  Upload,
   Activity,
   AlertCircle,
-  AlertTriangle,
-  CheckCircle,
-  Mail,
-  ShieldAlert
+  CheckCircle
 } from 'lucide-react';
 import { AdminApiService } from '../../services/api';
-import type { Ticket, TicketStatus, TicketPriority } from '../../types';
+import type { Ticket, TicketStatus } from '../../types';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { AttachmentFilePicker, type AttachedFile } from '../../components/ui/AttachmentFilePicker';
 
 const TEAM_LEAD_MAP: Record<string, string> = {
-  'IT Support': 'Sarah Connor (IT Support Team Lead)',
+  'IT Support': 'Kotesh Goud (IT Support Team Lead)',
   'Finance': 'David Miller (Finance Team Lead)',
   'HR': 'Adi (HR Operations Team Lead)',
   'HR Operations': 'Adi (HR Operations Team Lead)',
@@ -37,7 +32,7 @@ const TEAM_LEAD_MAP: Record<string, string> = {
 function resolveTeamLeadForDepartment(dept: string): string {
   const norm = dept.trim();
   if (TEAM_LEAD_MAP[norm]) return TEAM_LEAD_MAP[norm];
-  if (norm.toLowerCase().includes('it')) return 'Sarah Connor (IT Support Team Lead)';
+  if (norm.toLowerCase().includes('it')) return 'Kotesh Goud (IT Support Team Lead)';
   if (norm.toLowerCase().includes('finance')) return 'David Miller (Finance Team Lead)';
   if (norm.toLowerCase().includes('hr')) return 'Adi (HR Operations Team Lead)';
   if (norm.toLowerCase().includes('facil')) return 'Mounika (Facilities Team Lead)';

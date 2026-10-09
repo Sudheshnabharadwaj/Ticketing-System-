@@ -72,27 +72,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
           title: 'Ticket Management',
           path: '/admin/workspace/management',
           icon: <Kanban className="w-4 h-4" />
-        },
-        {
-          title: 'Escalated Tickets',
-          path: '/admin/workspace/escalated',
-          icon: <AlertTriangle className="w-4 h-4" />,
-          badge: 8,
-          badgeVariant: 'amber'
-        },
-        {
-          title: 'SLA Risk',
-          path: '/admin/workspace/sla-risk',
-          icon: <Clock className="w-4 h-4" />,
-          badge: 5,
-          badgeVariant: 'amber'
-        },
-        {
-          title: 'SLA Breached',
-          path: '/admin/workspace/sla-breached',
-          icon: <AlertTriangle className="w-4 h-4" />,
-          badge: 3,
-          badgeVariant: 'rose'
         }
       ]
     },

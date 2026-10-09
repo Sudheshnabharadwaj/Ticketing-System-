@@ -3,6 +3,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { EmployeeLayout } from '../components/layout/EmployeeLayout';
 import { EmployeeSignIn } from '../pages/EmployeeSignIn';
 import { EmployeeSignUp } from '../pages/EmployeeSignUp';
+import { ForgotPassword } from '../pages/ForgotPassword';
+import { ResetPassword } from '../pages/ResetPassword';
 import { EmployeeDashboard } from '../pages/EmployeeDashboard';
 import { MyTickets } from '../pages/MyTickets';
 import { AssignedTickets } from '../pages/AssignedTickets';
@@ -45,6 +47,8 @@ export const AppRoutes: React.FC = () => {
       <Route path="/signin" element={<EmployeeSignIn />} />
       <Route path="/login" element={<Navigate to="/signin" replace />} />
       <Route path="/signup" element={<EmployeeSignUp />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* 2. Employee Main Portal Layout with Protected Sub-routes */}
       <Route

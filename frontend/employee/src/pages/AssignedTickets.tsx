@@ -15,7 +15,8 @@ export const AssignedTickets: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const loadTickets = () => {
+  const loadTickets = async () => {
+    await EmployeeService.fetchTickets();
     const list = EmployeeService.getAssignedTickets();
     setTickets(list);
   };
@@ -24,11 +25,11 @@ export const AssignedTickets: React.FC = () => {
     loadTickets();
   }, []);
 
-  const filteredTickets = tickets.filter((ticket) => {
+  const filteredTickets = (tickets || []).filter((ticket) => {
     const matchesSearch =
-      ticket.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      ticket.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ticket.ticketNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ticket.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ticket.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (ticket.assignedBy && ticket.assignedBy.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = statusFilter === 'ALL' || ticket.status === statusFilter;

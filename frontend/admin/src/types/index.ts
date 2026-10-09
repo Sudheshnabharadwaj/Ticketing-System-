@@ -6,12 +6,15 @@ export type UserStatus = 'Active' | 'Inactive' | 'Pending Invitation';
 
 export interface User {
   id: string;
+  employeeId: string;
   name: string;
   email: string;
   phone?: string;
   department: UserDepartment;
   role: UserRole;
+  teamLead?: string;
   status: UserStatus;
+  inviteToken?: string;
   avatarUrl?: string;
   createdAt: string;
 }
@@ -49,6 +52,8 @@ export interface Ticket {
   updatedAt?: string;
   dueDate: string;
   attachments?: string[];
+  teamLeads?: { id: string; name: string; role: string; employeeId: string; email: string }[];
+  employees?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   history?: TicketHistoryItem[];
 }
 
@@ -64,10 +69,12 @@ export interface DashboardStats {
 
 export interface AddUserFormData {
   name: string;
+  employeeId: string;
   email: string;
   phone: string;
   department: UserDepartment;
   role: UserRole;
+  teamLead?: string;
   password?: string;
   userDetails?: string;
   sendEmailInvite: boolean;

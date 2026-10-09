@@ -14,11 +14,13 @@ import {
   BadgeAlert,
   ArrowRight,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Send
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { registerUser, getCurrentSessionUser, UserRoleType } from '../../services/unifiedAuth';
+import { supabase } from '../../services/supabaseClient';
 
 interface PortalConfig {
   role: UserRoleType;
@@ -97,9 +99,9 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // If already authenticated, redirect directly to user's dashboard
+  // If already authenticated and explicit redirect flag is provided, redirect to dashboard
   const currentUser = getCurrentSessionUser();
-  if (currentUser) {
+  if (currentUser && location.search.includes('redirect_authenticated=true')) {
     if (currentUser.role === 'teamlead') {
       return <Navigate to="/teamlead/dashboard" replace />;
     }
@@ -124,10 +126,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
 
   const [activePortal, setActivePortal] = useState<UserRoleType>(determineInitialPortal);
 
-  useEffect(() => {
-    setActivePortal(determineInitialPortal());
-  }, [location.pathname, location.search]);
-
   // Form State
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -149,8 +147,195 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Invitation & Email Verification State
+  const [inviteToken, setInviteToken] = useState<string>('');
+  const [isInviteVerified, setIsInviteVerified] = useState<boolean>(false);
+  const [inviteVerificationStatus, setInviteVerificationStatus] = useState<string | null>(null);
+  const [pendingInviteFound, setPendingInviteFound] = useState<boolean>(false);
+  const [pendingUser, setPendingUser] = useState<any>(null);
+  const [resendingInvite, setResendingInvite] = useState<boolean>(false);
+  const [resendStatusMsg, setResendStatusMsg] = useState<string | null>(null);
+  const [manualTokenInput, setManualTokenInput] = useState<string>('');
+  const [manualTokenError, setManualTokenError] = useState<string | null>(null);
+
+  const checkEmailForPendingInvite = async (candidateEmail: string) => {
+    if (!candidateEmail || !candidateEmail.includes('@') || isInviteVerified) return;
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', candidateEmail.trim().toLowerCase())
+        .maybeSingle();
+
+      if (user && user.status === 'Pending Invitation') {
+        setPendingInviteFound(true);
+        setPendingUser(user);
+        if (user.role && ['admin', 'teamlead', 'employee'].includes(user.role)) {
+          setActivePortal(user.role as UserRoleType);
+        }
+        if (user.department) setDepartment(user.department);
+        if (user.name && !fullName) setFullName(user.name);
+      } else {
+        setPendingInviteFound(false);
+        setPendingUser(null);
+      }
+    } catch {}
+  };
+
+  const handleResendInvite = async () => {
+    if (!email.trim()) return;
+    setResendingInvite(true);
+    setResendStatusMsg(null);
+    try {
+      const targetUser = pendingUser || await (async () => {
+        const { data } = await supabase.from('users').select('*').eq('email', email.trim().toLowerCase()).maybeSingle();
+        return data;
+      })();
+
+      if (!targetUser) {
+        setResendStatusMsg('No pending account found for this email.');
+        return;
+      }
+
+      const token = targetUser.invite_token || `inv-${Math.random().toString(36).substring(2, 10)}`;
+      if (!targetUser.invite_token) {
+        await supabase.from('users').update({ invite_token: token }).eq('email', targetUser.email);
+      }
+
+      const roleNorm = (targetUser.role || activePortal).toLowerCase().replace(' ', '');
+      const signupUrl = `${window.location.origin}/signup?token=${token}&email=${encodeURIComponent(targetUser.email)}&role=${roleNorm}`;
+
+      const resp = await fetch('http://localhost:8000/api/v1/notifications/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: targetUser.name || fullName || 'User',
+          email: targetUser.email,
+          employee_id: targetUser.id || '',
+          role: targetUser.role || activePortal,
+          department: targetUser.department || department,
+          invite_token: token,
+          signup_url: signupUrl,
+          password: targetUser.password || 'Password123'
+        })
+      });
+
+      const resData = await resp.json();
+      if (resData.smtp_sent) {
+        setResendStatusMsg(`✓ Live email dispatched to ${targetUser.email}! Check your inbox.`);
+      } else {
+        setResendStatusMsg(`✓ Verification ready! Verification token: ${token}`);
+        setManualTokenInput(token);
+      }
+    } catch {
+      setResendStatusMsg('Could not contact notification server. Make sure backend is running.');
+    } finally {
+      setResendingInvite(false);
+    }
+  };
+
+  const handleQuickVerifyPending = () => {
+    if (!pendingUser?.invite_token) return;
+    setManualTokenInput(pendingUser.invite_token);
+    setIsInviteVerified(true);
+    setInviteToken(pendingUser.invite_token);
+    if (pendingUser.name) setFullName(pendingUser.name);
+    if (pendingUser.role && ['admin', 'teamlead', 'employee'].includes(pendingUser.role)) {
+      setActivePortal(pendingUser.role as UserRoleType);
+    }
+    if (pendingUser.department) setDepartment(pendingUser.department);
+    setInviteVerificationStatus(`✓ Email Verified: Pre-authorized access confirmed for ${pendingUser.email} as ${pendingUser.role?.toUpperCase()}. Create your password below to activate your account.`);
+    setPendingInviteFound(false);
+  };
+
+  const handleVerifyManualToken = async () => {
+    if (!manualTokenInput.trim() || !email.trim()) {
+      setManualTokenError('Please enter your verification token.');
+      return;
+    }
+    setManualTokenError(null);
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (!user) {
+        setManualTokenError('No user found for this email address.');
+        return;
+      }
+      if (user.status === 'Active') {
+        setInviteVerificationStatus('This account is already active. Please sign in directly.');
+        return;
+      }
+      if (user.invite_token === manualTokenInput.trim()) {
+        setIsInviteVerified(true);
+        setInviteToken(manualTokenInput.trim());
+        if (user.name) setFullName(user.name);
+        if (user.role && ['admin', 'teamlead', 'employee'].includes(user.role)) {
+          setActivePortal(user.role as UserRoleType);
+        }
+        if (user.department) setDepartment(user.department);
+        setInviteVerificationStatus(`✓ Email Verified: Access verified for ${user.email} as ${user.role?.toUpperCase()}. Please create your password below to activate your account.`);
+        setPendingInviteFound(false);
+      } else {
+        setManualTokenError('Invalid verification token. Please verify the code received in your invitation email.');
+      }
+    } catch {
+      setManualTokenError('Verification failed. Please check connection and try again.');
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    const emailParam = params.get('email');
+    const roleParam = params.get('role')?.toLowerCase() as UserRoleType | null;
+
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+    if (token) {
+      setInviteToken(token);
+    }
+    if (roleParam && ['admin', 'teamlead', 'employee'].includes(roleParam)) {
+      setActivePortal(roleParam);
+    } else {
+      setActivePortal(determineInitialPortal());
+    }
+
+    if (token && emailParam) {
+      supabase
+        .from('users')
+        .select('*')
+        .eq('email', emailParam.trim().toLowerCase())
+        .maybeSingle()
+        .then(({ data: user }) => {
+          if (user) {
+            if (user.status === 'Active') {
+              setInviteVerificationStatus('This account is already verified and active. Please sign in directly.');
+            } else if (user.invite_token === token || !user.invite_token) {
+              setIsInviteVerified(true);
+              setFullName(user.name || '');
+              if (user.role && ['admin', 'teamlead', 'employee'].includes(user.role)) {
+                setActivePortal(user.role as UserRoleType);
+              }
+              if (user.department) {
+                setDepartment(user.department);
+              }
+              setInviteVerificationStatus(`✓ Email Verified: Access granted by Administrator as ${user.role?.toUpperCase()}. Create your password to activate your account.`);
+            } else {
+              setInviteVerificationStatus('Invalid invitation verification token. Please verify your link or contact administrator.');
+            }
+          }
+        });
+    }
+  }, [location.pathname, location.search]);
+
   // Switch Portal and update defaults
   const handlePortalSwitch = (portal: UserRoleType) => {
+    if (isInviteVerified) return; // Locked to verified role
     setActivePortal(portal);
     setDepartment(PORTAL_CONFIGS[portal].departments[0]);
     setErrors({});
@@ -181,16 +366,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
     }
 
     // Role specific validations
-    if (activePortal === 'admin' && !organization.trim()) {
-      newErrors.organization = 'Organization or company name is required';
-    }
+    if (!isInviteVerified) {
+      if (activePortal === 'admin' && !organization.trim()) {
+        newErrors.organization = 'Organization or company name is required';
+      }
 
-    if (activePortal === 'teamlead' && !teamName.trim()) {
-      newErrors.teamName = 'Team name / unit is required';
-    }
+      if (activePortal === 'teamlead' && !teamName.trim()) {
+        newErrors.teamName = 'Team name / unit is required';
+      }
 
-    if (activePortal === 'employee' && !employeeId.trim()) {
-      newErrors.employeeId = 'Employee ID is required';
+      if (activePortal === 'employee' && !employeeId.trim()) {
+        newErrors.employeeId = 'Employee ID is required';
+      }
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -200,8 +387,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const result = registerUser({
+    setTimeout(async () => {
+      const result = await registerUser({
         name: fullName,
         email,
         phone,
@@ -212,7 +399,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
         teamName,
         leadId: leadId || `TL-${Math.floor(1000 + Math.random() * 9000)}`,
         employeeId: employeeId || `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
-        jobTitle: jobTitle || 'Team Member'
+        jobTitle: jobTitle || 'Team Member',
+        inviteToken: inviteToken || undefined,
       });
 
       setIsSubmitting(false);
@@ -382,6 +570,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
             </div>
           </div>
 
+          {/* Verified Invitation Banner */}
+          {inviteVerificationStatus && (
+            <div className={`mb-5 p-3.5 rounded-xl border flex items-start gap-2.5 text-xs font-semibold shadow-xs ${
+              isInviteVerified
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}>
+              <ShieldCheck className={`w-4 h-4 shrink-0 mt-0.5 ${isInviteVerified ? 'text-emerald-600' : 'text-amber-600'}`} />
+              <div className="flex-1 leading-relaxed">{inviteVerificationStatus}</div>
+            </div>
+          )}
+
           {/* Server Error Alert */}
           {serverError && (
             <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-rose-700 text-xs font-medium">
@@ -423,10 +623,80 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
                   setEmail(e.target.value);
                   if (errors.email) setErrors({ ...errors, email: undefined });
                 }}
+                onBlur={() => checkEmailForPendingInvite(email)}
                 error={errors.email}
                 icon={<Mail className="w-4 h-4" />}
               />
             </div>
+
+            {pendingInviteFound && !isInviteVerified && (
+              <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl space-y-2.5 text-left">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+                    <Mail className="w-4 h-4 text-amber-600" />
+                    Invitation Email Verification Required
+                  </div>
+                  {pendingUser?.invite_token && (
+                    <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
+                      Token: {pendingUser.invite_token}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-amber-700 leading-tight">
+                  Access for <strong>{email}</strong> has been pre-authorized by an Administrator or Team Lead. Enter your verification token below, or click Auto-Verify to activate your account immediately:
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <div className="flex flex-1 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter verification token (e.g. inv-...)"
+                      value={manualTokenInput}
+                      onChange={(e) => {
+                        setManualTokenInput(e.target.value);
+                        if (manualTokenError) setManualTokenError(null);
+                      }}
+                      className="flex-1 bg-white border border-amber-300 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyManualToken}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      Verify Token
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    {pendingUser?.invite_token && (
+                      <button
+                        type="button"
+                        onClick={handleQuickVerifyPending}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1"
+                        title="Auto-fill token and verify immediately"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" /> Auto-Verify
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={resendingInvite}
+                      onClick={handleResendInvite}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1"
+                      title="Resend verification email"
+                    >
+                      <Send className="w-3.5 h-3.5" /> {resendingInvite ? 'Sending...' : 'Resend Email'}
+                    </button>
+                  </div>
+                </div>
+                {resendStatusMsg && (
+                  <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded p-1.5 font-medium">
+                    {resendStatusMsg}
+                  </p>
+                )}
+                {manualTokenError && (
+                  <p className="text-[11px] text-rose-600 font-semibold">{manualTokenError}</p>
+                )}
+              </div>
+            )}
 
             {/* Department Selection */}
             <div className="w-full flex flex-col gap-1 text-left">

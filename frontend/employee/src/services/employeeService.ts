@@ -1,310 +1,160 @@
 import type { EmployeeTicket, EmployeeProfile, EmployeeNotificationItem, TicketPriority, TicketStatus, AssignedTeamLead } from '../types';
 import { EmailService } from './emailService';
+import { supabase } from './supabaseClient';
 
-const INITIAL_EMPLOYEE_TICKETS: EmployeeTicket[] = [
-  // 1. Assigned Tickets (Assigned to Employee by Team Lead)
-  {
-    id: 'emp-t-3001',
-    ticketNumber: 'TICK-3001',
-    title: 'Investigate APAC Region VPN Connectivity Drops',
-    description: 'Multiple remote employees in the APAC region report intermittent packet loss and disconnects on GlobalProtect gateway apac-vpn.company.com.',
-    category: 'Network & Connectivity',
-    subCategory: 'GlobalProtect VPN',
-    department: 'IT Support',
-    priority: 'High',
-    status: 'In Progress',
-    createdAt: '2026-09-25 08:00',
-    updatedAt: '2026-09-25 09:15',
-    assignedTo: 'Manikanta (You)',
-    assignedBy: 'Sudha (Team Lead)',
-    assignedDate: '2026-09-25 08:30',
-    sla: '3h 45m remaining',
-    attachments: ['gateway_logs_apac.log'],
-    history: [
-      {
-        id: 'h1',
-        author: 'System',
-        text: 'Ticket created and routed to IT Support queue.',
-        timestamp: '2026-09-25 08:00',
-      },
-      {
-        id: 'h2',
-        author: 'Sudha (Team Lead)',
-        text: 'Assigned ticket to Manikanta for technical diagnostic and network route tracing.',
-        timestamp: '2026-09-25 08:30',
-      },
-      {
-        id: 'h3',
-        author: 'Manikanta (You)',
-        text: 'Began analyzing gateway logs. Initiated ping trace to Singapore pop server.',
-        timestamp: '2026-09-25 09:15',
-      },
-    ],
-  },
-  {
-    id: 'emp-t-3002',
-    ticketNumber: 'TICK-3002',
-    title: 'Provision Workday & ADP Accounts for Q4 HR Cohort',
-    description: 'Configure role-based access control, SSO permissions, and cost center routing for 5 new HR specialists joining next Monday.',
-    category: 'Access & Permissions',
-    subCategory: 'Software License',
-    department: 'HR Operations',
-    priority: 'Medium',
-    status: 'Open',
-    createdAt: '2026-09-24 13:45',
-    updatedAt: '2026-09-24 14:00',
-    assignedTo: 'Manikanta (You)',
-    assignedBy: 'Kotesh (Team Lead)',
-    assignedDate: '2026-09-24 14:00',
-    sla: 'On Track (14h remaining)',
-    attachments: ['onboarding_cohort_list.xlsx'],
-    history: [
-      {
-        id: 'h1',
-        author: 'Kotesh (Team Lead)',
-        text: 'Assigned onboarding ticket to Manikanta.',
-        timestamp: '2026-09-24 14:00',
-      },
-    ],
-  },
-  {
-    id: 'emp-t-3003',
-    ticketNumber: 'TICK-3003',
-    title: 'Quarterly Hardware Inventory Audit & Firmware Upgrades',
-    description: 'Perform serial number verification and macOS Sequoia patch updates across 25 laptops in Building A, Desk 400-425.',
-    category: 'Hardware & Devices',
-    subCategory: 'Laptop / Desktop Diagnostic',
-    department: 'IT Support',
-    priority: 'Low',
-    status: 'Resolved',
-    createdAt: '2026-09-22 09:00',
-    updatedAt: '2026-09-23 16:30',
-    assignedTo: 'Manikanta (You)',
-    assignedBy: 'Adi (Team Lead)',
-    assignedDate: '2026-09-22 10:15',
-    sla: 'Completed (Within SLA)',
-    attachments: ['audit_checklist_q3.pdf'],
-    resolutionNotes: 'Hardware inventory audit completed successfully. All 25 devices verified, patched, and tagged with modern asset labels.',
-    history: [
-      {
-        id: 'h1',
-        author: 'Adi (Team Lead)',
-        text: 'Assigned hardware audit task to Manikanta.',
-        timestamp: '2026-09-22 10:15',
-      },
-      {
-        id: 'h2',
-        author: 'Manikanta (You)',
-        text: 'Completed desk-by-desk audit and uploaded verified asset report.',
-        timestamp: '2026-09-23 16:30',
-      },
-    ],
-  },
-
-  // 2. My Created Tickets (Submitted by Employee)
-  {
-    id: 'emp-t-2001',
-    ticketNumber: 'TICK-2001',
-    title: 'Laptop Battery Draining Rapidly & Overheating',
-    description: 'My MacBook Pro battery drops from 100% to 20% in less than an hour and runs excessively hot when running Docker containers and development tools.',
-    category: 'Hardware & Devices',
-    subCategory: 'Battery & Power Charger',
-    department: 'IT Support',
-    priority: 'High',
-    status: 'In Progress',
-    createdAt: '2026-09-24 09:15',
-    updatedAt: '2026-09-25 08:30',
-    history: [
-      {
-        id: 'h1',
-        author: 'Manikanta (You)',
-        text: 'Submitted hardware diagnostic request.',
-        timestamp: '2026-09-24 09:15',
-      },
-      {
-        id: 'h2',
-        author: 'Adi (IT Support)',
-        text: 'Battery health report reviewed. Diagnostics confirmed degraded capacity. Replacement battery ordered.',
-        timestamp: '2026-09-25 08:30',
-      },
-    ],
-  },
-  {
-    id: 'emp-t-2002',
-    ticketNumber: 'TICK-2002',
-    title: 'Request Access to Figma Enterprise Workspace',
-    description: 'Need seat license for Figma Enterprise workspace to collaborate with the Product & Engineering team on Q4 UI redesigns.',
-    category: 'Access & Permissions',
-    subCategory: 'Software License',
-    department: 'IT Support',
-    priority: 'Medium',
-    status: 'Open',
-    createdAt: '2026-09-25 09:00',
-    updatedAt: '2026-09-25 09:00',
-    history: [
-      {
-        id: 'h1',
-        author: 'Manikanta (You)',
-        text: 'Submitted license allocation request.',
-        timestamp: '2026-09-25 09:00',
-      },
-    ],
-  },
-  {
-    id: 'emp-t-2003',
-    ticketNumber: 'TICK-2003',
-    title: 'Quarterly Dental Insurance Claim Submission',
-    description: 'Claim form and itemized receipt submitted for routine dental checkup reimbursement under Cigna policy.',
-    category: 'HR & Benefits',
-    subCategory: 'Health & Dental Insurance',
-    department: 'HR Operations',
-    priority: 'Low',
-    status: 'Pending',
-    createdAt: '2026-09-21 11:30',
-    updatedAt: '2026-09-22 14:10',
-    history: [
-      {
-        id: 'h1',
-        author: 'Manikanta (You)',
-        text: 'Uploaded claim receipt documents.',
-        timestamp: '2026-09-21 11:30',
-      },
-      {
-        id: 'h2',
-        author: 'Sudha (HR Admin)',
-        text: 'Claim forwarded to insurance carrier for verification.',
-        timestamp: '2026-09-22 14:10',
-      },
-    ],
-  },
-  {
-    id: 'emp-t-2004',
-    ticketNumber: 'TICK-2004',
-    title: 'VPN Client Certificate Renewal for Remote Access',
-    description: 'GlobalProtect SSL client certificate expired preventing home office VPN connection to internal development staging servers.',
-    category: 'Network & Connectivity',
-    subCategory: 'GlobalProtect VPN',
-    department: 'IT Support',
-    priority: 'High',
-    status: 'Resolved',
-    createdAt: '2026-09-18 14:20',
-    updatedAt: '2026-09-19 10:45',
-    history: [
-      {
-        id: 'h1',
-        author: 'Manikanta (You)',
-        text: 'Submitted ticket for VPN cert issue.',
-        timestamp: '2026-09-18 14:20',
-      },
-      {
-        id: 'h2',
-        author: 'Adi (IT Support)',
-        text: 'Pushed renewed security certificate to device profile via MDM.',
-        timestamp: '2026-09-19 10:45',
-      },
-    ],
-  },
-];
-
-const INITIAL_NOTIFICATIONS: EmployeeNotificationItem[] = [
-  {
-    id: 'n1',
-    ticketId: 'emp-t-3001',
-    ticketNumber: 'TICK-3001',
-    title: 'New Ticket Assigned by Team Lead',
-    category: 'New ticket assigned',
-    time: '20m ago',
-    date: '2026-09-25 08:30',
-    isRead: false,
-    message: 'Sudha (Team Lead) assigned ticket #TICK-3001 "Investigate APAC Region VPN Connectivity Drops" to you.',
-  },
-  {
-    id: 'n2',
-    ticketId: 'emp-t-2001',
-    ticketNumber: 'TICK-2001',
-    title: 'Ticket Status Updated to In Progress',
-    category: 'Ticket status changed',
-    time: '1h ago',
-    date: '2026-09-25 08:30',
-    isRead: false,
-    message: 'IT Support updated status of your ticket #TICK-2001 to In Progress.',
-  },
-  {
-    id: 'n3',
-    ticketId: 'emp-t-3001',
-    ticketNumber: 'TICK-3001',
-    title: 'SLA Risk Alert: 3h 45m Remaining',
-    category: 'SLA notification',
-    time: '2h ago',
-    date: '2026-09-25 07:15',
-    isRead: false,
-    message: 'Ticket #TICK-3001 resolution deadline is approaching SLA limit.',
-  },
-  {
-    id: 'n4',
-    ticketId: 'emp-t-2003',
-    ticketNumber: 'TICK-2003',
-    title: 'New Comment on Dental Insurance Claim',
-    category: 'New comment',
-    time: '1d ago',
-    date: '2026-09-24 14:10',
-    isRead: true,
-    message: 'Sudha (HR Admin) commented on ticket #TICK-2003.',
-  },
-  {
-    id: 'n5',
-    ticketId: 'emp-t-2004',
-    ticketNumber: 'TICK-2004',
-    title: 'Ticket #TICK-2004 Marked as Resolved',
-    category: 'Ticket resolved',
-    time: '2d ago',
-    date: '2026-09-23 10:45',
-    isRead: true,
-    message: 'VPN Client Certificate Renewal ticket resolved successfully.',
-  },
-];
+export function getEmployeeSessionUser() {
+  try {
+    const raw = localStorage.getItem('platform_current_user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.email) return parsed;
+    }
+  } catch {}
+  return null;
+}
 
 export const INITIAL_EMPLOYEE_PROFILE: EmployeeProfile = {
-  name: 'Manikanta',
-  email: 'manikanta.k@company.com',
-  employeeId: 'EMP-8842',
-  department: 'Human Resources',
+  name: 'Employee',
+  email: 'employee@company.com',
+  employeeId: 'EMP-001',
+  department: 'Operations',
   role: 'Employee',
-  phone: '+1 (555) 018-3342',
+  phone: '',
   avatarUrl: '',
 };
 
-const STORAGE_KEY_TICKETS = 'employee_standalone_tickets';
-const STORAGE_KEY_PROFILE = 'employee_standalone_profile';
-const STORAGE_KEY_NOTIFS = 'employee_standalone_notifs';
+let ticketsCache: EmployeeTicket[] = [];
+let notificationsCache: EmployeeNotificationItem[] = [];
+
+function mapDbTicket(row: any): EmployeeTicket {
+  const t: EmployeeTicket = {
+    id: row.id,
+    ticketNumber: row.id,
+    title: row.subject || 'No Subject',
+    description: row.description || '',
+    category: row.category || 'Other',
+    subCategory: row.sub_category || 'General Support',
+    department: row.department || 'IT Support',
+    departments: row.departments || [],
+    teamLeads: [],
+    priority: (row.priority || 'Medium') as TicketPriority,
+    status: (row.status || 'Open') as TicketStatus,
+    createdAt: row.created_at ? row.created_at.replace('T', ' ').slice(0, 16) : new Date().toISOString().replace('T', ' ').slice(0, 16),
+    updatedAt: row.updated_at ? row.updated_at.replace('T', ' ').slice(0, 16) : new Date().toISOString().replace('T', ' ').slice(0, 16),
+    assignedTo: row.assigned_agent || '',
+    assignedBy: row.assigned_by || '',
+    assignedDate: row.assigned_date ? row.assigned_date.replace('T', ' ').slice(0, 16) : undefined,
+    sla: row.sla_remaining || row.sla_status || 'Within SLA',
+    attachments: row.attachments || [],
+    resolutionNotes: row.resolution_summary || '',
+    history: [],
+  };
+  (t as any).employee = row.employee;
+  (t as any).employee_email = row.employee_email;
+  return t;
+}
+
+// Initial fetch in background
+(async () => {
+  try {
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      ticketsCache = data.map(mapDbTicket);
+    }
+  } catch {}
+})();
 
 export const EmployeeService = {
-  getTickets(): EmployeeTicket[] {
-    const cached = localStorage.getItem(STORAGE_KEY_TICKETS);
-    if (!cached) {
-      localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(INITIAL_EMPLOYEE_TICKETS));
-      return INITIAL_EMPLOYEE_TICKETS;
-    }
+  async fetchTickets(): Promise<EmployeeTicket[]> {
     try {
-      return JSON.parse(cached);
-    } catch {
-      return INITIAL_EMPLOYEE_TICKETS;
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        ticketsCache = data.map(mapDbTicket);
+        return ticketsCache;
+      }
+    } catch (e) {
+      console.error('Supabase fetchTickets error:', e);
     }
+    return ticketsCache;
+  },
+
+  getTickets(): EmployeeTicket[] {
+    return ticketsCache;
   },
 
   getAssignedTickets(): EmployeeTicket[] {
-    const tickets = this.getTickets();
-    return tickets.filter((t) => !!t.assignedBy || t.assignedTo === 'Manikanta (You)');
+    const user = getEmployeeSessionUser();
+    const userEmail = (user?.email || '').trim().toLowerCase();
+    const userName = (user?.name || '').trim().toLowerCase();
+
+    return ticketsCache.filter((t) => {
+      if (t.assignedTo && (t.assignedTo.toLowerCase() === userName || t.assignedTo.toLowerCase() === userEmail)) return true;
+      if (t.assignedBy) return true;
+      return false;
+    });
   },
 
   getMyTickets(): EmployeeTicket[] {
-    const tickets = this.getTickets();
-    return tickets.filter((t) => !t.assignedBy && t.assignedTo !== 'Manikanta (You)');
+    const user = getEmployeeSessionUser();
+    const userEmail = (user?.email || '').trim().toLowerCase();
+    const userName = (user?.name || '').trim().toLowerCase();
+
+    if (!userEmail && !userName) return ticketsCache;
+
+    return ticketsCache.filter((t: any) => {
+      const email = (t.employee_email || t.employeeEmail || t.requesterEmail || '').trim().toLowerCase();
+      const name = (t.employee || t.requesterName || '').trim().toLowerCase();
+      if (userEmail && email === userEmail) return true;
+      if (userName && name && name.includes(userName)) return true;
+      return false;
+    });
   },
 
   getTicketById(idOrNum: string): EmployeeTicket | undefined {
-    const tickets = this.getTickets();
-    return tickets.find((t) => t.id === idOrNum || t.ticketNumber === idOrNum);
+    return ticketsCache.find((t) => t.id === idOrNum || t.ticketNumber === idOrNum);
+  },
+
+  async getTicketByIdAsync(idOrNum: string): Promise<EmployeeTicket | undefined> {
+    try {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('id', idOrNum)
+        .maybeSingle();
+
+      if (!error && data) {
+        const ticket = mapDbTicket(data);
+        const { data: dbActivities } = await supabase
+          .from('ticket_activities')
+          .select('*')
+          .eq('ticket_id', idOrNum)
+          .order('timestamp', { ascending: false });
+
+        ticket.history = (dbActivities || []).map((a: any) => ({
+          id: a.id,
+          author: a.user,
+          text: a.action,
+          timestamp: a.timestamp ? a.timestamp.replace('T', ' ').slice(0, 16) : '',
+        }));
+
+        // Update in cache
+        const idx = ticketsCache.findIndex(t => t.id === idOrNum);
+        if (idx >= 0) ticketsCache[idx] = ticket;
+        else ticketsCache.unshift(ticket);
+
+        return ticket;
+      }
+    } catch (e) {
+      console.error('Supabase getTicketByIdAsync error:', e);
+    }
+    return this.getTicketById(idOrNum);
   },
 
   createTicket(data: {
@@ -317,9 +167,10 @@ export const EmployeeService = {
     description: string;
     attachments?: string[];
     teamLeads?: AssignedTeamLead[];
+    employees?: Array<{ id: string; name: string; role: string; email: string; employeeId: string }>;
   }): EmployeeTicket {
-    const tickets = this.getTickets();
-    const nextNum = 2001 + tickets.length;
+    const nextNum = Math.floor(1000 + Math.random() * 9000);
+    const ticketId = `TKT-${nextNum}`;
     const now = new Date();
     const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -328,7 +179,10 @@ export const EmployeeService = {
       : [data.department || 'IT Support'];
     const mainDepartmentStr = selectedDepts.join(' & ');
 
-    // Automatically identify or use selected Team Leads
+    const user = getEmployeeSessionUser();
+    const creatorName = user?.name || 'Employee';
+    const creatorEmail = user?.email || 'employee@platform.local';
+
     const teamLeads: AssignedTeamLead[] = data.teamLeads && data.teamLeads.length > 0
       ? data.teamLeads
       : EmailService.findTeamLeadsForDepartments(selectedDepts, data.category).map((tl) => ({
@@ -339,26 +193,17 @@ export const EmployeeService = {
           role: tl.role,
         }));
 
-    const routingSummaryText = teamLeads.length > 0
-      ? `Ticket automatically routed to ${teamLeads.map((tl) => `${tl.department} (${tl.name} — ${tl.role})`).join(' and ')}.`
-      : `Ticket created and routed to ${mainDepartmentStr}.`;
-
     const newTicket: EmployeeTicket = {
-      id: `emp-t-${Date.now()}`,
-      ticketNumber: `TICK-${nextNum}`,
+      id: ticketId,
+      ticketNumber: ticketId,
       title: data.title,
       description: data.description,
       category: data.category,
       subCategory: data.subCategory || 'General Support',
       department: mainDepartmentStr,
       departments: selectedDepts,
-      teamLeads: teamLeads.map((tl) => ({
-        id: tl.id,
-        name: tl.name,
-        email: tl.email,
-        department: tl.department,
-        role: tl.role,
-      })),
+      teamLeads,
+      employees: data.employees || [],
       priority: data.priority,
       status: 'Open',
       createdAt: formatted,
@@ -367,226 +212,332 @@ export const EmployeeService = {
       history: [
         {
           id: `h-${Date.now()}-1`,
-          author: 'Manikanta (You)',
+          author: creatorName,
           text: 'Ticket created.',
-          timestamp: formatted,
-        },
-        {
-          id: `h-${Date.now()}-2`,
-          author: 'System Routing Engine',
-          text: routingSummaryText,
           timestamp: formatted,
         },
       ],
     };
+    (newTicket as any).employee_email = creatorEmail;
+    (newTicket as any).employee = creatorName;
 
-    const updated = [newTicket, ...tickets];
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(updated));
+    // Stored directly in Supabase (background async persist)
+    try {
+      supabase.from('tickets').insert([{
+        id: ticketId,
+        subject: data.title,
+        description: data.description,
+        employee: creatorName,
+        employee_email: creatorEmail,
+        department: mainDepartmentStr,
+        departments: selectedDepts,
+        category: data.category,
+        priority: data.priority,
+        status: 'Open',
+        assigned_agent: teamLeads[0]?.name || 'Unassigned',
+        assigned_by: `${creatorName} (Requester)`,
+        sla_status: 'Within SLA',
+        sla_remaining: '8h 00m remaining',
+      }]).then();
 
-    // Send email notifications to all identified Team Leads
-    const profile = this.getProfile();
+      (async () => {
+        try {
+          // Insert notifications into notifications table
+          await supabase.from('notifications').insert([
+            {
+              id: `notif-${Date.now()}-tl`,
+              ticket_id: ticketId,
+              title: `New Ticket: ${ticketId}`,
+              message: `${creatorName} assigned ${ticketId} ("${data.title}") to ${teamLeads[0]?.name || 'Team Lead'}.`,
+              type: 'info',
+              for_role: 'teamlead',
+              read: false,
+              timestamp: new Date().toISOString(),
+            },
+            {
+              id: `notif-${Date.now()}-emp`,
+              ticket_id: ticketId,
+              title: `Ticket Created: ${ticketId}`,
+              message: `Your ticket ${ticketId} was created and assigned to ${teamLeads[0]?.name || 'Team Lead'}.`,
+              type: 'success',
+              for_role: 'employee',
+              read: false,
+              timestamp: new Date().toISOString(),
+            }
+          ]);
+        } catch (e) {
+          console.error('Supabase notifications insert error:', e);
+        }
+
+        // Insert attachments into ticket_attachments table if provided
+        if (data.attachments && data.attachments.length > 0) {
+          try {
+            const attRows = data.attachments.map((attStr, idx) => ({
+              id: `att-${Date.now()}-${idx}`,
+              ticket_id: ticketId,
+              name: attStr.split(' (')[0] || attStr,
+              size: (attStr.includes('(') ? attStr.split('(')[1].replace(')', '') : 'N/A'),
+              url: '',
+            }));
+            await supabase.from('ticket_attachments').insert(attRows);
+          } catch (e) {
+            console.error('Supabase ticket_attachments error:', e);
+          }
+        }
+
+        // Log activity in background without blocking
+        try {
+          await supabase.from('ticket_activities').insert([{
+            id: `act-${Date.now()}`,
+            ticket_id: ticketId,
+            user: creatorName,
+            action: 'Ticket created',
+            timestamp: new Date().toISOString(),
+          }]);
+        } catch (e) {
+          console.error('Supabase ticket_activities error:', e);
+        }
+      })();
+    } catch (e: any) {
+      console.error('Supabase insert exception:', e);
+    }
+
+    ticketsCache.unshift(newTicket);
+
+    // Send email notifications
     EmailService.sendTicketCreationEmail(newTicket, {
-      name: profile.name,
-      email: profile.email,
+      name: creatorName,
+      email: creatorEmail,
     });
-
-    // Send dashboard notifications to both / all identified Team Leads
-    const currentNotifs = this.getNotifications();
-    const newDashboardNotifs: EmployeeNotificationItem[] = teamLeads.map((tl, idx) => ({
-      id: `n-${Date.now()}-${idx}`,
-      ticketId: newTicket.id,
-      ticketNumber: newTicket.ticketNumber,
-      title: `New Ticket Assigned (${tl.department})`,
-      category: 'New ticket assigned',
-      time: 'Just now',
-      date: formatted,
-      isRead: false,
-      message: `New ticket #${newTicket.ticketNumber} "${newTicket.title}" routed to ${tl.name} (${tl.role}).`,
-    }));
-
-    localStorage.setItem(STORAGE_KEY_NOTIFS, JSON.stringify([...newDashboardNotifs, ...currentNotifs]));
 
     return newTicket;
   },
 
-  updateTicketStatus(ticketId: string, newStatus: TicketStatus, note?: string): EmployeeTicket | null {
-    const tickets = this.getTickets();
-    const target = tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
-    if (!target) return null;
+  async updateTicketStatus(ticketId: string, newStatus: TicketStatus, note?: string): Promise<EmployeeTicket | null> {
+    const user = getEmployeeSessionUser();
+    const actorName = user?.name || 'Employee';
 
-    const oldStatus = target.status;
-    target.status = newStatus;
-    const now = new Date();
-    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    target.updatedAt = formatted;
+    try {
+      await supabase.from('tickets').update({ status: newStatus }).eq('id', ticketId);
 
-    if (!target.history) target.history = [];
-    target.history.push({
-      id: `h-${Date.now()}`,
-      author: 'Manikanta (You)',
-      text: `Updated status from ${oldStatus} to ${newStatus}.${note ? ` Note: ${note}` : ''}`,
-      timestamp: formatted,
-    });
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: `Status updated to ${newStatus}.${note ? ` Note: ${note}` : ''}`,
+        timestamp: new Date().toISOString(),
+      }]);
 
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
-    return target;
+      await this.fetchTickets();
+      return this.getTicketById(ticketId) || null;
+    } catch (e) {
+      console.error('Supabase updateTicketStatus error:', e);
+      return null;
+    }
   },
 
-  resolveTicket(ticketId: string, resolutionNotes: string): EmployeeTicket | null {
-    const tickets = this.getTickets();
-    const target = tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
-    if (!target) return null;
+  async resolveTicket(ticketId: string, resolutionNotes: string): Promise<EmployeeTicket | null> {
+    const user = getEmployeeSessionUser();
+    const actorName = user?.name || 'Employee';
 
-    target.status = 'Resolved';
-    target.resolutionNotes = resolutionNotes;
-    const now = new Date();
-    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    target.updatedAt = formatted;
+    try {
+      await supabase.from('tickets').update({
+        status: 'Resolved',
+        resolution_summary: resolutionNotes,
+      }).eq('id', ticketId);
 
-    if (!target.history) target.history = [];
-    target.history.push({
-      id: `h-${Date.now()}`,
-      author: 'Manikanta (You)',
-      text: `Marked ticket as Resolved. Resolution: ${resolutionNotes}`,
-      timestamp: formatted,
-    });
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: `Marked ticket as Resolved. Resolution: ${resolutionNotes}`,
+        timestamp: new Date().toISOString(),
+      }]);
 
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
-    return target;
+      await this.fetchTickets();
+      return this.getTicketById(ticketId) || null;
+    } catch (e) {
+      console.error('Supabase resolveTicket error:', e);
+      return null;
+    }
   },
 
-  escalateTicket(ticketId: string, reason: string, comment: string): EmployeeTicket | null {
-    const tickets = this.getTickets();
-    const target = tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
-    if (!target) return null;
+  async escalateTicket(ticketId: string, reason: string, comment: string): Promise<EmployeeTicket | null> {
+    const user = getEmployeeSessionUser();
+    const actorName = user?.name || 'Employee';
 
-    target.status = 'Escalated';
-    const now = new Date();
-    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    target.updatedAt = formatted;
+    try {
+      await supabase.from('tickets').update({
+        status: 'Escalated',
+        escalation_reason: reason,
+      }).eq('id', ticketId);
 
-    if (!target.history) target.history = [];
-    target.history.push({
-      id: `h-${Date.now()}`,
-      author: 'Manikanta (You)',
-      text: `Escalated ticket to ${target.assignedBy || 'Team Lead'}. Reason: ${reason}. Explanation: ${comment}`,
-      timestamp: formatted,
-    });
+      const ticket = this.getTicketById(ticketId);
 
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
+      await supabase.from('escalations').insert([{
+        id: `ESC-${Date.now()}`,
+        ticket_id: ticketId,
+        subject: ticket?.title || 'Escalated Ticket',
+        priority: ticket?.priority || 'High',
+        escalated_by: actorName,
+        escalated_to: ticket?.assignedBy || 'Team Lead',
+        escalation_reason: `${reason}. ${comment}`,
+        sla_status: 'Escalated',
+        escalated_date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+        status: 'Pending Review',
+      }]);
 
-    // Also add notification for Team Lead
-    const notifs = this.getNotifications();
-    const newNotif: EmployeeNotificationItem = {
-      id: `n-${Date.now()}`,
-      ticketId: target.id,
-      ticketNumber: target.ticketNumber,
-      title: `Ticket Escalated to ${target.assignedBy || 'Team Lead'}`,
-      category: 'Ticket status changed',
-      time: 'Just now',
-      date: formatted,
-      isRead: false,
-      message: `Ticket #${target.ticketNumber} was escalated to ${target.assignedBy || 'Team Lead'}. Reason: ${reason}`,
-    };
-    localStorage.setItem(STORAGE_KEY_NOTIFS, JSON.stringify([newNotif, ...notifs]));
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: `Escalated ticket to ${ticket?.assignedBy || 'Team Lead'}. Reason: ${reason}. Explanation: ${comment}`,
+        timestamp: new Date().toISOString(),
+      }]);
 
-    return target;
+      await this.fetchTickets();
+      return this.getTicketById(ticketId) || null;
+    } catch (e) {
+      console.error('Supabase escalateTicket error:', e);
+      return null;
+    }
   },
 
-  addComment(ticketId: string, text: string, attachmentName?: string): EmployeeTicket | null {
-    const tickets = this.getTickets();
-    const target = tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
-    if (!target) return null;
+  async addComment(ticketId: string, text: string, attachmentName?: string): Promise<EmployeeTicket | null> {
+    const user = getEmployeeSessionUser();
+    const actorName = user?.name || 'Employee';
 
-    const now = new Date();
-    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    try {
+      await supabase.from('ticket_comments').insert([{
+        id: `comm-${Date.now()}`,
+        ticket_id: ticketId,
+        author_name: actorName,
+        author_role: 'employee',
+        message: text,
+        created_at: new Date().toISOString(),
+      }]);
 
-    if (!target.history) target.history = [];
-    target.history.push({
-      id: `h-${Date.now()}`,
-      author: 'Manikanta (You)',
-      text,
-      timestamp: formatted,
-      attachment: attachmentName,
-    });
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: `Comment: ${text}${attachmentName ? ` (Attachment: ${attachmentName})` : ''}`,
+        timestamp: new Date().toISOString(),
+      }]);
 
-    if (attachmentName) {
-      if (!target.attachments) target.attachments = [];
-      if (!target.attachments.includes(attachmentName)) {
-        target.attachments.push(attachmentName);
+      await this.fetchTickets();
+      return this.getTicketById(ticketId) || null;
+    } catch (e) {
+      console.error('Supabase addComment error:', e);
+      return null;
+    }
+  },
+
+  async addAttachment(ticketId: string, fileName: string): Promise<EmployeeTicket | null> {
+    const user = getEmployeeSessionUser();
+    const actorName = user?.name || 'Employee';
+
+    try {
+      await supabase.from('ticket_attachments').insert([{
+        id: `att-${Date.now()}`,
+        ticket_id: ticketId,
+        name: fileName,
+        size: '1 MB',
+        created_at: new Date().toISOString(),
+      }]);
+
+      await supabase.from('ticket_activities').insert([{
+        id: `act-${Date.now()}`,
+        ticket_id: ticketId,
+        user: actorName,
+        action: `Uploaded attachment: ${fileName}`,
+        timestamp: new Date().toISOString(),
+      }]);
+
+      await this.fetchTickets();
+      return this.getTicketById(ticketId) || null;
+    } catch (e) {
+      console.error('Supabase addAttachment error:', e);
+      return null;
+    }
+  },
+
+  async fetchNotifications(): Promise<EmployeeNotificationItem[]> {
+    try {
+      const user = getEmployeeSessionUser();
+      const userName = user?.name || '';
+      const userEmail = user?.email || '';
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('timestamp', { ascending: false });
+
+      if (!error && data) {
+        const allowedRoles = ['all', 'employee'];
+        const filtered = data.filter((n: any) => {
+          if (allowedRoles.includes(n.for_role)) return true;
+          if (userName && (n.message?.toLowerCase().includes(userName.toLowerCase()) || n.title?.toLowerCase().includes(userName.toLowerCase()))) return true;
+          if (userEmail && (n.message?.toLowerCase().includes(userEmail.toLowerCase()) || n.title?.toLowerCase().includes(userEmail.toLowerCase()))) return true;
+          return false;
+        });
+
+        notificationsCache = filtered.map((n: any) => ({
+          id: n.id,
+          ticketId: n.ticket_id || '',
+          ticketNumber: n.ticket_id || '',
+          title: n.title || 'Notification',
+          category: (n.type === 'error' ? 'SLA notification' : n.type === 'success' ? 'Ticket resolved' : n.type === 'warning' ? 'New ticket assigned' : 'Ticket status changed') as any,
+          time: n.timestamp ? new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          date: n.timestamp ? new Date(n.timestamp).toLocaleDateString() : 'Today',
+          isRead: !!n.read,
+          message: n.message || '',
+        }));
+        return notificationsCache;
       }
+    } catch (e) {
+      console.warn('Error fetching employee notifications:', e);
     }
-
-    target.updatedAt = formatted;
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
-    return target;
-  },
-
-  addAttachment(ticketId: string, fileName: string): EmployeeTicket | null {
-    const tickets = this.getTickets();
-    const target = tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
-    if (!target) return null;
-
-    if (!target.attachments) target.attachments = [];
-    if (!target.attachments.includes(fileName)) {
-      target.attachments.push(fileName);
-    }
-
-    const now = new Date();
-    const formatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    target.updatedAt = formatted;
-    if (!target.history) target.history = [];
-    target.history.push({
-      id: `h-${Date.now()}`,
-      author: 'Manikanta (You)',
-      text: `Attached file: ${fileName}`,
-      timestamp: formatted,
-      attachment: fileName,
-    });
-
-    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
-    return target;
+    return notificationsCache;
   },
 
   getNotifications(): EmployeeNotificationItem[] {
-    const cached = localStorage.getItem(STORAGE_KEY_NOTIFS);
-    if (!cached) {
-      localStorage.setItem(STORAGE_KEY_NOTIFS, JSON.stringify(INITIAL_NOTIFICATIONS));
-      return INITIAL_NOTIFICATIONS;
+    if (notificationsCache.length === 0) {
+      this.fetchNotifications();
     }
-    try {
-      return JSON.parse(cached);
-    } catch {
-      return INITIAL_NOTIFICATIONS;
-    }
+    return notificationsCache;
   },
 
   markNotificationsAsRead(): EmployeeNotificationItem[] {
-    const current = this.getNotifications();
-    const updated = current.map((n) => ({ ...n, isRead: true }));
-    localStorage.setItem(STORAGE_KEY_NOTIFS, JSON.stringify(updated));
-    return updated;
+    supabase.from('notifications').update({ read: true }).eq('read', false).then(() => {});
+    notificationsCache = notificationsCache.map((n) => ({ ...n, isRead: true }));
+    return notificationsCache;
   },
 
   getProfile(): EmployeeProfile {
-    const cached = localStorage.getItem(STORAGE_KEY_PROFILE);
-    if (!cached) {
-      localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(INITIAL_EMPLOYEE_PROFILE));
-      return INITIAL_EMPLOYEE_PROFILE;
-    }
-    try {
-      return JSON.parse(cached);
-    } catch {
-      return INITIAL_EMPLOYEE_PROFILE;
-    }
+    const user = getEmployeeSessionUser();
+    return {
+      name: user?.name || 'Employee',
+      email: user?.email || 'employee@company.com',
+      employeeId: user?.id || 'EMP-001',
+      department: user?.department || 'Operations',
+      role: 'Employee',
+      phone: user?.phone || '',
+      avatarUrl: user?.avatar || '',
+    };
   },
 
   updateProfile(data: Partial<EmployeeProfile>): EmployeeProfile {
-    const current = this.getProfile();
-    const updated = { ...current, ...data };
-    localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(updated));
-    return updated;
+    const user = getEmployeeSessionUser();
+    if (user?.id) {
+      const dbUpdates: Record<string, any> = {};
+      if (data.name) dbUpdates.name = data.name;
+      if (data.phone) dbUpdates.phone = data.phone;
+      if (data.department) dbUpdates.department = data.department;
+      if (data.avatarUrl !== undefined) dbUpdates.avatar = data.avatarUrl;
+      supabase.from('users').update(dbUpdates).eq('id', user.id).then(() => {});
+    }
+    return this.getProfile();
   },
 
   getSummaryStats() {

@@ -9,6 +9,8 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Table, type Column } from '../../components/ui/Table';
 
+import { getCurrentSessionUser } from '../../services/unifiedAuth';
+
 export const MyTicketsPage: React.FC = () => {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -19,10 +21,19 @@ export const MyTicketsPage: React.FC = () => {
   const loadTickets = async () => {
     setIsLoading(true);
     const all = await AdminApiService.getTickets('all');
-    // Filter tickets requested by or created by Admin (Hyma)
-    const myTickets = all.filter(
-      (t) => t.requesterName.toLowerCase().includes('hyma') || t.assignedTo?.toLowerCase().includes('hyma')
-    );
+    const sessionUser = getCurrentSessionUser();
+    const userEmail = (sessionUser?.email || '').toLowerCase();
+    const userName = (sessionUser?.name || '').toLowerCase();
+
+    // Filter tickets requested by or assigned to current user
+    const myTickets = all.filter((t) => {
+      const reqEmail = (t.requesterEmail || '').toLowerCase();
+      const reqName = (t.requesterName || '').toLowerCase();
+      const assigned = (t.assignedTo || '').toLowerCase();
+      if (userEmail && reqEmail === userEmail) return true;
+      if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+      return false;
+    });
     setTickets(myTickets);
     setIsLoading(false);
   };

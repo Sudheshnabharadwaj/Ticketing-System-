@@ -9,7 +9,8 @@ export const TeamLeadLayout: React.FC = () => {
   const [globalSearch, setGlobalSearch] = useState('');
 
   return (
-    <div className="min-h-screen bg-slate-50 flex w-full max-w-full overflow-x-hidden">
+    <div className="h-screen bg-[#F8FAFC] text-slate-900 flex overflow-hidden font-sans">
+      {/* Sidebar: Clean static flex element on desktop, overlay drawer on mobile */}
       <Sidebar
         collapsed={collapsed}
         setCollapsed={setCollapsed}
@@ -17,19 +18,19 @@ export const TeamLeadLayout: React.FC = () => {
         setMobileOpen={setMobileOpen}
       />
 
-      <div
-        className={`flex-1 flex flex-col min-w-0 max-w-full transition-all duration-300 ${
-          collapsed ? 'lg:ml-20' : 'lg:ml-64'
-        }`}
-      >
+      {/* Main Container: Header + Scrollable Page Content */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Navbar
           onMobileMenuToggle={() => setMobileOpen(true)}
           globalSearch={globalSearch}
           setGlobalSearch={setGlobalSearch}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto min-w-0 max-w-full overflow-x-hidden">
-          <Outlet context={{ globalSearch }} />
+        {/* Dynamic Page Content Area */}
+        <main className="flex-1 bg-[#F8FAFC] overflow-y-auto p-4 sm:p-6 md:p-8">
+          <div className="max-w-7xl mx-auto space-y-6">
+            <Outlet context={{ globalSearch }} />
+          </div>
         </main>
       </div>
     </div>

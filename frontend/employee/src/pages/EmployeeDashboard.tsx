@@ -33,8 +33,8 @@ export const EmployeeDashboard: React.FC = () => {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = () => {
-    const allTickets = EmployeeService.getTickets();
+  const loadDashboardData = async () => {
+    const allTickets = await EmployeeService.fetchTickets();
     const summary = EmployeeService.getSummaryStats();
     setRecentTickets(allTickets.slice(0, 5));
     setStats(summary);

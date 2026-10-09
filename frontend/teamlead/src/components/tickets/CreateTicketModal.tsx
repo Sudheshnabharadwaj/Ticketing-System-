@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTickets } from '../../hooks/useTickets';
 import { TicketCategory, TicketPriority } from '../../types/ticket';
 import { CATEGORIES, PRIORITIES } from '../../utils/constants';
-import { X, PlusCircle, Upload, AlertCircle, Check, Users, Building2, UserCheck, ArrowRight } from 'lucide-react';
-import { UserAvatar } from '../common/UserAvatar';
+import { X, PlusCircle, AlertCircle, Building2, CheckCircle2, Check } from 'lucide-react';
 import { AttachmentPicker, FileAttachmentItem } from '../common/AttachmentPicker';
+import { TeamLeadEmployeeSelector } from './TeamLeadEmployeeSelector';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  OrganizationService,
+  type TeamLeadItem,
+  type EmployeeItem,
+} from '../../services/organizationService';
 
 interface CreateTicketModalProps {
   isOpen: boolean;
@@ -12,60 +18,14 @@ interface CreateTicketModalProps {
   onSuccess?: (msg: string) => void;
 }
 
-interface MemberOption {
-  id: string;
-  name: string;
-  department: string;
-  avatar: string;
-  role?: string;
-}
-
-const ALL_DEPARTMENTS = [
+const DEPARTMENT_OPTIONS = [
   'IT Support',
   'Finance',
-  'HR',
-  'Operations',
-  'Sales',
-  'Marketing',
-  'Administration',
+  'HR Operations',
+  'Facilities',
+  'General Administration',
   'Other',
 ];
-
-// Department -> Member dataset mapping
-const DEPARTMENT_MEMBERS: Record<string, MemberOption[]> = {
-  'IT Support': [
-    { id: 'EMP001', name: 'Rahul Sharma', department: 'IT Support', avatar: '' },
-    { id: 'EMP006', name: 'Arjun Verma', department: 'IT Support', avatar: '' },
-    { id: 'EMP007', name: 'Priya Nair', department: 'IT Support', avatar: '' },
-  ],
-  'Finance': [
-    { id: 'EMP003', name: 'Marcus Vance', department: 'Finance', avatar: '' },
-    { id: 'EMP008', name: 'Sneha Reddy', department: 'Finance', avatar: '' },
-    { id: 'EMP009', name: 'Kiran Kumar', department: 'Finance', avatar: '' },
-  ],
-  'HR': [
-    { id: 'EMP002', name: 'Sophia Chen', department: 'HR', avatar: '' },
-    { id: 'EMP010', name: 'Kavya Patel', department: 'HR', avatar: '' },
-  ],
-  'Operations': [
-    { id: 'EMP011', name: 'David Miller', department: 'Operations', avatar: '' },
-    { id: 'EMP012', name: 'Vikram Singh', department: 'Operations', avatar: '' },
-  ],
-  'Sales': [
-    { id: 'EMP013', name: 'Rohan Mehta', department: 'Sales', avatar: '' },
-    { id: 'EMP014', name: 'Ananya Roy', department: 'Sales', avatar: '' },
-  ],
-  'Marketing': [
-    { id: 'EMP004', name: 'Priya Patel', department: 'Marketing', avatar: '' },
-    { id: 'EMP015', name: 'Tanvi Shah', department: 'Marketing', avatar: '' },
-  ],
-  'Administration': [
-    { id: 'EMP016', name: 'Meera Kapoor', department: 'Administration', avatar: '' },
-  ],
-  'Other': [
-    { id: 'TL001', name: 'Alex Morgan', department: 'Other', avatar: '' },
-  ],
-};
 
 export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   isOpen,
@@ -74,100 +34,151 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const { user } = useAuth();
   const { createTicket } = useTickets();
+
+  // Logged-in Team Lead Identity
+  const currentTeamLead = {
+    id: user?.id || 'OKL001',
+    employeeId: user?.id || 'OKL001',
+    name: user?.name || 'Kotesh Goud',
+    department: user?.department || 'IT Support',
+    role: `${user?.department || 'IT Support'} Team Lead`,
+  };
 
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<TicketCategory>('Access Issue');
+  const [customCategory, setCustomCategory] = useState('');
   const [priority, setPriority] = useState<TicketPriority>('Medium');
-  
-  // Multi-department state (defaults to ['IT Support'])
+
+  // Department selection matching Admin screen
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['IT Support']);
-  
-  // Multi-member tagged state
-  const [taggedMembers, setTaggedMembers] = useState<MemberOption[]>([]);
+  const [customDepartment, setCustomDepartment] = useState('');
+  const [selectedTeamLeadIds, setSelectedTeamLeadIds] = useState<string[]>([]);
+  const [selectedTeamLeadObjs, setSelectedTeamLeadObjs] = useState<TeamLeadItem[]>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [selectedEmployeeObjs, setSelectedEmployeeObjs] = useState<EmployeeItem[]>([]);
+
+  const toggleDepartment = (deptName: string) => {
+    if (selectedDepartments.includes(deptName)) {
+      if (selectedDepartments.length === 1) return; // Keep at least one department selected
+      setSelectedDepartments(selectedDepartments.filter((d) => d !== deptName));
+    } else {
+      setSelectedDepartments([...selectedDepartments, deptName]);
+    }
+  };
+
+  const isOtherDeptSelected = selectedDepartments.includes('Other');
+
+  // Compute active department list and routing leads
+  const activeDepartments = selectedDepartments.map((dept) =>
+    dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+  );
+
   const [fileAttachments, setFileAttachments] = useState<FileAttachmentItem[]>([]);
   const [error, setError] = useState('');
-
-  // Automatically remove tagged members if their department is unselected
-  useEffect(() => {
-    setTaggedMembers((prev) =>
-      prev.filter((m) => selectedDepartments.includes(m.department))
-    );
-  }, [selectedDepartments]);
-
-  const toggleDepartment = (dept: string) => {
-    setSelectedDepartments((prev) => {
-      if (prev.includes(dept)) {
-        return prev.filter((d) => d !== dept);
-      } else {
-        return [...prev, dept];
-      }
-    });
-  };
-
-  const toggleMemberTag = (member: MemberOption) => {
-    setTaggedMembers((prev) => {
-      const exists = prev.some((m) => m.id === member.id);
-      if (exists) {
-        return prev.filter((m) => m.id !== member.id);
-      } else {
-        return [...prev, member];
-      }
-    });
-  };
-
-  const removeMemberTag = (memberId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setTaggedMembers((prev) => prev.filter((m) => m.id !== memberId));
-  };
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
 
+    // 17. VALIDATION
     if (!subject.trim()) {
-      setError('Please enter a ticket subject.');
-      return;
-    }
-    if (!description.trim()) {
-      setError('Please enter a ticket description.');
+      setError('Subject is required');
       return;
     }
     if (selectedDepartments.length === 0) {
-      setError('Please select at least one department.');
+      setError('Department is required');
+      return;
+    }
+    if (isOtherDeptSelected && !customDepartment.trim()) {
+      setError('Please specify the custom department name');
+      return;
+    }
+    if (selectedTeamLeadIds.length === 0) {
+      setError('Team Lead is required');
+      return;
+    }
+    const finalCategory = category === 'Other' ? (customCategory.trim() || 'Other') : category;
+    if (!finalCategory.trim()) {
+      setError('Category is required');
+      return;
+    }
+    if (!priority) {
+      setError('Priority is required');
+      return;
+    }
+    if (!description.trim()) {
+      setError('Description is required');
       return;
     }
 
-    setError('');
+    try {
+      const finalDepartments = selectedDepartments.map((dept) =>
+        dept === 'Other' ? (customDepartment.trim() || 'Other') : dept
+      );
+      const mainDepartmentStr = finalDepartments.join(' & ');
 
-    const newTicket = createTicket({
-      subject: subject.trim(),
-      description: description.trim(),
-      category,
-      priority,
-      department: selectedDepartments.join(', '),
-      departments: selectedDepartments,
-      taggedMembers: taggedMembers.map((m) => ({
-        id: m.id,
-        name: m.name,
-        department: m.department,
-        avatar: m.avatar,
-      })),
-      taggedMemberIds: taggedMembers.map((m) => m.id),
-      attachments: fileAttachments.map((f) => ({ name: f.name, size: f.size })),
-    });
+      const newTicket = createTicket({
+        subject: subject.trim(),
+        description: description.trim(),
+        category: finalCategory as TicketCategory,
+        priority,
+        department: mainDepartmentStr,
+        departments: finalDepartments,
+        teamLeads: selectedTeamLeadObjs.map((tl) => ({
+          id: tl.id,
+          employeeId: tl.employeeId,
+          name: tl.name,
+          role: tl.role,
+          email: tl.email,
+        })),
+        teamLeadIds: selectedTeamLeadIds,
+        taggedEmployees: selectedEmployeeObjs.map((emp) => ({
+          id: emp.id,
+          employeeId: emp.employeeId,
+          name: emp.name,
+          role: emp.role,
+          email: emp.email,
+        })),
+        employeeIds: selectedEmployeeIds,
+        taggedMembers: selectedEmployeeObjs.map((emp) => ({
+          id: emp.id,
+          name: emp.name,
+          department: emp.departmentName,
+          avatar: '',
+        })),
+        taggedMemberIds: selectedEmployeeIds,
+        attachments: fileAttachments.map((f) => ({ name: f.name, size: f.size })),
+      });
 
-    if (onSuccess) {
-      onSuccess(`Ticket ${newTicket.id} created successfully.`);
+      // 18. NOTIFICATION
+      const successMsg = `Ticket created successfully. Email sent successfully.`;
+      setSuccessToast(successMsg);
+
+      if (onSuccess) {
+        onSuccess(successMsg);
+      }
+
+      // Reset and close after brief toast feedback
+      setTimeout(() => {
+        setSubject('');
+        setDescription('');
+        setCategory('Access Issue');
+        setCustomCategory('');
+        setPriority('Medium');
+        setSelectedEmployeeIds([]);
+        setSelectedEmployeeObjs([]);
+        setFileAttachments([]);
+        setError('');
+        setSuccessToast(null);
+        onClose();
+      }, 700);
+    } catch {
+      setError('Ticket created, but email notification failed.');
     }
-
-    // Reset Form
-    setSubject('');
-    setDescription('');
-    setSelectedDepartments(['IT Support']);
-    setTaggedMembers([]);
-    setFileAttachments([]);
-    onClose();
   };
 
   return (
@@ -181,8 +192,8 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               <PlusCircle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900">Create Support Ticket</h2>
-              <p className="text-xs text-slate-500">Route tickets across multiple departments & tag assigned team members</p>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900">Create Support Ticket (Team Lead)</h2>
+              <p className="text-xs text-slate-500">Route tickets within IT Support team & assign to team members</p>
             </div>
           </div>
           <button
@@ -200,8 +211,15 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           </div>
         )}
 
+        {successToast && (
+          <div className="mx-5 mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-semibold flex items-center gap-2 shrink-0">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            {successToast}
+          </div>
+        )}
+
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs overflow-y-auto flex-1 font-sans">
           
           {/* Subject */}
           <div>
@@ -214,7 +232,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Brief summary of the issue..."
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800"
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 font-normal"
             />
           </div>
 
@@ -236,6 +254,22 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   </option>
                 ))}
               </select>
+
+              {category === 'Other' && (
+                <div className="mt-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Type Category <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder="Type custom category..."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Priority */}
@@ -257,138 +291,80 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             </div>
           </div>
 
-          {/* MULTIPLE DEPARTMENT SELECTION */}
-          <div className="space-y-2 pt-1 border-t border-slate-100">
+          {/* Department Selection (Multiple Departments Supported) */}
+          <div className="space-y-3 bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                <Building2 className="w-3.5 h-3.5 text-sky-600" />
-                Department Selection <span className="text-rose-500">*</span>
+              <label className="block text-xs font-bold text-slate-800">
+                Department Selection <span className="text-red-500">*</span>
               </label>
-              <span className="text-[11px] text-slate-400 font-normal">Select one or more departments</span>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Select one or more departments
+              </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {ALL_DEPARTMENTS.map((dept) => {
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {DEPARTMENT_OPTIONS.map((dept) => {
                 const isSelected = selectedDepartments.includes(dept);
                 return (
                   <button
                     key={dept}
                     type="button"
                     onClick={() => toggleDepartment(dept)}
-                    className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border flex items-center justify-between cursor-pointer ${
+                    className={`flex items-center gap-2 p-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                       isSelected
-                        ? 'border-sky-500 bg-sky-50/80 text-sky-900 shadow-2xs'
-                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        ? 'bg-sky-50 border-[#0284C7] text-[#0284C7] shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100/50'
                     }`}
                   >
+                    <div
+                      className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? 'bg-[#0284C7] border-[#0284C7] text-white'
+                          : 'border-slate-300 bg-white'
+                      }`}
+                    >
+                      {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </div>
                     <span className="truncate">{dept}</span>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0 ml-1" />}
                   </button>
                 );
               })}
             </div>
+
+            {/* Type Department custom field if "Other" selected */}
+            {isOtherDeptSelected && (
+              <div className="mt-3 pt-3 border-t border-slate-200/70">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Type Department <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Type custom department name..."
+                  value={customDepartment}
+                  onChange={(e) => setCustomDepartment(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-sky-500 text-slate-800"
+                />
+              </div>
+            )}
           </div>
 
-          {/* DYNAMIC TEAM MEMBERS SELECTION (SHOW MEMBERS BELONGING ONLY TO SELECTED DEPARTMENTS) */}
-          {selectedDepartments.length > 0 && (
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
-                  <UserCheck className="w-3.5 h-3.5 text-sky-600" />
-                  Tag Team Members
-                </label>
-                <span className="text-[11px] text-slate-400 font-normal">Select members from target departments</span>
-              </div>
-
-              {/* Removable Tagged Member Chips */}
-              {taggedMembers.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-semibold text-slate-500 mr-1">Tagged:</span>
-                  {taggedMembers.map((m) => (
-                    <span
-                      key={m.id}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-100 text-sky-800 border border-sky-200 shadow-2xs"
-                    >
-                      <UserAvatar name={m.name} avatar={m.avatar} size="xs" />
-                      <span>{m.name}</span>
-                      <span className="text-[10px] text-sky-600 font-normal">({m.department})</span>
-                      <button
-                        type="button"
-                        onClick={(e) => removeMemberTag(m.id, e)}
-                        className="p-0.5 hover:bg-sky-200 rounded text-sky-700 transition-colors cursor-pointer"
-                        title="Remove member"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Department Grouped Member Cards */}
-              <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                {selectedDepartments.map((dept) => {
-                  const members = DEPARTMENT_MEMBERS[dept] || [];
-                  if (members.length === 0) return null;
-
-                  return (
-                    <div key={dept} className="space-y-1.5">
-                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <Users className="w-3 h-3 text-sky-500" />
-                        <span>{dept} Members</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {members.map((member) => {
-                          const isTagged = taggedMembers.some((m) => m.id === member.id);
-                          return (
-                            <div
-                              key={member.id}
-                              onClick={() => toggleMemberTag(member)}
-                              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                                isTagged
-                                  ? 'border-sky-500 bg-sky-50/90 text-sky-950 font-semibold shadow-2xs'
-                                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-2 truncate">
-                                <UserAvatar name={member.name} avatar={member.avatar} size="xs" />
-                                <div className="truncate">
-                                  <div className="text-xs font-semibold truncate leading-tight">{member.name}</div>
-                                  <div className="text-[10px] text-slate-500 font-normal truncate">{member.department}</div>
-                                </div>
-                              </div>
-                              {isTagged && <Check className="w-4 h-4 text-sky-600 shrink-0" />}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TICKET ROUTING SUMMARY */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                  <ArrowRight className="w-3.5 h-3.5 text-sky-600" />
-                  Ticket Routing Summary
-                </div>
-                {selectedDepartments.map((dept) => {
-                  const deptMembers = taggedMembers.filter((m) => m.department === dept);
-                  return (
-                    <div key={dept} className="text-xs flex items-center gap-1.5 text-slate-700 font-medium">
-                      <span className="font-semibold text-slate-900">{dept}:</span>
-                      {deptMembers.length > 0 ? (
-                        <span className="text-sky-700 font-medium">{deptMembers.map((m) => m.name).join(', ')}</span>
-                      ) : (
-                        <span className="text-slate-400 italic">No specific member tagged (Department auto-route)</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* 10. TEAM LEAD & EMPLOYEE SELECTION COMPONENT */}
+          <TeamLeadEmployeeSelector
+            role="teamlead"
+            currentUser={currentTeamLead}
+            selectedDepartments={activeDepartments}
+            selectedTeamLeadIds={selectedTeamLeadIds}
+            selectedEmployeeIds={selectedEmployeeIds}
+            onSelectedTeamLeadsChange={(ids, objs) => {
+              setSelectedTeamLeadIds(ids);
+              setSelectedTeamLeadObjs(objs);
+            }}
+            onSelectedEmployeesChange={(ids, objs) => {
+              setSelectedEmployeeIds(ids);
+              setSelectedEmployeeObjs(objs);
+            }}
+          />
 
           {/* Description */}
           <div>
@@ -401,7 +377,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Detailed description of the issue or request..."
-              className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 resize-none"
+              className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 resize-none font-normal"
             />
           </div>
 

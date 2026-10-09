@@ -92,7 +92,7 @@ export const TicketManagementPage: React.FC = () => {
   const handleOpenActionModal = (ticket: Ticket, type: 'assign' | 'reassign' | 'status' | 'priority' | 'escalate') => {
     setSelectedTicket(ticket);
     setActionModalType(type);
-    setModalAssignee(ticket.assignedTo || 'Sarah Connor');
+    setModalAssignee(ticket.assignedTo || 'Kotesh Goud');
     setModalStatus(ticket.status);
     setModalPriority(ticket.priority);
     setModalNote('');
@@ -132,7 +132,7 @@ export const TicketManagementPage: React.FC = () => {
     if (!newComment.trim() || !selectedTicket) return;
     const commentObj = {
       id: `c-${Date.now()}`,
-      author: 'Sarah Connor (Admin)',
+      author: 'Sudheshna Bharadwaj (Admin)',
       text: newComment.trim(),
       timestamp: 'Just now'
     };
@@ -298,9 +298,9 @@ export const TicketManagementPage: React.FC = () => {
         >
           <option value="all">Assignee: All</option>
           <option value="unassigned">Unassigned</option>
-          <option value="Sarah Connor">Sarah Connor</option>
-          <option value="Alex Miller">Alex Miller</option>
-          <option value="David Vance">David Vance</option>
+          <option value="Kotesh Goud">Kotesh Goud</option>
+          <option value="aditya">aditya</option>
+          <option value="Hyma">Hyma</option>
         </select>
 
         {/* SLA Filter */}
@@ -498,11 +498,11 @@ export const TicketManagementPage: React.FC = () => {
                   onChange={(e) => setModalAssignee(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-md p-2 text-slate-800 focus:outline-none focus:border-[#0284C7]"
                 >
-                  <option value="Sarah Connor">Sarah Connor (Admin)</option>
-                  <option value="Alex Miller">Alex Miller (IT Lead)</option>
-                  <option value="David Vance">David Vance (HR Lead)</option>
-                  <option value="Rachel Green">Rachel Green (Finance Lead)</option>
-                  <option value="Mark Sloan">Mark Sloan (Ops Lead)</option>
+                  <option value="Sudheshna Bharadwaj">Sudheshna Bharadwaj (Admin)</option>
+                  <option value="Kotesh Goud">Kotesh Goud (IT Lead)</option>
+                  <option value="Lahari Pedada">Lahari Pedada (IT Lead)</option>
+                  <option value="aditya">aditya (Employee)</option>
+                  <option value="Hyma">Hyma (Employee)</option>
                 </select>
               </div>
             )}
@@ -705,7 +705,7 @@ export const TicketManagementPage: React.FC = () => {
                 <div className="space-y-3 mb-4">
                   {(selectedTicket.history || [
                     { id: '1', author: 'System Sentinel', text: 'Ticket submitted and queued for triage.', timestamp: '2 hours ago' },
-                    { id: '2', author: 'Sarah Connor', text: 'Triaged and assigned priority.', timestamp: '1 hour ago' }
+                    { id: '2', author: 'Kotesh Goud', text: 'Triaged and assigned priority.', timestamp: '1 hour ago' }
                   ]).map((item) => (
                     <div key={item.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                       <div className="flex items-center justify-between">

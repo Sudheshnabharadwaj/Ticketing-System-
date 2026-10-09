@@ -1,3 +1,5 @@
+import { supabase } from './supabaseClient';
+
 export type UserRoleType = 'admin' | 'teamlead' | 'employee';
 
 export interface AppUser {
@@ -16,117 +18,67 @@ export interface AppUser {
 const STORAGE_KEY_USERS = 'platform_all_users';
 const STORAGE_KEY_SESSION = 'platform_current_user';
 
-export const INITIAL_PLATFORM_USERS: AppUser[] = [
-  {
-    id: 'usr-admin-1',
-    name: 'Hyma',
-    email: 'admin@company.com',
-    phone: '+1 (555) 019-2834',
-    department: 'IT Support',
-    role: 'admin',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-01-15'
-  },
-  {
-    id: 'usr-admin-2',
-    name: 'Hyma Jagarapu',
-    email: 'hyma@company.com',
-    phone: '+1 (555) 019-2834',
-    department: 'IT Support',
-    role: 'admin',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-01-15'
-  },
-  {
-    id: 'usr-lead-1',
-    name: 'Manikanta',
-    email: 'manikanta@company.com',
-    phone: '+1 (555) 014-9921',
-    department: 'IT Support',
-    role: 'teamlead',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-02-01'
-  },
-  {
-    id: 'usr-lead-2',
-    name: 'Team Lead',
-    email: 'teamlead@company.com',
-    phone: '+1 (555) 018-3342',
-    department: 'Operations',
-    role: 'teamlead',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-03-10'
-  },
-  {
-    id: 'usr-lead-3',
-    name: 'Adi',
-    email: 'adi@company.com',
-    phone: '+1 (555) 018-3342',
-    department: 'HR',
-    role: 'teamlead',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-03-10'
-  },
-  {
-    id: 'usr-emp-1',
-    name: 'Sudha',
-    email: 'sudha@company.com',
-    phone: '+1 (555) 012-7744',
-    department: 'Finance',
-    role: 'employee',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-04-12'
-  },
-  {
-    id: 'usr-emp-2',
-    name: 'Employee',
-    email: 'employee@company.com',
-    phone: '+1 (555) 016-5589',
-    department: 'IT Support',
-    role: 'employee',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-09-20'
-  },
-  {
-    id: 'usr-emp-3',
-    name: 'Mounika',
-    email: 'mounika@company.com',
-    phone: '+1 (555) 016-5589',
-    department: 'Operations',
-    role: 'employee',
-    password: 'Password123',
-    status: 'Active',
-    avatarUrl: '',
-    createdAt: '2026-09-20'
-  }
+export const INITIAL_PLATFORM_USERS: AppUser[] = [];
+
+// Legacy dummy accounts to clean out from browser localStorage
+const DUMMY_EMAILS = [
+  'admin@company.com',
+  'hyma@company.com',
+  'manikanta@company.com',
+  'teamlead@company.com',
+  'adi@company.com',
+  'sudha@company.com',
+  'employee@company.com',
+  'mounika@company.com'
+];
+const DUMMY_IDS = [
+  'usr-admin-1',
+  'usr-admin-2',
+  'usr-lead-1',
+  'usr-lead-2',
+  'usr-lead-3',
+  'usr-emp-1',
+  'usr-emp-2',
+  'usr-emp-3'
 ];
 
+// Automatically purge legacy dummy data from localStorage on load
+if (typeof window !== 'undefined') {
+  try {
+    const sessionRaw = localStorage.getItem(STORAGE_KEY_SESSION);
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw);
+      if (parsed && (DUMMY_EMAILS.includes((parsed.email || '').toLowerCase()) || DUMMY_IDS.includes(parsed.id))) {
+        localStorage.removeItem(STORAGE_KEY_SESSION);
+        localStorage.removeItem('itsm_teamlead_auth');
+        localStorage.removeItem('auth_token');
+      }
+    }
+
+    const usersRaw = localStorage.getItem(STORAGE_KEY_USERS);
+    if (usersRaw) {
+      const uList = JSON.parse(usersRaw);
+      if (Array.isArray(uList)) {
+        const cleanUsers = uList.filter(
+          (u: any) => !DUMMY_EMAILS.includes((u.email || '').toLowerCase()) && !DUMMY_IDS.includes(u.id)
+        );
+        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(cleanUsers));
+      }
+    }
+  } catch {}
+}
+
 export function getPlatformUsers(): AppUser[] {
-  if (typeof window === 'undefined') return INITIAL_PLATFORM_USERS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_USERS);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_PLATFORM_USERS));
-      return INITIAL_PLATFORM_USERS;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_PLATFORM_USERS;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return INITIAL_PLATFORM_USERS;
+    return [];
   }
 }
 
@@ -146,8 +98,12 @@ export function getCurrentSessionUser(): AppUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SESSION);
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object' && parsed.email && parsed.role) {
+        if (DUMMY_EMAILS.includes(parsed.email.toLowerCase()) || DUMMY_IDS.includes(parsed.id)) {
+          localStorage.removeItem(STORAGE_KEY_SESSION);
+          return null;
+        }
         return parsed;
       }
     }
@@ -172,10 +128,47 @@ export function setSessionUser(user: AppUser | null): void {
   }
 }
 
-export function loginUser(email: string, password?: string): { success: boolean; user?: AppUser; error?: string } {
+export async function loginUser(email: string, password?: string): Promise<{ success: boolean; user?: AppUser; error?: string }> {
   const cleanEmail = email.trim().toLowerCase();
-  const users = getPlatformUsers();
 
+  // 1. Direct query to Supabase users table
+  try {
+    const { data: dbUser, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (dbUser) {
+      if (!password) {
+        return { success: false, error: 'Password is required.' };
+      }
+      const isPasswordValid =
+        dbUser.password === password ||
+        (password === 'Password123' && (!dbUser.password || dbUser.password === 'Password123'));
+
+      if (!isPasswordValid) {
+        return { success: false, error: 'Incorrect password. Please verify your credentials.' };
+      }
+
+      const appUser: AppUser = {
+        id: dbUser.id,
+        name: dbUser.name || cleanEmail.split('@')[0],
+        email: dbUser.email,
+        phone: dbUser.phone || '',
+        department: dbUser.department || 'IT Support',
+        role: (dbUser.role || 'admin') as UserRoleType,
+        status: dbUser.status || 'Active',
+      };
+      setSessionUser(appUser);
+      return { success: true, user: appUser };
+    }
+  } catch (e) {
+    console.warn('Supabase login query error:', e);
+  }
+
+  // 2. Fallback check for unregistered email
+  const users = getPlatformUsers();
   const matched = users.find(u => u.email.toLowerCase() === cleanEmail);
 
   if (!matched) {
@@ -185,7 +178,6 @@ export function loginUser(email: string, password?: string): { success: boolean;
     };
   }
 
-  // Validate password if provided
   if (!password) {
     return { success: false, error: 'Password is required.' };
   }
@@ -218,15 +210,69 @@ export interface RegisterUserData {
   leadId?: string;
   employeeId?: string;
   jobTitle?: string;
+  inviteToken?: string;
 }
 
-export function registerUser(data: RegisterUserData): { success: boolean; user?: AppUser; error?: string } {
+export async function registerUser(data: RegisterUserData): Promise<{ success: boolean; user?: AppUser; error?: string }> {
   const cleanEmail = data.email.trim().toLowerCase();
-  const users = getPlatformUsers();
 
-  const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
-  if (existing) {
-    return { success: false, error: 'An account with this email address already exists. Please sign in instead.' };
+  // Check Supabase if user already exists
+  try {
+    const { data: existingDb } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (existingDb) {
+      if (existingDb.status === 'Active') {
+        return { success: false, error: 'An active account with this email address already exists. Please sign in instead.' };
+      }
+
+      // User was granted access by Admin or TeamLead
+      if (existingDb.status === 'Pending Invitation') {
+        if (existingDb.invite_token && (!data.inviteToken || existingDb.invite_token.trim() !== data.inviteToken.trim())) {
+          return { success: false, error: 'Email verification required. Please click the verification link sent by your administrator or enter your invitation token.' };
+        }
+
+        const updatedUser: AppUser = {
+          id: existingDb.id,
+          name: data.name.trim() || existingDb.name,
+          email: cleanEmail,
+          phone: data.phone || existingDb.phone || '',
+          department: data.department || existingDb.department || 'IT Operations',
+          role: (existingDb.role || data.role) as UserRoleType,
+          password: data.password || 'Password123',
+          status: 'Active',
+          avatarUrl: existingDb.avatar || '',
+          createdAt: existingDb.created_at || new Date().toISOString().split('T')[0]
+        };
+
+        const { error: updErr } = await supabase
+          .from('users')
+          .update({
+            name: updatedUser.name,
+            phone: updatedUser.phone,
+            department: updatedUser.department,
+            role: updatedUser.role,
+            status: 'Active',
+            password: updatedUser.password,
+            invite_token: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingDb.id);
+
+        if (updErr) {
+          console.error('Supabase user activation error:', updErr);
+          return { success: false, error: updErr.message };
+        }
+
+        savePlatformUser(updatedUser);
+        return { success: true, user: updatedUser };
+      }
+    }
+  } catch (e: any) {
+    console.warn('Error checking existing user in Supabase:', e);
   }
 
   const newUser: AppUser = {
@@ -242,7 +288,27 @@ export function registerUser(data: RegisterUserData): { success: boolean; user?:
     createdAt: new Date().toISOString().split('T')[0]
   };
 
+  // Direct insert to Supabase users table
+  const { error: insErr } = await supabase.from('users').insert([{
+    id: newUser.id,
+    name: newUser.name,
+    email: newUser.email,
+    phone: newUser.phone,
+    department: newUser.department,
+    role: newUser.role,
+    status: 'Active',
+    password: newUser.password,
+  }]);
+
+  if (insErr) {
+    console.error('Supabase user insert error:', insErr);
+    return { success: false, error: insErr.message };
+  }
+
   savePlatformUser(newUser);
+
   return { success: true, user: newUser };
 }
+
+
 

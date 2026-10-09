@@ -11,8 +11,10 @@ export interface TeamLeadOption {
 
 export const TEAM_LEADS_REGISTRY: Record<string, TeamLeadOption[]> = {
   'IT Support': [
-    { id: 'tl-it-1', name: 'Sarah Connor', role: 'IT Support Team Lead', department: 'IT Support', email: 'sarah.connor@company.com' },
-    { id: 'tl-it-2', name: 'Alex Rivera', role: 'IT Infrastructure Lead', department: 'IT Support', email: 'alex.rivera@company.com' },
+    { id: 'OKL001', name: 'Kotesh Goud', role: 'IT Support Team Lead', department: 'IT Support', email: 'kotesh1720@gmail.com' },
+    { id: 'OKL002', name: 'Kotesh Goud', role: 'IT Infrastructure Lead', department: 'IT Support', email: 'k.ananthu@oklut.com' },
+    { id: 'OKL003', name: 'Lahari Pedada', role: 'IT Operations Team Lead', department: 'IT Support', email: 'sudheshnasatyanarayana@gmail.com' },
+    { id: 'usr-1791223003549', name: 'Sumana Bharadwaj', role: 'IT Support Lead', department: 'IT Support', email: 'sumana@gmail.com' },
   ],
   'Finance': [
     { id: 'tl-fin-1', name: 'David Miller', role: 'Finance Team Lead', department: 'Finance', email: 'david.miller@company.com' },

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, ShieldCheck, Building2, Camera, Upload, Trash2, Edit3, Save, X, Mail, Phone } from 'lucide-react';
+import { User, ShieldCheck, Building2, Camera, Upload, Edit3, Save, X, Mail, Phone, Lock, CheckCircle2, AlertCircle, Key } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
+import { supabase } from '../services/supabaseClient';
+import { getCurrentSessionUser, setSessionUser } from '../services/unifiedAuth';
 
 export interface AdminProfileData {
   name: string;
@@ -13,25 +15,42 @@ export interface AdminProfileData {
   avatarUrl?: string;
 }
 
-const DEFAULT_ADMIN_PROFILE: AdminProfileData = {
-  name: 'Hyma',
-  email: 'hyma.admin@company.com',
-  role: 'System Administrator',
-  department: 'IT Support',
-  phone: '+1 (555) 234-5678',
-  avatarUrl: localStorage.getItem('admin_profile_avatar') || '',
-};
-
 export function getAdminProfile(): AdminProfileData {
   const cached = localStorage.getItem('admin_profile_data');
   if (cached) {
     try {
-      return JSON.parse(cached);
-    } catch {
-      return DEFAULT_ADMIN_PROFILE;
-    }
+      const parsed = JSON.parse(cached);
+      if (parsed?.name && !parsed.name.toLowerCase().includes('hyma') && !parsed.email?.toLowerCase().includes('hyma')) {
+        return parsed;
+      }
+    } catch {}
   }
-  return DEFAULT_ADMIN_PROFILE;
+
+  const session = getCurrentSessionUser();
+  if (session && session.name) {
+    const roleTitle = session.role === 'admin'
+      ? 'System Administrator'
+      : session.role === 'teamlead'
+      ? 'Team Lead'
+      : 'Employee';
+    return {
+      name: session.name,
+      email: session.email,
+      role: roleTitle,
+      department: session.department || 'IT Operations',
+      phone: session.phone || '+1 (555) 019-2834',
+      avatarUrl: session.avatarUrl || localStorage.getItem('admin_profile_avatar') || '',
+    };
+  }
+
+  return {
+    name: 'Sudheshna Bharadwaj',
+    email: 'sudheshna@gmail.com',
+    role: 'System Administrator',
+    department: 'IT Operations',
+    phone: '+1 (555) 019-2834',
+    avatarUrl: localStorage.getItem('admin_profile_avatar') || '',
+  };
 }
 
 export function saveAdminProfile(data: AdminProfileData) {
@@ -59,14 +78,61 @@ export const ProfilePage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const p = getAdminProfile();
-    setProfile(p);
-    setEditName(p.name);
-    setEditEmail(p.email);
-    setEditRole(p.role);
-    setEditDepartment(p.department);
-    setEditPhone(p.phone);
-    setEditAvatarUrl(p.avatarUrl || '');
+    // Purge legacy hyma data if present
+    try {
+      const raw = localStorage.getItem('admin_profile_data');
+      if (raw && (raw.toLowerCase().includes('hyma') || raw.toLowerCase().includes('hyma.admin@company.com'))) {
+        localStorage.removeItem('admin_profile_data');
+        localStorage.removeItem('admin_profile_avatar');
+      }
+    } catch {}
+
+    const initial = getAdminProfile();
+    setProfile(initial);
+    setEditName(initial.name);
+    setEditEmail(initial.email);
+    setEditRole(initial.role);
+    setEditDepartment(initial.department);
+    setEditPhone(initial.phone);
+    setEditAvatarUrl(initial.avatarUrl || '');
+
+    // Fetch live user from Supabase to keep in sync
+    const fetchLiveUser = async () => {
+      const session = getCurrentSessionUser();
+      const targetEmail = session?.email || initial.email;
+      if (!targetEmail) return;
+
+      try {
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', targetEmail.trim().toLowerCase())
+          .maybeSingle();
+
+        if (dbUser) {
+          const liveProfile: AdminProfileData = {
+            name: dbUser.name || initial.name,
+            email: dbUser.email || initial.email,
+            role: dbUser.designation || (dbUser.role === 'admin' ? 'System Administrator' : dbUser.role === 'teamlead' ? 'Team Lead' : 'Employee'),
+            department: dbUser.department || initial.department,
+            phone: dbUser.phone || initial.phone,
+            avatarUrl: dbUser.avatar || initial.avatarUrl || '',
+          };
+          setProfile(liveProfile);
+          setEditName(liveProfile.name);
+          setEditEmail(liveProfile.email);
+          setEditRole(liveProfile.role);
+          setEditDepartment(liveProfile.department);
+          setEditPhone(liveProfile.phone);
+          setEditAvatarUrl(liveProfile.avatarUrl || '');
+          saveAdminProfile(liveProfile);
+        }
+      } catch (err) {
+        console.warn('Supabase profile fetch warning:', err);
+      }
+    };
+
+    fetchLiveUser();
   }, []);
 
   const startEditing = () => {
@@ -83,7 +149,14 @@ export const ProfilePage: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  // Password Change State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwdMsg, setPwdMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isChangingPwd, setIsChangingPwd] = useState(false);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated: AdminProfileData = {
       name: editName.trim() || profile.name,
@@ -96,6 +169,72 @@ export const ProfilePage: React.FC = () => {
     saveAdminProfile(updated);
     setProfile(updated);
     setIsEditing(false);
+
+    // Update current session user in localStorage
+    const session = getCurrentSessionUser();
+    if (session) {
+      setSessionUser({
+        ...session,
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        department: updated.department,
+        avatarUrl: updated.avatarUrl,
+      });
+    }
+
+    // Sync profile changes to Supabase public.users
+    try {
+      await supabase
+        .from('users')
+        .update({
+          name: updated.name,
+          email: updated.email,
+          phone: updated.phone,
+          department: updated.department,
+          avatar: updated.avatarUrl || null,
+          designation: updated.role,
+          updated_at: new Date().toISOString()
+        })
+        .or(`email.eq.${profile.email},email.eq.${updated.email}`);
+    } catch (err) {
+      console.warn('Supabase profile sync warning:', err);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdMsg(null);
+
+    if (!newPassword || newPassword.length < 8) {
+      setPwdMsg({ type: 'error', text: 'New password must be at least 8 characters long.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdMsg({ type: 'error', text: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    setIsChangingPwd(true);
+    try {
+      // 1. Update in Supabase Auth
+      await supabase.auth.updateUser({ password: newPassword });
+
+      // 2. Update in PostgreSQL public.users
+      await supabase
+        .from('users')
+        .update({ password: newPassword, updated_at: new Date().toISOString() })
+        .eq('email', profile.email);
+
+      setPwdMsg({ type: 'success', text: 'Password successfully updated in your account and Supabase Auth.' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      setPwdMsg({ type: 'error', text: err?.message || 'Failed to update password.' });
+    } finally {
+      setIsChangingPwd(false);
+    }
   };
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -345,6 +484,75 @@ export const ProfilePage: React.FC = () => {
               </Button>
             </div>
           )}
+        </form>
+      </div>
+
+      {/* Security & Password Change Section */}
+      <div className="max-w-3xl bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-8 shadow-2xs space-y-5">
+        <div className="border-b border-slate-100 pb-4">
+          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-[#0284C7]" /> Security & Password Management
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Update your account password securely. Changes will take effect immediately across all sessions and Supabase Auth.
+          </p>
+        </div>
+
+        {pwdMsg && (
+          <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-medium ${
+            pwdMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            {pwdMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            )}
+            {pwdMsg.text}
+          </div>
+        )}
+
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-slate-400" /> New Password <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="password"
+                placeholder="At least 8 characters"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400" /> Confirm New Password <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="password"
+                placeholder="Re-enter new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-[11px] text-slate-400">
+              Must contain minimum 8 characters with letters and numbers.
+            </span>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={isChangingPwd}
+              className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold text-xs py-2 px-4 shadow-2xs"
+            >
+              {isChangingPwd ? 'Updating Password...' : 'Update Password'}
+            </Button>
+          </div>
         </form>
       </div>
     </div>

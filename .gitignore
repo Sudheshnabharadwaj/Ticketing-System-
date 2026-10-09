@@ -41,9 +41,23 @@ docker-compose.override.yml
 Thumbs.db
 
 # ─── Secrets ──────────────────────────────────────────────
+**/.env
+**/.env.*
+!**/.env.example
 *.pem
 *.key
 .env.local
 .env.*.local
 secrets/
 repomix-output.xml
+
+# ─── Diagnostic & Scratch Scripts ─────────────────────────
+sync_*.cjs
+sync_*.py
+test_*.py
+test_*.js
+test_*.cjs
+verify_*.cjs
+list_users.py
+scripts/
+ticketing-system-frontend/platform

@@ -82,12 +82,14 @@ export const TeamLeadProfile: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div>
-        <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Team Lead Profile Settings</h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Manage your contact information, profile picture, department assignments, and ITSM preferences.
-        </p>
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">Team Lead Profile Settings</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Manage your contact information, profile picture, department assignments, and ITSM preferences.
+          </p>
+        </div>
       </div>
 
       {/* Main Profile Card */}

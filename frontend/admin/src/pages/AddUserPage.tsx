@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { PasswordStrengthValidator, validatePassword } from '../components/ui/PasswordStrengthValidator';
 import type { UserRole, UserDepartment } from '../types';
 import { AdminApiService } from '../services/api';
+import { OrganizationService } from '../services/organizationService';
 import {
   UserPlus,
   Mail,
@@ -20,22 +21,15 @@ import {
   UserCheck,
   ArrowLeft,
   Info,
-  Building2
+  Building2,
+  BadgeCheck
 } from 'lucide-react';
-
-const mockTeamLeadsByDept: Record<string, string[]> = {
-  'IT Support': ['Manikanta (IT Lead)', 'Hyma (IT Lead)'],
-  'HR': ['Adi (HR Lead)', 'Sudha (HR Lead)'],
-  'Finance': ['Kotesh (Finance Lead)'],
-  'Operations': ['Mounika (Ops Lead)'],
-  'Facilities': ['Uday (Facilities Lead)'],
-  'Others': ['General Department Lead'],
-};
 
 export const AddUserPage: React.FC = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
+    employeeId: '',
     email: '',
     phone: '',
     department: '' as string,
@@ -53,12 +47,34 @@ export const AddUserPage: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [shareableLink, setShareableLink] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCreds, setCopiedCreds] = useState(false);
+  const [createdUserSummary, setCreatedUserSummary] = useState<{
+    employeeId: string;
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    department: string;
+    loginUrl: string;
+    inviteToken?: string;
+    shareableLink?: string;
+    emailNotification?: any;
+  } | null>(null);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
       newErrors.name = 'Full Name is required';
+    }
+
+    if (!formData.employeeId.trim()) {
+      newErrors.employeeId = 'Employee ID is required';
+    } else {
+      const cleanEmpId = formData.employeeId.trim().toUpperCase();
+      if (OrganizationService.isEmployeeIdTaken(cleanEmpId)) {
+        newErrors.employeeId = 'Employee ID already exists.';
+      }
     }
 
     if (!formData.email.trim()) {
@@ -110,24 +126,74 @@ export const AddUserPage: React.FC = () => {
 
     setIsSubmitting(true);
     const finalDepartment = formData.department === 'Others' ? formData.customDepartment : formData.department;
+    const cleanEmpId = formData.employeeId.trim().toUpperCase();
 
     try {
-      await AdminApiService.addUser({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
+      const addedUser = await AdminApiService.addUser({
+        name: formData.name.trim(),
+        employeeId: cleanEmpId,
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
         department: finalDepartment as UserDepartment,
         role: formData.role as UserRole,
+        teamLead: formData.role === 'Employee' ? formData.teamLead : undefined,
         password: formData.password,
         userDetails: formData.userDetails,
         sendEmailInvite: formData.sendEmailInvite
       });
 
-      const inviteToken = Math.random().toString(36).substring(2, 10);
-      setShareableLink(`https://ticketing.company.com/invite?token=${inviteToken}&email=${encodeURIComponent(formData.email)}`);
+      // Synchronize with OrganizationService layer
+      if (formData.role === 'Team Lead') {
+        OrganizationService.addTeamLead({
+          id: cleanEmpId,
+          employeeId: cleanEmpId,
+          name: formData.name.trim(),
+          role: `${finalDepartment} Team Lead`,
+          departmentId: 'D-NEW',
+          departmentName: finalDepartment,
+          email: formData.email.trim()
+        });
+      } else if (formData.role === 'Employee') {
+        OrganizationService.addEmployee({
+          id: cleanEmpId,
+          employeeId: cleanEmpId,
+          name: formData.name.trim(),
+          role: 'Team Member',
+          teamLeadId: formData.teamLead,
+          departmentId: 'D-NEW',
+          departmentName: finalDepartment,
+          email: formData.email.trim()
+        });
+      }
+
+      const tokenUsed = (addedUser as any).inviteToken || '';
+      const mappedRole = formData.role === 'Team Lead' ? 'teamlead' : formData.role === 'Admin' ? 'admin' : 'employee';
+      const targetLoginUrl = formData.role === 'Team Lead' ? 'http://localhost:4174/login' : 'http://localhost:4173/signin';
+      const realSignupUrl = formData.role === 'Team Lead'
+        ? `http://localhost:4174/login?email=${encodeURIComponent(formData.email.trim())}`
+        : `http://localhost:4173/signin?email=${encodeURIComponent(formData.email.trim())}`;
+
+      setShareableLink(realSignupUrl);
+      
+      setCreatedUserSummary({
+        employeeId: cleanEmpId,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password || 'Password123',
+        role: formData.role,
+        department: finalDepartment,
+        loginUrl: targetLoginUrl,
+        inviteToken: tokenUsed,
+        shareableLink: realSignupUrl,
+        emailNotification: (addedUser as any).emailNotification
+      });
+      
       setIsSuccess(true);
-    } catch (err) {
-      console.error('Failed to create user:', err);
+    } catch (err: any) {
+      setErrors((prev) => ({
+        ...prev,
+        employeeId: err?.message || 'Employee ID already exists.'
+      }));
     } finally {
       setIsSubmitting(false);
     }
@@ -142,6 +208,7 @@ export const AddUserPage: React.FC = () => {
   const resetForm = () => {
     setFormData({
       name: '',
+      employeeId: '',
       email: '',
       phone: '',
       department: '',
@@ -157,8 +224,11 @@ export const AddUserPage: React.FC = () => {
     setIsSuccess(false);
   };
 
-  const currentDepartmentKey = formData.department || 'Others';
-  const availableTeamLeads = mockTeamLeadsByDept[currentDepartmentKey] || ['Department Team Lead'];
+  const currentDepartmentName = formData.department === 'Others'
+    ? (formData.customDepartment.trim() || 'Other')
+    : (formData.department || 'IT Support');
+
+  const availableTeamLeads = OrganizationService.getTeamLeadsByDepartment(currentDepartmentName);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -195,11 +265,93 @@ export const AddUserPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Team Lead / Employee Credentials & Verification Details */}
+            {createdUserSummary && (
+              <div className="p-4 bg-white border border-slate-200 rounded-xl text-left space-y-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-[#0284C7]" /> Login Credentials & Verification
+                  </span>
+                  <Badge variant="primary">
+                    {createdUserSummary.role}
+                  </Badge>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 space-y-2 text-xs font-mono">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-sans font-medium">Employee ID:</span>
+                    <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">{createdUserSummary.employeeId}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-sans font-medium">Login Email:</span>
+                    <span className="font-semibold text-slate-900">{createdUserSummary.email}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-sans font-medium">Temporary Password:</span>
+                    <span className="font-bold text-[#0284C7] bg-white px-2 py-0.5 rounded border border-slate-200">{createdUserSummary.password}</span>
+                  </div>
+                  {createdUserSummary.inviteToken && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-sans font-medium">Verification Token:</span>
+                      <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{createdUserSummary.inviteToken}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-sans font-medium">Login Portal:</span>
+                    <a href={createdUserSummary.loginUrl} target="_blank" rel="noreferrer" className="text-[#0284C7] hover:underline font-sans text-[11px]">
+                      {createdUserSummary.loginUrl}
+                    </a>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 justify-center text-xs font-semibold border-slate-300"
+                    onClick={() => {
+                      const text = `Ticketing Platform Account Details:\nEmployee ID: ${createdUserSummary.employeeId}\nEmail: ${createdUserSummary.email}\nPassword: ${createdUserSummary.password}\nVerification Token: ${createdUserSummary.inviteToken || 'N/A'}\nSignup Link: ${createdUserSummary.shareableLink || ''}\nLogin Portal: ${createdUserSummary.loginUrl}`;
+                      navigator.clipboard.writeText(text);
+                      setCopiedCreds(true);
+                      setTimeout(() => setCopiedCreds(false), 2000);
+                    }}
+                    icon={copiedCreds ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  >
+                    {copiedCreds ? 'Copied Details!' : 'Copy Credentials & Token'}
+                  </Button>
+                  {createdUserSummary.shareableLink && (
+                    <a
+                      href={createdUserSummary.shareableLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200"
+                    >
+                      Open Link ↗
+                    </a>
+                  )}
+                </div>
+
+                {createdUserSummary.emailNotification?.smtp_sent ? (
+                  <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md p-2 flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    Live invitation email delivered to <strong>{createdUserSummary.email}</strong> via SMTP.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2 flex items-start gap-1.5 leading-relaxed">
+                    <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      Account invitation and token prepared. For live inbox delivery to Gmail, add a 16-character Google App Password in Admin Settings. Share the onboarding link below with the user directly.
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Linking / Invitation Flow Section */}
             <div className="p-4 bg-white border border-slate-200 rounded-xl text-left space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Share2 className="w-4 h-4 text-[#0284C7]" /> Share Invitation Link
+                  <Share2 className="w-4 h-4 text-[#0284C7]" /> Share Onboarding Link
                 </span>
                 <Badge variant={formData.sendEmailInvite ? 'success' : 'neutral'}>
                   {formData.sendEmailInvite ? 'Email Sent' : 'Link Ready'}
@@ -217,12 +369,6 @@ export const AddUserPage: React.FC = () => {
                   {copiedLink ? 'Copied' : 'Copy'}
                 </Button>
               </div>
-
-              {formData.sendEmailInvite && (
-                <p className="text-[11px] text-slate-500 flex items-center gap-1.5 pt-1">
-                  <Send className="w-3.5 h-3.5 text-emerald-600" /> An invitation email was automatically dispatched to <strong>{formData.email}</strong>.
-                </p>
-              )}
             </div>
 
             <div className="flex justify-center gap-3 pt-2">
@@ -247,6 +393,20 @@ export const AddUserPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 error={errors.name}
                 icon={<UserPlus className="w-4 h-4" />}
+              />
+
+              {/* Employee ID */}
+              <Input
+                label="Employee ID *"
+                placeholder="e.g. TL001 or EMP001"
+                value={formData.employeeId}
+                onChange={(e) => {
+                  setFormData({ ...formData, employeeId: e.target.value.toUpperCase() });
+                  if (errors.employeeId) setErrors({ ...errors, employeeId: undefined });
+                }}
+                error={errors.employeeId}
+                icon={<BadgeCheck className="w-4 h-4" />}
+                helperText="Unique ID (e.g. TL001 for Team Lead, EMP001 for Employee)"
               />
 
               {/* Email */}
@@ -342,7 +502,10 @@ export const AddUserPage: React.FC = () => {
                   error={errors.teamLead}
                   options={[
                     { value: '', label: 'Select Team Lead', disabled: true, hidden: true },
-                    ...availableTeamLeads.map(tl => ({ value: tl, label: tl }))
+                    ...availableTeamLeads.map((tl) => ({
+                      value: `${tl.name} (${tl.employeeId})`,
+                      label: `${tl.name} — ${tl.employeeId} (${tl.role})`,
+                    })),
                   ]}
                 />
               )}

@@ -11,11 +11,11 @@ import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { formatDate, getSLABadgeStyle, formatSLAShort } from '../../utils/helpers';
 import { Ticket } from '../../types/ticket';
-import { UserCheck, Clock, Eye, CheckCircle2 } from 'lucide-react';
+import { Clock, Eye, CheckCircle2 } from 'lucide-react';
 
 export const AssignedTickets: React.FC = () => {
   const { tickets } = useTickets();
-  const { users } = useAuth();
+  const { users, user } = useAuth();
   const navigate = useNavigate();
   const outletContext = useOutletContext<{ globalSearch?: string }>();
 
@@ -39,11 +39,15 @@ export const AssignedTickets: React.FC = () => {
   };
 
   // Filter ONLY tickets that are personally assigned to Team Lead
-  const assignedTickets = tickets.filter(
-    (t) => t.handledBy === 'teamlead' || t.assignedToType === 'teamlead' || t.assignedAgent === 'Alex Morgan'
+  const assignedTickets = (tickets || []).filter(
+    (t) =>
+      (t.assignedAgent && user?.name && t.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
+      (t.assignedAgentId && user?.id && t.assignedAgentId === user.id) ||
+      t.handledBy === 'teamlead' ||
+      t.assignedToType === 'teamlead'
   );
 
-  const agentsList = users.map((u) => u.name);
+  const agentsList = (users || []).map((u) => u.name);
 
   // Filter logic
   const filteredTickets = assignedTickets.filter((ticket) => {
@@ -56,8 +60,8 @@ export const AssignedTickets: React.FC = () => {
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchId = ticket.id.toLowerCase().includes(q);
-      const matchSubject = ticket.subject.toLowerCase().includes(q);
+      const matchId = (ticket.id || '').toLowerCase().includes(q);
+      const matchSubject = (ticket.subject || '').toLowerCase().includes(q);
       const matchDept = (ticket.department || '').toLowerCase().includes(q);
       if (!matchId && !matchSubject && !matchDept) return false;
     }
@@ -76,7 +80,8 @@ export const AssignedTickets: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const tabs = ['All', 'Open', 'Pending', 'Resolved', 'Closed', 'Escalated'];
+  const tabs = ['All', 'Open', 'In Progress', 'Pending', 'Resolved', 'Closed'];
+
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage);
   const paginatedTickets = filteredTickets.slice(
     (currentPage - 1) * itemsPerPage,
@@ -84,7 +89,7 @@ export const AssignedTickets: React.FC = () => {
   );
 
   return (
-    <div className="space-y-5 w-full max-w-full min-w-0">
+    <div className="space-y-6 w-full max-w-full min-w-0 font-sans">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200 shadow-xs">
@@ -93,16 +98,20 @@ export const AssignedTickets: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div>
-        <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Assigned Tickets</h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Tickets personally owned and assigned to you for Team Lead resolution.
-        </p>
+      {/* Header Banner - Matching Admin Dashboard Style */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">
+            Assigned Tickets
+          </h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Tickets personally owned and assigned to you for Team Lead resolution.
+          </p>
+        </div>
       </div>
 
-      {/* Status Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto w-full max-w-full">
+      {/* Status Tabs Card */}
+      <div className="bg-white p-2 border border-slate-200 rounded-xl shadow-xs overflow-x-auto flex items-center gap-1.5">
         {tabs.map((tab) => {
           const count =
             tab === 'All'
@@ -116,16 +125,16 @@ export const AssignedTickets: React.FC = () => {
                 setActiveTab(tab);
                 setCurrentPage(1);
               }}
-              className={`px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-all flex items-center space-x-2 cursor-pointer ${
+              className={`px-3.5 py-2 text-xs font-semibold whitespace-nowrap rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === tab
-                  ? 'border-sky-600 text-sky-600 font-bold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'bg-[#0284C7] text-white shadow-2xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               }`}
             >
               <span>{tab} Tickets</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] ${
-                  activeTab === tab ? 'bg-sky-100 text-sky-700 font-bold' : 'bg-slate-100 text-slate-600'
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  activeTab === tab ? 'bg-sky-950/30 text-white' : 'bg-slate-100 text-slate-600'
                 }`}
               >
                 {count}
@@ -162,35 +171,38 @@ export const AssignedTickets: React.FC = () => {
         />
       </div>
 
-      {/* Table */}
+      {/* Tickets List / Empty State */}
       {filteredTickets.length === 0 ? (
         <EmptyState
           title="No assigned tickets found"
-          description="There are no tickets assigned to you personally matching your criteria."
-          icon={<UserCheck className="w-8 h-8 text-sky-600" />}
+          description={
+            assignedTickets.length === 0
+              ? 'You do not have any tickets directly assigned to you yet.'
+              : 'Try adjusting your search criteria or resetting filters.'
+          }
           action={
             <button
               onClick={handleResetFilters}
-              className="px-4 py-2 bg-sky-600 text-white font-semibold text-xs rounded-lg hover:bg-sky-700 transition-colors cursor-pointer"
+              className="px-4 py-2 bg-[#0284C7] text-white font-medium text-xs rounded-lg hover:bg-[#0369a1] transition-colors cursor-pointer"
             >
               Reset Filters
             </button>
           }
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden w-full max-w-full min-w-0">
-            <div className="w-full max-w-full overflow-x-auto lg:overflow-x-visible">
-              <table className="w-full text-left border-collapse table-fixed max-w-full">
+            <div className="w-full max-w-full overflow-x-auto">
+              <table className="w-full min-w-[850px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="py-2 px-3 w-[10%]">Ticket ID</th>
-                    <th className="py-2 px-3 w-[29%]">Subject</th>
-                    <th className="py-2 px-3 w-[12%]">Department</th>
-                    <th className="py-2 px-3 w-[10%]">Priority</th>
-                    <th className="py-2 px-3 w-[13%]">Status</th>
-                    <th className="py-2 px-3 w-[11%]">SLA</th>
-                    <th className="py-2 px-3 w-[15%] text-right">Actions</th>
+                    <th className="py-3 px-4 w-32 whitespace-nowrap">Ticket ID</th>
+                    <th className="py-3 px-4 min-w-[200px]">Subject</th>
+                    <th className="py-3 px-4 w-36 whitespace-nowrap">Department</th>
+                    <th className="py-3 px-4 w-28 whitespace-nowrap">Priority</th>
+                    <th className="py-3 px-4 w-28 whitespace-nowrap">Status</th>
+                    <th className="py-3 px-4 w-28 whitespace-nowrap">SLA</th>
+                    <th className="py-3 px-4 w-36 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
 
@@ -205,32 +217,35 @@ export const AssignedTickets: React.FC = () => {
                         className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
                       >
                         {/* Ticket ID */}
-                        <td className="py-2 px-3 font-mono font-semibold text-xs text-sky-600 group-hover:underline truncate min-w-0">
+                        <td className="py-3 px-4 font-mono font-semibold text-xs text-[#0284C7] group-hover:underline whitespace-nowrap">
                           {ticket.id}
                         </td>
 
                         {/* Subject */}
-                        <td className="py-2 px-3 font-medium text-slate-900 truncate text-xs min-w-0" title={ticket.subject}>
-                          {ticket.subject}
+                        <td className="py-3 px-4 text-xs" title={ticket.subject}>
+                          <div className="font-medium text-slate-900 line-clamp-1">{ticket.subject}</div>
+                          {ticket.category && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">{ticket.category}</div>
+                          )}
                         </td>
 
                         {/* Department */}
-                        <td className="py-2 px-3 text-xs font-medium text-slate-700 truncate min-w-0">
+                        <td className="py-3 px-4 text-xs font-medium text-slate-700 whitespace-nowrap">
                           {ticket.department || 'IT Support'}
                         </td>
 
                         {/* Priority */}
-                        <td className="py-2 px-3 truncate min-w-0 whitespace-nowrap">
+                        <td className="py-3 px-4 whitespace-nowrap">
                           <PriorityBadge priority={ticket.priority} size="sm" />
                         </td>
 
                         {/* Status */}
-                        <td className="py-2 px-3 truncate min-w-0 whitespace-nowrap">
+                        <td className="py-3 px-4 whitespace-nowrap">
                           <StatusBadge status={ticket.status} size="sm" />
                         </td>
 
-                        {/* SLA - Fully readable without truncation */}
-                        <td className="py-2 px-3 whitespace-nowrap overflow-visible min-w-0 align-middle">
+                        {/* SLA */}
+                        <td className="py-3 px-4 whitespace-nowrap align-middle">
                           <span
                             className={`inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap ${getSLABadgeStyle(
                               ticket.slaStatus
@@ -242,14 +257,14 @@ export const AssignedTickets: React.FC = () => {
                         </td>
 
                         {/* Actions */}
-                        <td className="py-2 px-3 text-right whitespace-nowrap min-w-0" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => navigate(`/teamlead/assigned-tickets/${ticket.id}`)}
-                              className="px-2.5 py-1 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-700 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs whitespace-nowrap"
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0284C7] hover:bg-[#0369a1] rounded-lg transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs whitespace-nowrap"
                             >
-                              <Eye className="w-3 h-3" />
+                              <Eye className="w-3.5 h-3.5" />
                               <span>Work on Ticket</span>
                             </button>
                           </div>
@@ -267,18 +282,18 @@ export const AssignedTickets: React.FC = () => {
             totalPages={totalPages}
             totalItems={filteredTickets.length}
             itemsPerPage={itemsPerPage}
-            onPageChange={(p) => setCurrentPage(p)}
+            onPageChange={(page) => setCurrentPage(page)}
           />
         </div>
       )}
 
-      {/* Assign / Reassign Modal */}
+      {/* Reassign Modal */}
       {assignModalTicket && (
         <AssignTicketModal
           ticket={assignModalTicket}
           isOpen={!!assignModalTicket}
           onClose={() => setAssignModalTicket(null)}
-          onSuccessToast={showToast}
+          onSuccessToast={(msg) => showToast(msg)}
         />
       )}
     </div>

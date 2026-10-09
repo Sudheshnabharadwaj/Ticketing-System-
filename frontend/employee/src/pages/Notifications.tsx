@@ -18,8 +18,9 @@ export const Notifications: React.FC = () => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<EmployeeNotificationItem[]>([]);
 
-  const loadNotifs = () => {
-    setNotifications(EmployeeService.getNotifications());
+  const loadNotifs = async () => {
+    const list = await EmployeeService.fetchNotifications();
+    setNotifications(list);
   };
 
   useEffect(() => {

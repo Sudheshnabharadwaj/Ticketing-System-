@@ -112,18 +112,18 @@ export const Employees: React.FC = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full max-w-full">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Employee Directory</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">Employee Directory</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
             Manage corporate employee accounts, system roles, departments, and status.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0"
+          className="px-3.5 py-1.5 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0"
         >
           <UserPlus className="w-3.5 h-3.5" />
           + Add User
@@ -181,34 +181,34 @@ export const Employees: React.FC = () => {
         />
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden w-full max-w-full min-w-0">
-          <div className="w-full max-w-full overflow-x-auto lg:overflow-x-visible">
-            <table className="w-full text-left border-collapse table-fixed max-w-full">
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  <th className="py-2 px-3 w-[10%]">Employee ID</th>
-                  <th className="py-2 px-3 w-[20%]">Name</th>
-                  <th className="py-2 px-3 w-[24%]">Email</th>
-                  <th className="py-2 px-3 w-[14%]">Department</th>
-                  <th className="py-2 px-3 w-[11%]">Role</th>
-                  <th className="py-2 px-3 w-[9%]">Status</th>
-                  <th className="py-2 px-3 w-[12%] text-right">Actions</th>
+                  <th className="py-3 px-4 w-32 whitespace-nowrap">Employee ID</th>
+                  <th className="py-3 px-4 min-w-[160px]">Name</th>
+                  <th className="py-3 px-4 min-w-[200px]">Email</th>
+                  <th className="py-3 px-4 w-36 whitespace-nowrap">Department</th>
+                  <th className="py-3 px-4 w-28 whitespace-nowrap">Role</th>
+                  <th className="py-3 px-4 w-28 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4 w-32 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                 {filteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-2 px-3 font-mono font-semibold text-xs text-sky-600 truncate min-w-0">{u.id}</td>
+                    <td className="py-3 px-4 font-mono font-semibold text-xs text-[#0284C7] whitespace-nowrap">{u.id}</td>
 
-                    <td className="py-2 px-3 text-xs truncate min-w-0">
-                      <div className="flex items-center space-x-2 truncate">
+                    <td className="py-3 px-4 text-xs">
+                      <div className="flex items-center space-x-2.5">
                         <UserAvatar name={u.name} avatar={u.avatar} size="xs" />
                         <span className="font-semibold text-slate-900 truncate" title={u.name}>{u.name}</span>
                       </div>
                     </td>
 
-                    <td className="py-2 px-3 text-xs text-slate-600 truncate min-w-0" title={u.email}>{u.email}</td>
+                    <td className="py-3 px-4 text-xs text-slate-600 truncate" title={u.email}>{u.email}</td>
 
-                    <td className="py-2 px-3 text-xs text-slate-700 truncate min-w-0">{u.department || 'N/A'}</td>
+                    <td className="py-3 px-4 text-xs text-slate-700 whitespace-nowrap">{u.department || 'N/A'}</td>
 
                     <td className="py-2 px-3 truncate min-w-0 whitespace-nowrap">
                       <span
@@ -222,7 +222,19 @@ export const Employees: React.FC = () => {
                       </span>
                     </td>
 
-                    <td className="py-2 px-3 truncate min-w-0 whitespace-nowrap">
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                          u.role === 'teamlead'
+                            ? 'bg-sky-100 text-sky-700 border border-sky-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {u.role === 'teamlead' ? 'Team Lead' : 'Employee'}
+                      </span>
+                    </td>
+
+                    <td className="py-3 px-4 whitespace-nowrap">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                           u.status === 'Active'
@@ -235,15 +247,15 @@ export const Employees: React.FC = () => {
                       </span>
                     </td>
 
-                    <td className="py-2 px-3 text-right whitespace-nowrap relative min-w-0">
+                    <td className="py-3 px-4 text-right whitespace-nowrap relative">
                       <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                         {/* Primary Action: View */}
                         <button
                           onClick={() => setViewingUser(u)}
-                          className="px-2.5 py-1 text-xs font-semibold text-sky-600 hover:text-sky-700 hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                          className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0"
                           title="View Details"
                         >
-                          <Eye className="w-3 h-3" />
+                          <Eye className="w-3.5 h-3.5" />
                           <span>View</span>
                         </button>
 

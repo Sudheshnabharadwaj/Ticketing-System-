@@ -33,9 +33,10 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const updateLocalState = () => {
+    const updateLocalState = async () => {
       setProfile(EmployeeService.getProfile());
-      setNotifications(EmployeeService.getNotifications());
+      const notifs = await EmployeeService.fetchNotifications();
+      setNotifications(notifs);
     };
     updateLocalState();
     window.addEventListener('storage', updateLocalState);

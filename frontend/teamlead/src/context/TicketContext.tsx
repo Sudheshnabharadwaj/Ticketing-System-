@@ -1,10 +1,12 @@
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 import { Ticket, TicketStatus, TicketPriority, TicketCategory } from '../types/ticket';
 import { Escalation } from '../types/escalation';
 import { NotificationItem } from '../types/notification';
+import { ticketService } from '../services/ticketService';
+import { teamLeadService } from '../services/teamLeadService';
+import { useAuth } from '../hooks/useAuth';
 import { mockTickets } from '../mock/tickets';
 import { mockEscalations } from '../mock/escalations';
-import { mockNotifications } from '../mock/notifications';
 
 interface TicketContextType {
   tickets: Ticket[];
@@ -21,7 +23,13 @@ interface TicketContextType {
     departments?: string[];
     taggedMembers?: { id: string; name: string; department: string; avatar?: string }[];
     taggedMemberIds?: string[];
+    teamLeads?: any[];
+    teamLeadIds?: string[];
+    taggedEmployees?: any[];
+    taggedEmployeeIds?: string[];
+    employeeIds?: string[];
     attachments?: { name: string; size: string }[];
+    [key: string]: any;
   }) => Ticket;
   workOnTicket: (ticketId: string) => void;
   updateStatus: (ticketId: string, status: TicketStatus) => void;
@@ -38,10 +46,31 @@ interface TicketContextType {
 export const TicketContext = createContext<TicketContextType | undefined>(undefined);
 
 export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
   const [escalations, setEscalations] = useState<Escalation[]>(mockEscalations);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+
+  useEffect(() => {
+    ticketService.getTickets().then((loaded) => {
+      if (loaded && loaded.length > 0) {
+        setTickets(loaded);
+      }
+    });
+    teamLeadService.getEscalations().then((loadedEsc) => {
+      if (loadedEsc && loadedEsc.length > 0) {
+        setEscalations(loadedEsc);
+      }
+    });
+    teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((loadedNotifs) => {
+      setNotifications(loadedNotifs || []);
+    });
+  }, [user?.role, user?.name]);
+
+  const currentUserName = user?.name || "Team Lead";
+  const currentUserId = user?.id || "TL001";
+  const currentUserEmail = user?.email || "teamlead@ticketing.com";
 
   const createTicket = (data: {
     subject: string;
@@ -54,7 +83,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     taggedMemberIds?: string[];
     attachments?: { name: string; size: string }[];
   }): Ticket => {
-    const nextNum = tickets.length + 1001;
+    const nextNum = Math.floor(1000 + Math.random() * 9000);
     const ticketId = `TKT-${nextNum}`;
     const now = new Date().toISOString();
 
@@ -62,9 +91,9 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: ticketId,
       subject: data.subject,
       description: data.description,
-      employee: "Alex Morgan",
-      employeeId: "TL001",
-      employeeEmail: "teamlead@ticketing.com",
+      employee: currentUserName,
+      employeeId: currentUserId,
+      employeeEmail: currentUserEmail,
       department: data.departments && data.departments.length > 0 ? data.departments.join(', ') : (data.department || "IT Support"),
       departments: data.departments || [],
       taggedMembers: data.taggedMembers || [],
@@ -85,7 +114,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         {
           id: `act-${Date.now()}`,
           ticketId: ticketId,
-          user: "Alex Morgan",
+          user: currentUserName,
           action: "Ticket created",
           timestamp: now,
         },
@@ -93,36 +122,38 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     setTickets((prev) => [newTicket, ...prev]);
+    ticketService.createTicket(newTicket).catch(() => {});
 
-    // Create notification
-    const newNotif: NotificationItem = {
-      id: `n-${Date.now()}`,
-      title: "New Ticket Created",
-      message: `Ticket ${ticketId} created successfully: "${data.subject}"`,
-      timestamp: "Just now",
-      read: false,
-      ticketId: ticketId,
+    teamLeadService.createNotification({
+      ticketId,
+      title: `New Ticket Created: ${ticketId}`,
+      message: `${currentUserName} created ticket "${data.subject}"`,
       type: "info",
       forRole: "teamlead",
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
+    }).then(() => {
+      teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((notifs) => {
+        setNotifications(notifs || []);
+      });
+    }).catch(() => {});
 
     return newTicket;
   };
 
   const workOnTicket = (ticketId: string) => {
     const now = new Date().toISOString();
+    const assignedByStr = `${currentUserName} (Team Lead)`;
+
     setTickets((prev) =>
       prev.map((t) => {
         if (t.id === ticketId) {
           const updated: Ticket = {
             ...t,
-            assignedAgent: "Alex Morgan",
-            assignedAgentId: "TL001",
+            assignedAgent: currentUserName,
+            assignedAgentId: currentUserId,
             assignedToType: "teamlead",
             handledBy: "teamlead",
             status: "In Progress",
-            assignedBy: "Alex Morgan (Team Lead)",
+            assignedBy: assignedByStr,
             assignedDate: now,
             updatedAt: now,
             activities: [
@@ -130,7 +161,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: "Team Lead took ownership to work on ticket",
                 timestamp: now,
               },
@@ -144,6 +175,8 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.assignAgent(ticketId, currentUserName, assignedByStr).catch(() => {});
+    ticketService.updateTicketStatus(ticketId, "In Progress").catch(() => {});
   };
 
   const updateStatus = (ticketId: string, status: TicketStatus) => {
@@ -160,7 +193,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: `Status changed to ${status}`,
                 timestamp: now,
               },
@@ -174,13 +207,15 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.updateTicketStatus(ticketId, status).catch(() => {});
   };
 
   const assignAgent = (ticketId: string, agentId: string, agentName: string) => {
     const now = new Date().toISOString();
-    const isTeamLead = agentName === 'Alex Morgan' || agentId === 'TL001';
+    const isTeamLead = agentName === currentUserName || agentId === currentUserId || agentId.startsWith('TL');
     const assignedToType = isTeamLead ? 'teamlead' : 'employee';
     const handledBy = isTeamLead ? 'teamlead' : 'employee';
+    const assignedByStr = `${currentUserName} (Team Lead)`;
 
     setTickets((prev) =>
       prev.map((t) => {
@@ -191,7 +226,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             assignedAgentId: agentId,
             assignedToType,
             handledBy,
-            assignedBy: "Alex Morgan (Team Lead)",
+            assignedBy: assignedByStr,
             assignedDate: now,
             updatedAt: now,
             activities: [
@@ -199,7 +234,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: `Assigned agent to ${agentName}`,
                 timestamp: now,
               },
@@ -213,6 +248,19 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.assignAgent(ticketId, agentName, assignedByStr).catch(() => {});
+
+    teamLeadService.createNotification({
+      ticketId,
+      title: `Ticket Assigned: ${ticketId}`,
+      message: `${currentUserName} assigned ${ticketId} to ${agentName}.`,
+      type: "info",
+      forRole: isTeamLead ? "teamlead" : "employee",
+    }).then(() => {
+      teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((notifs) => {
+        setNotifications(notifs || []);
+      });
+    }).catch(() => {});
   };
 
   const changePriority = (ticketId: string, priority: TicketPriority) => {
@@ -229,7 +277,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: `Priority updated to ${priority}`,
                 timestamp: now,
               },
@@ -243,6 +291,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.changePriority(ticketId, priority).catch(() => {});
   };
 
   const addComment = (
@@ -289,6 +338,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.addComment(ticketId, authorName, authorRole, message, isInternal).catch(() => {});
   };
 
   const escalateTicket = (ticketId: string, reason: string, escalatedBy: string) => {
@@ -309,7 +359,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: escalatedBy,
+                user: escalatedBy || currentUserName,
                 action: `Escalated ticket: ${reason}`,
                 timestamp: now,
               },
@@ -328,17 +378,30 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newEscalation: Escalation = {
         id: `ESC-${Math.floor(200 + Math.random() * 800)}`,
         ticketId: ticketId,
-        subject: targetTicket.subject,
-        priority: targetTicket.priority,
-        escalatedBy: escalatedBy,
+        subject: (targetTicket as Ticket).subject,
+        priority: (targetTicket as Ticket).priority,
+        escalatedBy: escalatedBy || currentUserName,
         escalatedTo: "Tier 3 Operations",
         escalationReason: reason,
-        slaStatus: targetTicket.slaStatus,
+        slaStatus: (targetTicket as Ticket).slaStatus,
         escalatedDate: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         status: "Pending Review",
       };
       setEscalations((prev) => [newEscalation, ...prev]);
+      ticketService.escalateTicket(ticketId, reason, escalatedBy || currentUserName, (targetTicket as Ticket).subject, (targetTicket as Ticket).priority).catch(() => {});
     }
+
+    teamLeadService.createNotification({
+      ticketId,
+      title: `Ticket Escalated: ${ticketId}`,
+      message: `${escalatedBy || currentUserName} escalated ${ticketId}. Reason: ${reason}`,
+      type: "warning",
+      forRole: "teamlead",
+    }).then(() => {
+      teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((notifs) => {
+        setNotifications(notifs || []);
+      });
+    }).catch(() => {});
   };
 
   const resolveTicket = (ticketId: string, resolutionSummary?: string) => {
@@ -356,7 +419,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: "Ticket marked as Resolved",
                 timestamp: now,
               },
@@ -370,6 +433,19 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return t;
       })
     );
+    ticketService.resolveTicket(ticketId, resolutionSummary).catch(() => {});
+
+    teamLeadService.createNotification({
+      ticketId,
+      title: `Ticket Resolved: ${ticketId}`,
+      message: `Ticket ${ticketId} resolved by ${currentUserName}.`,
+      type: "success",
+      forRole: "all",
+    }).then(() => {
+      teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((notifs) => {
+        setNotifications(notifs || []);
+      });
+    }).catch(() => {});
   };
 
   const addAttachment = (ticketId: string, attachment: { name: string; size: string }) => {
@@ -386,7 +462,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               {
                 id: `act-${Date.now()}`,
                 ticketId,
-                user: "Alex Morgan",
+                user: currentUserName,
                 action: `Added attachment: ${attachment.name}`,
                 timestamp: now,
               },
@@ -406,10 +482,12 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setNotifications((prev) =>
       prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
     );
+    teamLeadService.markNotificationRead(notificationId).catch(() => {});
   };
 
   const markAllNotificationsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    teamLeadService.markAllNotificationsRead().catch(() => {});
   };
 
   return (

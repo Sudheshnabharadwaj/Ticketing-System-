@@ -166,6 +166,8 @@ export const EmailService = {
       category: string;
       priority: string;
       createdAt: string;
+      teamLeads?: Array<{ id: string; name: string; email: string; department: string; role: string }>;
+      employees?: Array<{ id: string; name: string; email: string; role: string; employeeId: string }>;
     },
     createdBy: { name: string; email: string }
   ): {
@@ -177,21 +179,24 @@ export const EmailService = {
       ? ticket.departments
       : [ticket.department];
 
-    const teamLeads = this.findTeamLeadsForDepartments(depts, ticket.category);
-
-    if (teamLeads.length === 0) {
-      console.info(
-        `[EmailService] Gracefully handled: No specific Team Leads mapped for departments "${depts.join(', ')}".`
-      );
-      return { sent: false, teamLeads: [], emailLogs: [] };
-    }
+    const targetTeamLeads: TeamLead[] = ticket.teamLeads && ticket.teamLeads.length > 0
+      ? ticket.teamLeads.map((tl) => ({
+          id: tl.id,
+          name: tl.name,
+          email: tl.email,
+          department: tl.department,
+          role: tl.role,
+          categories: [tl.department],
+        }))
+      : this.findTeamLeadsForDepartments(depts, ticket.category);
 
     const emailLogs: SentEmailNotification[] = [];
     const existing = this.getSentEmailLogs();
 
-    teamLeads.forEach((teamLead, idx) => {
+    // 1. Notify Team Leads
+    targetTeamLeads.forEach((teamLead, idx) => {
       const emailLog: SentEmailNotification = {
-        id: `email-${Date.now()}-${idx}`,
+        id: `email-tl-${Date.now()}-${idx}`,
         recipientName: teamLead.name,
         recipientEmail: teamLead.email,
         recipientRole: teamLead.role,
@@ -217,6 +222,37 @@ export const EmailService = {
       );
     });
 
+    // 2. Notify Tagged Employees if applicable
+    if (ticket.employees && ticket.employees.length > 0) {
+      ticket.employees.forEach((emp, idx) => {
+        const emailLog: SentEmailNotification = {
+          id: `email-emp-${Date.now()}-${idx}`,
+          recipientName: emp.name,
+          recipientEmail: emp.email,
+          recipientRole: `${emp.role} (Tagged Member — ${emp.employeeId})`,
+          subject: `You have been tagged in Ticket: [${ticket.ticketNumber}] ${ticket.title}`,
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          ticketTitle: ticket.title,
+          description: ticket.description,
+          department: ticket.department,
+          category: ticket.category,
+          priority: ticket.priority,
+          createdBy: createdBy.name,
+          createdByEmail: createdBy.email,
+          createdDate: ticket.createdAt,
+          viewTicketUrl: `/assigned-tickets/${ticket.id}`,
+          sentAt: new Date().toISOString(),
+          status: 'DELIVERED',
+        };
+        emailLogs.push(emailLog);
+
+        console.log(
+          `[EmailService] SUCCESS: Email notification sent to Tagged Employee ${emp.name} (${emp.email})`
+        );
+      });
+    }
+
     const updated = [...emailLogs, ...existing];
     localStorage.setItem(STORAGE_KEY_SENT_EMAILS, JSON.stringify(updated));
 
@@ -224,7 +260,7 @@ export const EmailService = {
       window.dispatchEvent(new CustomEvent('email_sent', { detail: log }));
     });
 
-    return { sent: true, teamLeads, emailLogs };
+    return { sent: emailLogs.length > 0, teamLeads: targetTeamLeads, emailLogs };
   },
 
   /**

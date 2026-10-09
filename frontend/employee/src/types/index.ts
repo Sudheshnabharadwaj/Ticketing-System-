@@ -19,6 +19,8 @@ export interface EmployeeTicket {
   department: string;
   departments?: string[];
   teamLeads?: AssignedTeamLead[];
+  employees?: Array<{ id: string; name: string; role: string; email: string; employeeId: string }>;
+  employeeIds?: string[];
   priority: TicketPriority;
   status: TicketStatus;
   createdAt: string;

@@ -32,12 +32,27 @@ async def check_database_health(db: AsyncSession) -> tuple[bool, dict]:
             "latency_ms": latency_ms,
         }
     except Exception as exc:
-        logger.error("Database health check failed: %s", exc)
-        return False, {
-            "status": "unhealthy",
-            "database": "disconnected",
-            "error": str(exc),
-        }
+        logger.warning("Database probe attempt 1 failed (%s), retrying...", exc)
+        try:
+            t0 = time.perf_counter()
+            result = await db.execute(text("SELECT 1, CURRENT_TIMESTAMP"))
+            row = result.fetchone()
+            latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+            server_time = row[1]
+            timestamp_str = server_time.isoformat() if hasattr(server_time, "isoformat") else str(server_time)
+            return True, {
+                "status": "healthy",
+                "database": "connected",
+                "timestamp": timestamp_str,
+                "latency_ms": latency_ms,
+            }
+        except Exception as retry_exc:
+            logger.error("Database health check failed: %s", retry_exc)
+            return False, {
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(retry_exc),
+            }
 
 
 @router.get("/health", summary="Liveness probe")

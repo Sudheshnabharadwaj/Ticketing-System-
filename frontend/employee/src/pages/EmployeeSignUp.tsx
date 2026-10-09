@@ -4,6 +4,8 @@ import { Ticket, Mail, Lock, User, Briefcase, ArrowRight, UserCheck, ShieldCheck
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
+import { supabase } from '../services/supabaseClient';
+
 export const EmployeeSignUp: React.FC = () => {
   const navigate = useNavigate();
 
@@ -28,7 +30,7 @@ export const EmployeeSignUp: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string | undefined> = {};
 
@@ -57,46 +59,57 @@ export const EmployeeSignUp: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    const cleanEmail = email.trim().toLowerCase();
 
-    setTimeout(() => {
-      // Save employee into storage without auto-authenticating
-      try {
-        const raw = localStorage.getItem('platform_all_users');
-        const users = raw ? JSON.parse(raw) : [];
-        const cleanEmail = email.trim().toLowerCase();
-        const existing = users.find((u: any) => u.email?.toLowerCase() === cleanEmail);
-        if (existing) {
-          setErrors({ email: 'An account with this email address already exists. Please sign in instead.' });
-          setIsSubmitting(false);
-          return;
-        }
+    try {
+      // 1. Check if user already exists in Supabase
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', cleanEmail)
+        .maybeSingle();
 
-        const newUser = {
-          id: `usr-employee-${Date.now()}`,
+      if (existingUser) {
+        setErrors({ email: 'An account with this email address already exists. Please sign in instead.' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2. Direct insert into Supabase users table
+      const newUserId = `usr-emp-${Date.now()}`;
+      const { error: insErr } = await supabase
+        .from('users')
+        .insert([{
+          id: newUserId,
           name: fullName.trim(),
           email: cleanEmail,
           department,
+          designation: jobTitle || 'Team Member',
           role: 'employee',
-          employeeId,
-          jobTitle: jobTitle || 'Team Member',
           password,
           status: 'Active',
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-        users.unshift(newUser);
-        localStorage.setItem('platform_all_users', JSON.stringify(users));
-      } catch {}
+        }]);
+
+      if (insErr) {
+        console.error('Supabase user registration error:', insErr);
+        setErrors({ email: `Registration error: ${insErr.message}` });
+        setIsSubmitting(false);
+        return;
+      }
 
       setIsSubmitting(false);
-      // Required flow: Sign Up -> Login -> Dashboard
       navigate('/signin', {
         replace: true,
         state: {
-          registeredEmail: email.trim().toLowerCase(),
+          registeredEmail: cleanEmail,
           registrationSuccess: `Account created successfully for ${fullName.trim()}! Please sign in with your credentials.`
         }
       });
-    }, 450);
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      setErrors({ email: 'Unable to connect to database. Please try again.' });
+      setIsSubmitting(false);
+    }
   };
 
   return (

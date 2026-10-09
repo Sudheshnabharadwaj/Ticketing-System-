@@ -22,32 +22,36 @@ export const MyTickets: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const myTickets = tickets.filter(
-    (t) => t.employeeId === user.id || t.assignedAgent === user.name
+  const myTickets = (tickets || []).filter(
+    (t) =>
+      (t.employeeId && user?.id && t.employeeId === user.id) ||
+      (t.employeeEmail && user?.email && t.employeeEmail.toLowerCase() === user.email.toLowerCase()) ||
+      (t.employee && user?.name && t.employee.toLowerCase() === user.name.toLowerCase())
   );
 
   const filtered = myTickets.filter(
     (t) =>
-      t.id.toLowerCase().includes(search.toLowerCase()) ||
-      t.subject.toLowerCase().includes(search.toLowerCase()) ||
-      t.category.toLowerCase().includes(search.toLowerCase())
+      (t.id || '').toLowerCase().includes(search.toLowerCase()) ||
+      (t.subject || '').toLowerCase().includes(search.toLowerCase()) ||
+      (t.category || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="space-y-5 w-full max-w-full min-w-0">
+    <div className="space-y-6 w-full max-w-full min-w-0 font-sans">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200 shadow-sm">
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200 shadow-xs">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           {toastMessage}
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">My Tickets</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Tickets assigned to you or requiring your personal team lead intervention.
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">My Tickets</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Tickets submitted and requested by you.
           </p>
         </div>
       </div>
@@ -61,8 +65,8 @@ export const MyTickets: React.FC = () => {
       {filtered.length === 0 ? (
         <EmptyState
           title="No personal tickets"
-          description="You currently have no tickets assigned directly to your name."
-          icon={<UserCheck className="w-8 h-8 text-sky-600" />}
+          description="You currently have no tickets created or submitted by you."
+          icon={<UserCheck className="w-8 h-8 text-[#0284C7]" />}
         />
       ) : (
         <TicketTable

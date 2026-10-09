@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, Shield, Building, Phone, BadgeCheck, Camera, Upload, Trash2, Edit3, Save, X } from 'lucide-react';
+import { User, Mail, Shield, Building, Phone, BadgeCheck, Camera, Upload, Edit3, Save, X } from 'lucide-react';
 import { EmployeeService } from '../services/employeeService';
 import type { EmployeeProfile } from '../types';
 import { Button } from '../components/ui/Button';
@@ -18,8 +18,6 @@ export const Profile: React.FC = () => {
   const [editPhone, setEditPhone] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
 
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [imageUrlInput, setImageUrlInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,38 +76,10 @@ export const Profile: React.FC = () => {
           setProfile(updated);
           setEditAvatarUrl(result);
         }
-        setShowImageModal(false);
         window.dispatchEvent(new Event('storage'));
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleSaveUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!imageUrlInput.trim()) return;
-    if (isEditing) {
-      setEditAvatarUrl(imageUrlInput.trim());
-    } else {
-      const updated = EmployeeService.updateProfile({ avatarUrl: imageUrlInput.trim() });
-      setProfile(updated);
-      setEditAvatarUrl(imageUrlInput.trim());
-    }
-    setImageUrlInput('');
-    setShowImageModal(false);
-    window.dispatchEvent(new Event('storage'));
-  };
-
-  const handleRemoveImage = () => {
-    if (isEditing) {
-      setEditAvatarUrl('');
-    } else {
-      const updated = EmployeeService.updateProfile({ avatarUrl: '' });
-      setProfile(updated);
-      setEditAvatarUrl('');
-    }
-    setShowImageModal(false);
-    window.dispatchEvent(new Event('storage'));
   };
 
   const displayAvatar = isEditing ? editAvatarUrl : profile.avatarUrl;

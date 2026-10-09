@@ -83,10 +83,17 @@ class Settings(BaseSettings):
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZGlsZ3BpaGZ3Zm53aXVnb3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MzI0NDQsImV4cCI6MjEwNjQwODQ0NH0.LaQXHb314_mznb7ld3Abafou1HkbvjCAY8LU7GzH7b0"
     )
     supabase_publishable_key: str = "sb_publishable_lD7DIwNLPX251RYYtXdkZw_l54ozMws"
-    supabase_service_role_key: str = (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDgzMjQ0NCwiZXhwIjoyMTA2NDA4NDQ0fQ.yi8Y7dDUkpGjKAda8mCog4CjOPFsOYlssNfS3FskaYU"
-    )
-    supabase_access_token: str = "sbp_fccdf079cfb22b7c4b2c2029a890c52549e8e3c2"
+    supabase_service_role_key: str = ""
+    supabase_access_token: str = ""
+
+    # ── SMTP Settings ────────────────────────────────────────────────────────
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "k.ananthu@oklut.com"
+    smtp_from_name: str = "Kotesh"
+    smtp_tls: bool = True
 
 
 @lru_cache

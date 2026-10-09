@@ -4,6 +4,8 @@ import { Ticket, Mail, Lock, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucid
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
+import { supabase } from '../services/supabaseClient';
+
 export const EmployeeSignIn: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,13 +22,14 @@ export const EmployeeSignIn: React.FC = () => {
   } catch {}
 
   const stateData = location.state as { registeredEmail?: string; registrationSuccess?: string } | null;
-  const [email, setEmail] = useState(stateData?.registeredEmail || 'employee@company.com');
-  const [password, setPassword] = useState('Password123');
+  const queryEmail = new URLSearchParams(location.search).get('email') || '';
+  const [email, setEmail] = useState(stateData?.registeredEmail || queryEmail);
+  const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string; auth?: string }>({});
   const [successBanner, setSuccessBanner] = useState<string | null>(stateData?.registrationSuccess || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: { email?: string; password?: string } = {};
 
@@ -46,31 +49,44 @@ export const EmployeeSignIn: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      try {
-        const raw = localStorage.getItem('platform_all_users');
-        const users = raw ? JSON.parse(raw) : [];
-        const cleanEmail = email.trim().toLowerCase();
-        const matched = users.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+    const cleanEmail = email.trim().toLowerCase();
 
-        if (!matched) {
-          setErrors({ auth: 'No account found with this email. Please sign up first.' });
-          return;
-        }
+    try {
+      const { data: dbUser, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
 
-        const validPass = matched.password === password || password === 'Password123';
-        if (!validPass) {
-          setErrors({ auth: 'Incorrect password. Please verify your credentials.' });
-          return;
-        }
-
-        localStorage.setItem('platform_current_user', JSON.stringify(matched));
-        navigate('/employee/dashboard');
-      } catch {
-        navigate('/employee/dashboard');
+      if (error || !dbUser) {
+        setErrors({ auth: 'No account found with this email. Please sign up first.' });
+        setIsSubmitting(false);
+        return;
       }
-    }, 400);
+
+      const validPass = dbUser.password === password || (!dbUser.password && password === 'Password123');
+      if (!validPass) {
+        setErrors({ auth: 'Incorrect password. Please verify your credentials.' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const userSession = {
+        id: dbUser.id,
+        name: dbUser.name || cleanEmail.split('@')[0],
+        email: dbUser.email,
+        department: dbUser.department || 'Operations',
+        role: dbUser.role || 'employee',
+        status: dbUser.status || 'Active',
+      };
+      localStorage.setItem('platform_current_user', JSON.stringify(userSession));
+      setIsSubmitting(false);
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Sign in exception:', err);
+      setErrors({ auth: 'Unable to connect to database. Please try again.' });
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -119,16 +135,12 @@ export const EmployeeSignIn: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-slate-700">Password</label>
-                <a
-                  href="#forgot"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert('Password reset instructions sent to your work email.');
-                  }}
+                <Link
+                  to="/forgot-password"
                   className="text-xs text-[#0284C7] hover:underline font-medium cursor-pointer"
                 >
                   Forgot Password?
-                </a>
+                </Link>
               </div>
               <Input
                 type="password"

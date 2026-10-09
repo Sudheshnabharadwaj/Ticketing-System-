@@ -56,8 +56,8 @@ export const LoginPage: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      const result = loginUser(email, password);
+    setTimeout(async () => {
+      const result = await loginUser(email, password);
       setIsSubmitting(false);
 
       if (!result.success || !result.user) {
@@ -197,50 +197,6 @@ export const LoginPage: React.FC = () => {
                 </Link>
               </div>
             </div>
-          {/* Quick Role Fill Badges */}
-          <div className="mb-5 p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <p className="text-[11px] font-semibold text-slate-500 mb-2 uppercase tracking-wider">
-              Quick Role Login (Pre-configured)
-            </p>
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('admin@company.com')}
-                className={`py-1.5 px-2 text-xs font-semibold rounded flex items-center justify-center gap-1 transition-all ${
-                  email.toLowerCase().includes('admin')
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5" />
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('manikanta@company.com')}
-                className={`py-1.5 px-2 text-xs font-semibold rounded flex items-center justify-center gap-1 transition-all ${
-                  email.toLowerCase().includes('manikanta') || email.toLowerCase().includes('teamlead')
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                Team Lead
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('sudha@company.com')}
-                className={`py-1.5 px-2 text-xs font-semibold rounded flex items-center justify-center gap-1 transition-all ${
-                  email.toLowerCase().includes('sudha') || email.toLowerCase().includes('employee')
-                    ? 'bg-teal-600 text-white shadow-sm'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                }`}
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                Employee
-              </button>
-            </div>
-          </div>
 
           {successBanner && (
             <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg font-medium flex items-center gap-2">

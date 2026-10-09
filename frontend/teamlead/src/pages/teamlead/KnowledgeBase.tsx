@@ -21,12 +21,14 @@ export const KnowledgeBase: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">IT Knowledge Base</h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Self-service documentation, troubleshooting articles, and IT procedure guides.
-        </p>
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">IT Knowledge Base</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Self-service documentation, troubleshooting articles, and IT procedure guides.
+          </p>
+        </div>
       </div>
 
       {/* Search Bar */}

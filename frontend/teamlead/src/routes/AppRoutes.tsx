@@ -4,6 +4,8 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { TeamLeadLayout } from '../layouts/TeamLeadLayout';
 
 import { Login } from '../pages/Login';
+import { ForgotPassword } from '../pages/ForgotPassword';
+import { ResetPassword } from '../pages/ResetPassword';
 import { TeamLeadSignUp } from '../pages/teamlead/TeamLeadSignUp';
 
 // Team Lead Pages
@@ -25,6 +27,8 @@ export const AppRoutes: React.FC = () => {
       {/* Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<TeamLeadSignUp />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/teamlead/signup" element={<TeamLeadSignUp />} />
 
       {/* Root Redirect: localhost / opens Sign Up for unauthenticated users */}

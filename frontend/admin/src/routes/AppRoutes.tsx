@@ -64,18 +64,9 @@ import { getCurrentSessionUser } from '../services/unifiedAuth';
  * If already authenticated, redirect to their role-specific dashboard.
  */
 const RootRedirect: React.FC = () => {
-  const user = getCurrentSessionUser();
-  if (!user) {
-    return <Navigate to="/signup" replace />;
-  }
-  if (user.role === 'teamlead') {
-    return <Navigate to="/teamlead/dashboard" replace />;
-  }
-  if (user.role === 'employee') {
-    return <Navigate to="/employee/dashboard" replace />;
-  }
-  return <Navigate to="/admin/dashboard" replace />;
+  return <Navigate to="/signup" replace />;
 };
+
 
 /**
  * Direct Dashboard Route (/dashboard):

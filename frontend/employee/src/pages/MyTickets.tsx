@@ -15,7 +15,8 @@ export const MyTickets: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const loadTickets = () => {
+  const loadTickets = async () => {
+    await EmployeeService.fetchTickets();
     const list = EmployeeService.getMyTickets();
     setTickets(list);
   };

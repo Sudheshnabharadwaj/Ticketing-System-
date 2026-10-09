@@ -15,9 +15,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, ch
     return <Navigate to="/login" replace />;
   }
 
-  // If role does not match, redirect to user's respective dashboard
+  // If role does not match, redirect to user's respective dashboard (Admins have access to all portals)
   if (requiredRole) {
-    const allowed = Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole;
+    const isDirectMatch = Array.isArray(requiredRole) ? requiredRole.includes(user.role) : user.role === requiredRole;
+    const allowed = user.role === 'admin' || isDirectMatch;
     if (!allowed) {
       if (user.role === 'teamlead') {
         return <Navigate to="/teamlead/dashboard" replace />;

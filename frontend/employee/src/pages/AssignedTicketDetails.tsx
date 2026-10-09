@@ -3,13 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Clock,
-  User,
   Users,
   Paperclip,
   Send,
   CheckCircle2,
   FileText,
-  Upload,
   Activity,
   AlertCircle,
   AlertTriangle,
@@ -75,7 +73,7 @@ export const AssignedTicketDetails: React.FC = () => {
         </p>
         <Button
           variant="primary"
-          onClick={() => navigate('/employee/dashboard')}
+          onClick={() => navigate('/dashboard')}
           className="bg-[#0284C7] hover:bg-[#0369a1] text-white"
         >
           Back to Dashboard
@@ -86,10 +84,10 @@ export const AssignedTicketDetails: React.FC = () => {
 
   const isAssignedToMe = !!ticket.assignedBy || ticket.assignedTo === 'Manikanta (You)';
 
-  const handleStatusUpdateSubmit = (e: React.FormEvent) => {
+  const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
-    const updated = EmployeeService.updateTicketStatus(id, selectedStatus, statusNote);
+    const updated = await EmployeeService.updateTicketStatus(id, selectedStatus, statusNote);
     if (updated) {
       setTicket({ ...updated });
       setShowStatusModal(false);
@@ -98,10 +96,10 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
-  const handleEscalateSubmit = (e: React.FormEvent) => {
+  const handleEscalateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !escalateComment.trim()) return;
-    const updated = EmployeeService.escalateTicket(id, escalateReason, escalateComment.trim());
+    const updated = await EmployeeService.escalateTicket(id, escalateReason, escalateComment.trim());
     if (updated) {
       setTicket({ ...updated });
       setSelectedStatus('Escalated');
@@ -111,11 +109,11 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
-  const handleResolveSubmit = (e: React.FormEvent) => {
+  const handleResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
     const resText = resolutionText.trim() || 'Issue resolved by assigned technician.';
-    const updated = EmployeeService.resolveTicket(id, resText);
+    const updated = await EmployeeService.resolveTicket(id, resText);
     if (updated) {
       setTicket({ ...updated });
       setSelectedStatus('Resolved');
@@ -125,11 +123,11 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
-  const handleAddCommentSubmit = (e: React.FormEvent) => {
+  const handleAddCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !newComment.trim()) return;
     const attachmentStr = commentAttachedFiles.map((f) => `${f.name} (${f.size})`).join(', ');
-    const updated = EmployeeService.addComment(id, newComment, attachmentStr || undefined);
+    const updated = await EmployeeService.addComment(id, newComment, attachmentStr || undefined);
     if (updated) {
       setTicket({ ...updated });
       setNewComment('');
@@ -138,14 +136,14 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
-  const handleAddAttachmentSubmit = (e: React.FormEvent) => {
+  const handleAddAttachmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || modalAttachedFiles.length === 0) return;
     let updatedTicket: EmployeeTicket | null = ticket;
-    modalAttachedFiles.forEach((f) => {
+    for (const f of modalAttachedFiles) {
       const fileNameStr = `${f.name} (${f.size})`;
-      updatedTicket = EmployeeService.addAttachment(id, fileNameStr);
-    });
+      updatedTicket = await EmployeeService.addAttachment(id, fileNameStr);
+    }
     if (updatedTicket) {
       setTicket({ ...updatedTicket });
       setModalAttachedFiles([]);

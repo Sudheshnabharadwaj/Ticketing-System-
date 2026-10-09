@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "../../employee/src";
+@source "../../teamlead/src";
 
 @layer base {
   :root {

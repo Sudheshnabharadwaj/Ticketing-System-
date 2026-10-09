@@ -9,8 +9,9 @@ export const Login: React.FC = () => {
   const location = useLocation();
 
   const stateData = location.state as { registeredEmail?: string; registrationSuccess?: string } | null;
-  const [email, setEmail] = useState(stateData?.registeredEmail || 'teamlead@company.com');
-  const [password, setPassword] = useState('Password123');
+  const queryEmail = new URLSearchParams(location.search).get('email') || '';
+  const [email, setEmail] = useState(stateData?.registeredEmail || queryEmail || '');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -21,7 +22,7 @@ export const Login: React.FC = () => {
     return <Navigate to="/teamlead/dashboard" replace />;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -36,15 +37,18 @@ export const Login: React.FC = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const res = login(email, password);
+    try {
+      const res = await login(email, password);
       setIsLoading(false);
       if (res.success) {
         navigate('/teamlead/dashboard');
       } else {
         setErrorMsg(res.error || 'Invalid email or password.');
       }
-    }, 400);
+    } catch {
+      setIsLoading(false);
+      setErrorMsg('Unable to connect to database. Please try again.');
+    }
   };
 
   return (
@@ -108,16 +112,12 @@ export const Login: React.FC = () => {
                 <label className="block text-xs font-medium text-slate-700">
                   Password <span className="text-red-500">*</span>
                 </label>
-                <a
-                  href="#forgot"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert('Password reset instructions have been dispatched to your email.');
-                  }}
+                <Link
+                  to="/forgot-password"
                   className="text-xs text-sky-600 hover:text-sky-700 font-medium cursor-pointer"
                 >
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
