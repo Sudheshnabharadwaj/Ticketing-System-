@@ -1,88 +1,81 @@
-# Platform
+# Ticketing-System-
 
-A production-ready Phase 1 monorepo — **Next.js + FastAPI + PostgreSQL + Redis + Keycloak + MinIO + Celery**.
+A scalable ticketing system designed to streamline issue reporting, ticket management, status tracking, and resolution. The system provides an organized workflow for users, team leads, and support administrators, improving transparency, efficiency, and overall service management.
 
 ---
 
-## Architecture
+## Architecture & Portals
+
+- **Admin Portal** (`frontend/admin`): Full administrative oversight, employee and team lead user management, security settings, and analytics.
+- **Team Lead Portal** (`frontend/teamlead`): Team ticket triaging, member assignments, escalation resolution, and ticket workflow controls.
+- **Employee Portal** (`frontend/employee`): Self-service ticket creation, assignment tracking, status updates, and knowledge base access.
+- **Backend Service** (`backend`): FastAPI asynchronous application with PostgreSQL / Supabase, Redis, and real-time support.
 
 ```
-frontend/     Next.js 14 · App Router · MUI · TanStack Query · Keycloak JS
-backend/      FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · Celery
-infra/        Keycloak realm config · MinIO init
-.github/      Backend CI · Frontend CI · Docker build
+frontend/admin/       React + Vite · TypeScript · Tailwind CSS
+frontend/teamlead/    React + Vite · TypeScript · Tailwind CSS
+frontend/employee/    React + Vite · TypeScript · Tailwind CSS
+backend/              FastAPI · Pydantic v2 · SQLAlchemy 2 · Supabase
+e2e-tests/            Playwright E2E & API test suites
 ```
+
+---
 
 ## Quick Start
 
-### Prerequisites
-- Docker Desktop 4.x+
-- Make (optional but recommended)
+### 1. Configure Environment
+Copy `.env.example` to `.env` in respective modules and configure database or authentication parameters.
 
-### 1. Clone and configure
+### 2. Start Services
+
+**Backend:**
 ```bash
-git clone <your-repo>
-cd platform
-cp .env.example .env   # edit secrets as needed
+cd backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 2. Start everything
+**Admin Portal:**
 ```bash
-make dev
-# or: docker compose up -d --build
+cd frontend/admin
+npm run dev
+# Running on http://localhost:3000
 ```
 
-### 3. Apply database migrations
+**Team Lead Portal:**
 ```bash
-make migrate
-# or: docker compose exec backend alembic upgrade head
+cd frontend/teamlead
+npm run dev
+# Running on http://localhost:4174
 ```
 
-### Service URLs
-
-| Service | URL |
-|---|---|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| API Docs (dev) | http://localhost:8000/docs |
-| Keycloak Admin | http://localhost:8080 (admin / admin) |
-| MinIO Console | http://localhost:9001 (minioadmin / minioadmin) |
-
-### Seed Credentials (Keycloak)
-
-| User | Password | Roles |
-|---|---|---|
-| admin@platform.dev | admin123 | admin, user |
-| user@platform.dev | user123 | user |
+**Employee Portal:**
+```bash
+cd frontend/employee
+npm run dev
+# Running on http://localhost:4173
+```
 
 ---
 
-## Development Workflow
+## Service URLs
 
-```bash
-make logs               # tail all service logs
-make logs-backend       # backend only
-make lint               # lint backend + frontend
-make test               # run all tests
-make makemigrations MSG="add projects table"   # generate migration
-make migrate            # apply migrations
-```
+| Portal / Service | Port / URL | Description |
+|---|---|---|
+| Admin Portal | http://localhost:3000 | Administrative dashboard & user management |
+| Employee Portal | http://localhost:4173 | Employee self-service & ticket submission |
+| Team Lead Portal | http://localhost:4174 | Team management & ticket assignment |
+| Backend API | http://localhost:8000 | FastAPI REST API |
+| Swagger Docs | http://localhost:8000/docs | Interactive API documentation |
 
-## Stack
+---
+
+## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 14 + React 18 + TypeScript |
-| UI | Material UI 5 |
-| Data fetching | TanStack Query v5 |
-| Backend | FastAPI + Pydantic v2 |
-| ORM | SQLAlchemy 2.x (async) |
-| Migrations | Alembic |
-| Database | PostgreSQL 16 |
-| Cache | Redis 7 |
-| File storage | MinIO (S3-compatible) |
-| Background jobs | Celery + Redis |
-| Auth | Keycloak 24 (OAuth2 + OIDC + PKCE) |
-| Containerization | Docker + Docker Compose |
-| CI/CD | GitHub Actions |
-| Observability | OpenTelemetry + Sentry + structlog |
+| Frontends | React 18 + Vite + TypeScript + Tailwind CSS |
+| Backend | FastAPI + Python 3.11+ |
+| Database | PostgreSQL / Supabase Cloud Database |
+| Realtime & Auth | Supabase Client / Custom JWT |
+| Testing | Playwright TypeScript E2E & API Tests |
+| Background / Cache | Redis & Celery support |
