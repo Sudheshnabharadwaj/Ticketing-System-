@@ -163,7 +163,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('itsm_teamlead_auth');
     localStorage.removeItem('platform_current_user');
     localStorage.setItem('platform_explicitly_logged_out', 'true');
-    window.location.href = '/login';
+    if (typeof window !== 'undefined') {
+      window.location.hash = '#/signup';
+    }
   };
 
   const updateUserProfile = (updatedData: Partial<User>) => {

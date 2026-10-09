@@ -20,7 +20,7 @@ export const ProfileDropdown: React.FC = () => {
     setIsLogoutModalOpen(false);
     setIsOpen(false);
     logout();
-    navigate('/login');
+    navigate('/signup');
   };
 
   return (

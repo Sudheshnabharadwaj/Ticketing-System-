@@ -43,7 +43,8 @@ export const ForgotPassword: React.FC = () => {
         .update({ invite_token: `reset-${resetCode}` })
         .eq('email', cleanEmail);
 
-      const resetUrl = `${window.location.origin}/reset-password?email=${encodeURIComponent(cleanEmail)}&code=${resetCode}`;
+      const baseUrl = window.location.href.split('#')[0].replace(/\/+$/, '');
+      const resetUrl = `${baseUrl}/#/admin/auth/reset-password?email=${encodeURIComponent(cleanEmail)}&code=${resetCode}`;
       await fetch('http://localhost:8000/api/v1/notifications/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

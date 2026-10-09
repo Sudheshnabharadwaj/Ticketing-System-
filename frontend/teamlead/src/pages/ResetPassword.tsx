@@ -5,7 +5,8 @@ import { supabase } from '../services/supabaseClient';
 
 export const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
-  const queryParams = new URLSearchParams(window.location.search);
+  const hashQuery = typeof window !== 'undefined' && window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+  const queryParams = new URLSearchParams(hashQuery || (typeof window !== 'undefined' ? window.location.search : ''));
   const [email, setEmail] = useState(queryParams.get('email') || '');
   const [code, setCode] = useState(queryParams.get('code') || '');
   const [password, setPassword] = useState('');

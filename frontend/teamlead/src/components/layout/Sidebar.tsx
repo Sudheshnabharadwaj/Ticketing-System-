@@ -40,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleLogoutConfirm = () => {
     setIsLogoutModalOpen(false);
     logout();
-    navigate('/login');
+    navigate('/signup');
   };
 
   const assignedCount = (tickets || []).filter(

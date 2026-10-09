@@ -73,8 +73,8 @@ export const UserManagementPage: React.FC = () => {
   const handleCopyLink = (row: User) => {
     const roleNorm = (row.role || 'employee').toLowerCase().replace(' ', '');
     const token = row.inviteToken || '';
-    const origin = window.location.origin;
-    const url = `${origin}/signup?token=${token}&email=${encodeURIComponent(row.email)}&role=${roleNorm}`;
+    const baseUrl = window.location.href.split('#')[0].replace(/\/+$/, '');
+    const url = `${baseUrl}/#/signup?token=${token}&email=${encodeURIComponent(row.email)}&role=${roleNorm}`;
     navigator.clipboard.writeText(url);
     setCopiedId(row.id);
     setActionMessage({ text: `✓ Verification link copied for ${row.name} (${row.email})!`, type: 'success' });

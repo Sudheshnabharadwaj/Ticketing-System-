@@ -203,7 +203,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
       }
 
       const roleNorm = (targetUser.role || activePortal).toLowerCase().replace(' ', '');
-      const signupUrl = `${window.location.origin}/signup?token=${token}&email=${encodeURIComponent(targetUser.email)}&role=${roleNorm}`;
+      const baseUrl = window.location.href.split('#')[0].replace(/\/+$/, '');
+      const signupUrl = `${baseUrl}/#/signup?token=${token}&email=${encodeURIComponent(targetUser.email)}&role=${roleNorm}`;
 
       const resp = await fetch('http://localhost:8000/api/v1/notifications/send-invite', {
         method: 'POST',
