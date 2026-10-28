@@ -56,12 +56,17 @@ export const AdminTicketDetailsPage: React.FC = () => {
   const loadTicket = async () => {
     if (!id) return;
     setIsLoading(true);
-    const found = await AdminApiService.getTicketById(id);
-    if (found) {
-      setTicket({ ...found });
-      setSelectedStatus(found.status);
+    try {
+      const found = await AdminApiService.getTicketById(id);
+      if (found) {
+        setTicket({ ...found });
+        setSelectedStatus(found.status);
+      }
+    } catch (e) {
+      console.error('Error loading ticket details:', e);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleOpenDeadlineModal = () => {

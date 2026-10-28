@@ -45,9 +45,14 @@ export const AllTicketsPage: React.FC = () => {
 
   const fetchTickets = async () => {
     setIsLoading(true);
-    const data = await AdminApiService.getTickets('all');
-    setTickets(data);
-    setIsLoading(false);
+    try {
+      const data = await AdminApiService.getTickets('all');
+      setTickets(data || []);
+    } catch (e) {
+      console.error('Error fetching tickets:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

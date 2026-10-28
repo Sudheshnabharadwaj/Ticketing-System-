@@ -53,15 +53,20 @@ export const AssignedTicketDetails: React.FC = () => {
   const loadTicket = async () => {
     if (!id) return;
     setIsLoading(true);
-    let found = EmployeeService.getTicketById(id);
-    if (!found) {
-      found = await EmployeeService.getTicketByIdAsync(id);
+    try {
+      let found = EmployeeService.getTicketById(id);
+      if (!found) {
+        found = await EmployeeService.getTicketByIdAsync(id);
+      }
+      if (found) {
+        setTicket({ ...found });
+        setSelectedStatus(found.status);
+      }
+    } catch (e) {
+      console.error('Error loading ticket details in Employee portal:', e);
+    } finally {
+      setIsLoading(false);
     }
-    if (found) {
-      setTicket({ ...found });
-      setSelectedStatus(found.status);
-    }
-    setIsLoading(false);
   };
 
   useEffect(() => {

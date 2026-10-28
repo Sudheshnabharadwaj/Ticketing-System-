@@ -97,11 +97,6 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
-              Workspace Sign In
-            </span>
-          </div>
         </div>
       </header>
 

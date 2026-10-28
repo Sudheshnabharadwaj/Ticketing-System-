@@ -25,13 +25,18 @@ export const SLABreachedPage: React.FC = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [ticketData, userData] = await Promise.all([
-      AdminApiService.getTickets('sla-breached'),
-      AdminApiService.getUsers()
-    ]);
-    setTickets(ticketData);
-    setUsers(userData);
-    setIsLoading(false);
+    try {
+      const [ticketData, userData] = await Promise.all([
+        AdminApiService.getTickets('sla-breached'),
+        AdminApiService.getUsers()
+      ]);
+      setTickets(ticketData || []);
+      setUsers(userData || []);
+    } catch (e) {
+      console.error('Error loading SLA breached data:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

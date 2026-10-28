@@ -54,14 +54,10 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     ticketService.getTickets().then((loaded) => {
-      if (loaded && loaded.length > 0) {
-        setTickets(loaded);
-      }
+      setTickets(loaded || []);
     });
     teamLeadService.getEscalations().then((loadedEsc) => {
-      if (loadedEsc && loadedEsc.length > 0) {
-        setEscalations(loadedEsc);
-      }
+      setEscalations(loadedEsc || []);
     });
     teamLeadService.getNotifications(user?.role || 'teamlead', user?.name || '').then((loadedNotifs) => {
       setNotifications(loadedNotifs || []);

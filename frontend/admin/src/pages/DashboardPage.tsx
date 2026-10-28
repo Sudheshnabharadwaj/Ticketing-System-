@@ -79,11 +79,18 @@ export const DashboardPage: React.FC = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const statsData = await AdminApiService.getDashboardStats();
-    const ticketsData = await AdminApiService.getTickets('all');
-    setStats(statsData);
-    setTickets(ticketsData);
-    setIsLoading(false);
+    try {
+      const [statsData, ticketsData] = await Promise.all([
+        AdminApiService.getDashboardStats(),
+        AdminApiService.getTickets('all')
+      ]);
+      setStats(statsData);
+      setTickets(ticketsData || []);
+    } catch (e) {
+      console.error('Error loading admin dashboard data:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

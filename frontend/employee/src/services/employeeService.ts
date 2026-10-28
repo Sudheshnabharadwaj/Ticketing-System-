@@ -724,8 +724,11 @@ export const EmployeeService = {
           avatarUrl: dbUser.avatar || '',
         };
         try {
-          localStorage.setItem('platform_current_user', JSON.stringify(synced));
-          window.dispatchEvent(new Event('storage'));
+          const prevRaw = localStorage.getItem('platform_current_user');
+          const newRaw = JSON.stringify(synced);
+          if (prevRaw !== newRaw) {
+            localStorage.setItem('platform_current_user', newRaw);
+          }
         } catch {}
 
         return {

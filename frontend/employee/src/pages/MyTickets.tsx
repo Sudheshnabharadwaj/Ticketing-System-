@@ -16,16 +16,18 @@ export const MyTickets: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   const loadTickets = async () => {
-    await EmployeeService.fetchProfile();
-    await EmployeeService.fetchTickets();
-    const list = EmployeeService.getMyTickets();
-    setTickets(list);
+    try {
+      await EmployeeService.fetchProfile();
+      await EmployeeService.fetchTickets();
+      const list = EmployeeService.getMyTickets();
+      setTickets(list);
+    } catch (e) {
+      console.error('Error loading my tickets:', e);
+    }
   };
 
   useEffect(() => {
     loadTickets();
-    window.addEventListener('storage', loadTickets);
-    return () => window.removeEventListener('storage', loadTickets);
   }, []);
 
   const filteredTickets = tickets.filter((ticket) => {

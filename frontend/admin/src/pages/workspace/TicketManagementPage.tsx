@@ -46,9 +46,14 @@ export const TicketManagementPage: React.FC = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const data = await AdminApiService.getTickets('all');
-    setTickets(data);
-    setIsLoading(false);
+    try {
+      const data = await AdminApiService.getTickets('all');
+      setTickets(data || []);
+    } catch (e) {
+      console.error('Error loading tickets in TicketManagementPage:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

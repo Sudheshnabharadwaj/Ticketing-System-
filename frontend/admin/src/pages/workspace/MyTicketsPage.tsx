@@ -20,22 +20,27 @@ export const MyTicketsPage: React.FC = () => {
 
   const loadTickets = async () => {
     setIsLoading(true);
-    const all = await AdminApiService.getTickets('all');
-    const sessionUser = getCurrentSessionUser();
-    const userEmail = (sessionUser?.email || '').toLowerCase();
-    const userName = (sessionUser?.name || '').toLowerCase();
+    try {
+      const all = await AdminApiService.getTickets('all');
+      const sessionUser = getCurrentSessionUser();
+      const userEmail = (sessionUser?.email || '').toLowerCase();
+      const userName = (sessionUser?.name || '').toLowerCase();
 
-    // Filter tickets requested by or assigned to current user
-    const myTickets = all.filter((t) => {
-      const reqEmail = (t.requesterEmail || '').toLowerCase();
-      const reqName = (t.requesterName || '').toLowerCase();
-      const assigned = (t.assignedTo || '').toLowerCase();
-      if (userEmail && reqEmail === userEmail) return true;
-      if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
-      return false;
-    });
-    setTickets(myTickets);
-    setIsLoading(false);
+      // Filter tickets requested by or assigned to current user
+      const myTickets = (all || []).filter((t) => {
+        const reqEmail = (t.requesterEmail || '').toLowerCase();
+        const reqName = (t.requesterName || '').toLowerCase();
+        const assigned = (t.assignedTo || '').toLowerCase();
+        if (userEmail && reqEmail === userEmail) return true;
+        if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+        return false;
+      });
+      setTickets(myTickets);
+    } catch (e) {
+      console.error('Error loading my tickets:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

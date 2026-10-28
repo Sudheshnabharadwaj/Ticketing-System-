@@ -30,22 +30,24 @@ export const EmployeeDashboard: React.FC = () => {
   const [stats, setStats] = useState(() => EmployeeService.getSummaryStats());
 
   const loadDashboardData = async () => {
-    await EmployeeService.fetchProfile();
-    await EmployeeService.fetchTickets();
-    const myTickets = EmployeeService.getEmployeeTickets();
-    const assignedTickets = EmployeeService.getAssignedTickets();
-    const combinedMap = new Map<string, EmployeeTicket>();
-    [...myTickets, ...assignedTickets].forEach(t => combinedMap.set(t.id, t));
-    const combined = Array.from(combinedMap.values());
-    setAllTickets(combined);
-    const summary = EmployeeService.getSummaryStats();
-    setStats(summary);
+    try {
+      await EmployeeService.fetchProfile();
+      await EmployeeService.fetchTickets();
+      const myTickets = EmployeeService.getEmployeeTickets();
+      const assignedTickets = EmployeeService.getAssignedTickets();
+      const combinedMap = new Map<string, EmployeeTicket>();
+      [...myTickets, ...assignedTickets].forEach(t => combinedMap.set(t.id, t));
+      const combined = Array.from(combinedMap.values());
+      setAllTickets(combined);
+      const summary = EmployeeService.getSummaryStats();
+      setStats(summary);
+    } catch (e) {
+      console.error('Error loading employee dashboard data:', e);
+    }
   };
 
   useEffect(() => {
     loadDashboardData();
-    window.addEventListener('storage', loadDashboardData);
-    return () => window.removeEventListener('storage', loadDashboardData);
   }, []);
 
   const filteredTickets = React.useMemo(() => {
