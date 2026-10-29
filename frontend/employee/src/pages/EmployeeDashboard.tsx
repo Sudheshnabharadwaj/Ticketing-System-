@@ -65,7 +65,7 @@ export const EmployeeDashboard: React.FC = () => {
           <button
             onClick={() => navigate(`${targetPath}?mode=view`)}
             className="font-mono text-[#0284C7] font-bold text-xs hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
-            title="View Ticket (Read-only)"
+            title="View Ticket"
           >
             {row.ticketNumber}
           </button>
@@ -114,7 +114,7 @@ export const EmployeeDashboard: React.FC = () => {
               size="sm"
               onClick={() => navigate(`${targetPath}?mode=view`)}
               icon={<Eye className="w-3.5 h-3.5" />}
-              title="Read-only View"
+              title="View"
               className="text-xs"
             >
               View

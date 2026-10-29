@@ -18,8 +18,6 @@ import {
   FileText,
   Download,
   Eye,
-  UploadCloud,
-  Loader2,
   Plus
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -27,7 +25,6 @@ import { useTickets } from '../../hooks/useTickets';
 import { PRIORITIES, STATUSES } from '../../utils/constants';
 import { ticketService } from '../../services/ticketService';
 import { authenticatedFetch, API_BASE, withAccessToken } from '../../services/backendAuth';
-import { AttachmentPicker, FileAttachmentItem } from '../common/AttachmentPicker';
 
 interface TicketDetailsModalProps {
   ticket: Ticket | null;
@@ -92,10 +89,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     downloadUrl?: string;
   } | null>(null);
   const [modalAttachments, setModalAttachments] = useState<any[]>(ticket.attachments || []);
-  const [newAttachmentsToUpload, setNewAttachmentsToUpload] = useState<FileAttachmentItem[]>([]);
-  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const [attachmentSuccess, setAttachmentSuccess] = useState<string | null>(null);
 
   const loadLiveAttachments = async (tid: string) => {
     try {
@@ -105,33 +98,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
       }
     } catch (e) {
       console.warn('Could not refresh attachments:', e);
-    }
-  };
-
-  const handleUploadAttachments = async () => {
-    if (newAttachmentsToUpload.length === 0) return;
-    const files = newAttachmentsToUpload.map((a) => a.file).filter(Boolean) as File[];
-    if (files.length === 0) return;
-
-    setIsUploadingAttachments(true);
-    setAttachmentError(null);
-    setAttachmentSuccess(null);
-
-    try {
-      const ok = await ticketService.uploadAttachments(currentTicket.id, files);
-      if (ok) {
-        setAttachmentSuccess(`${files.length} attachment(s) uploaded successfully!`);
-        setNewAttachmentsToUpload([]);
-        showToast(`${files.length} attachment(s) uploaded successfully!`);
-        await loadLiveAttachments(currentTicket.id);
-        window.dispatchEvent(new CustomEvent('ticket-updated'));
-      } else {
-        setAttachmentError('Failed to upload attachments. Please check network and try again.');
-      }
-    } catch (err: any) {
-      setAttachmentError(err?.message || 'Error uploading attachments.');
-    } finally {
-      setIsUploadingAttachments(false);
     }
   };
 
@@ -242,7 +208,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
           <div className="flex items-center gap-2">
             {isReadOnlyMode ? (
               <span className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 text-slate-600 rounded-lg border border-slate-200">
-                Read-Only View
+                View
               </span>
             ) : (
               <button
@@ -412,59 +378,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
             {/* Tab 3: Attachments */}
             {activeTab === 'attachments' && (
               <div className="space-y-4">
-                {/* Upload Section */}
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                      <Paperclip className="w-3.5 h-3.5 text-sky-600" />
-                      Attach Files to this Ticket
-                    </span>
-                    <span className="text-[11px] text-slate-400">Add documents, logs, or screenshots</span>
-                  </div>
-
-                  <AttachmentPicker
-                    attachments={newAttachmentsToUpload}
-                    onChange={setNewAttachmentsToUpload}
-                  />
-
-                  {attachmentError && (
-                    <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 text-[11px] rounded-lg flex items-center gap-1.5 font-medium">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
-                      <span>{attachmentError}</span>
-                    </div>
-                  )}
-
-                  {attachmentSuccess && (
-                    <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] rounded-lg flex items-center gap-1.5 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                      <span>{attachmentSuccess}</span>
-                    </div>
-                  )}
-
-                  {newAttachmentsToUpload.length > 0 && (
-                    <div className="flex justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={handleUploadAttachments}
-                        disabled={isUploadingAttachments}
-                        className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {isUploadingAttachments ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Uploading…</span>
-                          </>
-                        ) : (
-                          <>
-                            <UploadCloud className="w-3.5 h-3.5" />
-                            <span>Upload {newAttachmentsToUpload.length} Attachment(s)</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 {/* Existing Attachments List */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
@@ -587,39 +500,45 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 {/* Assign Employee */}
                 <div>
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">Assign / Reassign Employee</label>
-                  <select
-                    value={currentTicket.assignedAgent || 'Unassigned'}
-                    onChange={async (e) => {
-                      const val = e.target.value;
-                      if (val === 'Unassigned') {
-                        setCurrentTicket((prev) => ({ ...prev, assignedAgent: 'Unassigned', assignedAgentId: undefined }));
-                        await assignAgent(currentTicket.id, '', 'Unassigned', currentTicket.priority);
-                        showToast('Ticket marked as unassigned');
-                      } else {
-                        const selectedUser = users.find((u) => u.name === val);
-                        if (!selectedUser) return;
-                        setCurrentTicket((prev) => ({ ...prev, assignedAgent: selectedUser.name, assignedAgentId: selectedUser.id }));
-                        await assignAgent(currentTicket.id, selectedUser.id, selectedUser.name, currentTicket.priority);
-                        showToast(`Assigned to ${selectedUser.name}`);
-                      }
-                      const fresh = await ticketService.getTicketById(currentTicket.id);
-                      if (fresh) {
-                        setCurrentTicket(fresh);
-                        setSelectedTicket(fresh);
-                      }
-                      if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: currentTicket.id } }));
-                      }
-                    }}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
-                  >
-                    <option value="Unassigned">Unassigned</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name} - {u.id} ({u.status})
-                      </option>
-                    ))}
-                  </select>
+                  {currentTicket.status === 'Resolved' ? (
+                    <div className="w-full px-2.5 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-lg text-slate-500 italic">
+                      Reassignment is disabled for resolved tickets.
+                    </div>
+                  ) : (
+                    <select
+                      value={currentTicket.assignedAgent || 'Unassigned'}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        if (val === 'Unassigned') {
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: 'Unassigned', assignedAgentId: undefined }));
+                          await assignAgent(currentTicket.id, '', 'Unassigned', currentTicket.priority);
+                          showToast('Ticket marked as unassigned');
+                        } else {
+                          const selectedUser = users.find((u) => u.name === val);
+                          if (!selectedUser) return;
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: selectedUser.name, assignedAgentId: selectedUser.id }));
+                          await assignAgent(currentTicket.id, selectedUser.id, selectedUser.name, currentTicket.priority);
+                          showToast(`Assigned to ${selectedUser.name}`);
+                        }
+                        const fresh = await ticketService.getTicketById(currentTicket.id);
+                        if (fresh) {
+                          setCurrentTicket(fresh);
+                          setSelectedTicket(fresh);
+                        }
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: currentTicket.id } }));
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="Unassigned">Unassigned</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} - {u.id} ({u.status})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Change Status */}

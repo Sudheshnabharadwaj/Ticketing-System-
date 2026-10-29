@@ -314,7 +314,7 @@ export const AssignedTicketDetails: React.FC = () => {
           {isReadOnly ? (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
               <Eye className="w-3.5 h-3.5 text-slate-500" />
-              Read-Only View
+              View
             </span>
           ) : (
             <>

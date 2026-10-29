@@ -143,7 +143,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                   {showActionsColumn && (
                     <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                        {/* Always provide read-only View button */}
+                        {/* Always provide View button */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -151,7 +151,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                             onSelectTicket(ticket);
                           }}
                           className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-[#0284C7] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
-                          title="View Ticket Details (Read-Only)"
+                          title="View Ticket Details"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>View</span>
@@ -169,7 +169,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                               <UserCheck className="w-3.5 h-3.5" />
                               <span>Assign</span>
                             </button>
-                          ) : (
+                          ) : ticket.status === 'Resolved' ? null : (
                             <button
                               type="button"
                               onClick={(e) => handleAssignClick(ticket, e)}

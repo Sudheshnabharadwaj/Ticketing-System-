@@ -52,6 +52,11 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
     e.preventDefault();
     setError('');
 
+    if (ticket.status === 'Resolved') {
+      setError('Reassignment is disabled for resolved tickets.');
+      return;
+    }
+
     if (!selectedEmployeeName) {
       setError('Please select an active employee.');
       return;
@@ -108,6 +113,12 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
         {error && (
           <div className="mb-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
             {error}
+          </div>
+        )}
+
+        {ticket.status === 'Resolved' && (
+          <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+            This ticket is resolved. Reassignment is disabled.
           </div>
         )}
 
@@ -181,7 +192,7 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || ticket.status === 'Resolved'}
               className="flex-1 py-2 px-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold text-xs rounded-lg shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1 hover:shadow-md"
             >
               <CheckCircle2 className="w-4 h-4" />

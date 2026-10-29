@@ -23,14 +23,8 @@ export const MyTickets: React.FC = () => {
 
   const loadTickets = async () => {
     await EmployeeService.fetchTickets();
-    let list: EmployeeTicket[];
-    if (paramScope === 'my') {
-      list = EmployeeService.getMyTickets();
-    } else if (paramScope === 'assigned') {
-      list = EmployeeService.getAssignedTickets();
-    } else {
-      list = EmployeeService.getEmployeeTickets();
-    }
+    // Show only tickets created by the logged-in employee
+    const list = EmployeeService.getMyTickets();
     setTickets(list);
   };
 
@@ -96,19 +90,16 @@ export const MyTickets: React.FC = () => {
     {
       header: 'Ticket ID',
       accessorKey: 'ticketNumber',
-      cell: (row) => {
-        const targetPath = row.assignedBy ? `/assigned-tickets/${row.id}` : `/tickets/${row.id}`;
-        return (
-          <button
-            type="button"
-            onClick={() => navigate(`${targetPath}?mode=view`)}
-            className="font-mono text-xs font-bold text-[#0284C7] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
-            title="View Ticket (Read-only)"
-          >
-            {row.ticketNumber}
-          </button>
-        );
-      },
+      cell: (row) => (
+        <button
+          type="button"
+          onClick={() => navigate(`/tickets/${row.id}?mode=view`)}
+          className="font-mono text-xs font-bold text-[#0284C7] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+          title="View Ticket"
+        >
+          {row.ticketNumber}
+        </button>
+      ),
     },
     {
       header: 'Subject',
@@ -137,23 +128,20 @@ export const MyTickets: React.FC = () => {
     },
     {
       header: 'Action',
-      cell: (row) => {
-        const targetPath = row.assignedBy ? `/assigned-tickets/${row.id}` : `/tickets/${row.id}`;
-        return (
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`${targetPath}?mode=view`)}
-              className="border-slate-200 hover:border-[#0284C7] hover:bg-sky-50 text-slate-600 hover:text-[#0284C7] text-xs font-medium cursor-pointer"
-              title="Read-only View"
-            >
-              <Eye className="w-3.5 h-3.5 mr-1" />
-              View
-            </Button>
-          </div>
-        );
-      },
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/tickets/${row.id}?mode=view`)}
+            className="border-slate-200 hover:border-[#0284C7] hover:bg-sky-50 text-slate-600 hover:text-[#0284C7] text-xs font-medium cursor-pointer"
+            title="View"
+          >
+            <Eye className="w-3.5 h-3.5 mr-1" />
+            View
+          </Button>
+        </div>
+      ),
     },
   ];
 

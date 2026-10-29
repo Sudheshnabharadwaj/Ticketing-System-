@@ -536,9 +536,9 @@ export const TicketManagementPage: React.FC = () => {
       </Card>
 
       {/* ACTION MODAL disabled in view-only Admin Dashboard */}
-      {false && actionModalType && selectedTicket && (
+      {selectedTicket && actionModalType && (
         <Modal
-          isOpen={true}
+          isOpen={false}
           onClose={() => setActionModalType(null)}
           title={
             actionModalType === 'assign'
@@ -724,7 +724,7 @@ export const TicketManagementPage: React.FC = () => {
                 <div className="flex items-center gap-2 mt-2.5">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
                     <Eye className="w-3.5 h-3.5 text-slate-500" />
-                    Read-Only View
+                    View
                   </span>
                   <button
                     onClick={() => navigate(`/admin/workspace/tickets/${selectedTicket.id}`)}

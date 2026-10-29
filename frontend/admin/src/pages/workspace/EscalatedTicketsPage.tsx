@@ -240,9 +240,9 @@ export const EscalatedTicketsPage: React.FC = () => {
       </Card>
 
       {/* Action Modal disabled in view-only Admin Dashboard */}
-      {false && selectedTicket && (
+      {selectedTicket && (
         <Modal
-          isOpen={!!selectedTicket}
+          isOpen={false}
           onClose={handleCloseModal}
           title={`Escalation Action — ${selectedTicket.ticketNumber}`}
           subtitle={selectedTicket.title}
