@@ -126,7 +126,10 @@ export function getCurrentSessionUser(): AppUser | null {
     const refreshToken =
       localStorage.getItem('backend_refresh_token') || sessionStorage.getItem('backend_refresh_token');
 
-    if (!token && !refreshToken) {
+    const storedToken =
+      localStorage.getItem('backend_auth_token') || sessionStorage.getItem('backend_auth_token');
+
+    if (!token && !refreshToken && !storedToken) {
       // Session has expired or tokens are missing
       sessionStorage.removeItem(STORAGE_KEY_SESSION);
       localStorage.removeItem(STORAGE_KEY_SESSION);

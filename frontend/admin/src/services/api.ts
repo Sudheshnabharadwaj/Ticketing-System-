@@ -155,9 +155,20 @@ export function calculateSLADeadline(
   explicitDueDate?: string
 ): string {
   if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+    const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+      ? explicitDueDate.replace(' ', 'T')
+      : explicitDueDate;
+    const due = new Date(raw);
+    if (!isNaN(due.getTime())) {
+      const yyyy = due.getFullYear();
+      const mm = String(due.getMonth() + 1).padStart(2, '0');
+      const dd = String(due.getDate()).padStart(2, '0');
+      const hh = String(due.getHours()).padStart(2, '0');
+      const min = String(due.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    }
     const cleanDue = explicitDueDate.replace('T', ' ').slice(0, 16);
-    const cleanCreated = (createdAtStr || '').replace('T', ' ').slice(0, 16);
-    if (cleanDue !== cleanCreated) return cleanDue;
+    return cleanDue;
   }
 
   const prio = (priority || '').toLowerCase();

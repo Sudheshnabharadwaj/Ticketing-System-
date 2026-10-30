@@ -10,6 +10,7 @@ import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import { AttachmentPicker, FileAttachmentItem } from '../../components/common/AttachmentPicker';
 import { formatDate } from '../../utils/helpers';
+import { OrganizationService } from '../../services/organizationService';
 import { Ticket, TicketStatus, TicketPriority, TicketComment, TicketActivity } from '../../types/ticket';
 import {
   ArrowLeft,
@@ -63,7 +64,9 @@ export const TicketDetailsPage: React.FC = () => {
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
 
   // Form Inputs
+  const [selectedTeamLead, setSelectedTeamLead] = useState('');
   const [escalationReason, setEscalationReason] = useState('');
+  const [escalationComment, setEscalationComment] = useState('');
   const [escalateTo, setEscalateTo] = useState('Tier 3 Operations');
   const [escalatePriority, setEscalatePriority] = useState<TicketPriority>('High');
   const [resolutionSummaryInput, setResolutionSummaryInput] = useState('');
@@ -220,14 +223,17 @@ export const TicketDetailsPage: React.FC = () => {
 
   const handleConfirmEscalation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!escalationReason.trim()) return;
-    escalateTicket(ticket.id, escalationReason.trim(), user.name);
+    if (!escalationReason.trim() || !escalationComment.trim()) return;
+    const targetLead = selectedTeamLead || user.name || 'Team Lead';
+    const fullReason = `${escalationReason}: ${escalationComment.trim()}`;
+    escalateTicket(ticket.id, fullReason, targetLead);
     if (escalatePriority !== ticket.priority) {
       changePriority(ticket.id, escalatePriority);
     }
     setIsEscalateModalOpen(false);
     setEscalationReason('');
-    showToast(`Ticket ${ticket.id} escalated successfully to ${escalateTo}`);
+    setEscalationComment('');
+    showToast(`Ticket ${ticket.id} escalated successfully to ${targetLead}`);
   };
 
   const handleConfirmAttachment = async (e: React.FormEvent) => {
@@ -828,64 +834,88 @@ export const TicketDetailsPage: React.FC = () => {
       {isEscalateModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center space-x-2 text-rose-600 font-bold text-base mb-3">
+            <div className="flex items-center space-x-2 text-rose-600 font-bold text-base mb-1">
               <AlertTriangle className="w-5 h-5" />
-              <span>Escalate Ticket {ticket.id}</span>
+              <span>Escalate Ticket</span>
             </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Escalate ticket <span className="font-mono font-bold text-slate-700">{ticket.id}</span> to supervisory team lead or department management.
+            </p>
 
             <form onSubmit={handleConfirmEscalation} className="space-y-4 text-xs">
+              {/* Selected Team Lead */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Reason for Escalation *
+                  Team Lead <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={selectedTeamLead || user?.name || ''}
+                  onChange={(e) => setSelectedTeamLead(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer font-medium"
+                >
+                  {(() => {
+                    const deptLeads = OrganizationService.getTeamLeadsByDepartment(ticket.department || '');
+                    const allLeads = deptLeads.length > 0 ? deptLeads : OrganizationService.getTeamLeadsByDepartment('IT Support');
+                    const leadNames = Array.from(new Set([user?.name, ...allLeads.map(l => l.name), 'Kotesh', 'Manikanta', 'soniya'].filter(Boolean)));
+                    return leadNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name} {name === user?.name ? '(Current Lead)' : ''}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+
+              {/* Reason Dropdown */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={escalationReason}
+                  onChange={(e) => setEscalationReason(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
+                >
+                  <option value="">Select an escalation reason...</option>
+                  <option value="SLA Breach Risk">SLA Breach Risk</option>
+                  <option value="Technical Complexity">Technical Complexity</option>
+                  <option value="Management Urgency">Management Urgency</option>
+                  <option value="Dependency on Third Party / Vendor">Dependency on Third Party / Vendor</option>
+                  <option value="Requires Higher Privileges / Permissions">Requires Higher Privileges / Permissions</option>
+                  <option value="Unresponsive Requester">Unresponsive Requester</option>
+                  <option value="Hardware Replacement Required">Hardware Replacement Required</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Comment / Explanation Field */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Comment / Explanation <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   required
                   rows={3}
-                  value={escalationReason}
-                  onChange={(e) => setEscalationReason(e.target.value)}
-                  placeholder="State the justification for escalating (e.g. SLA breach risk, hardware replacement required)..."
+                  value={escalationComment}
+                  onChange={(e) => setEscalationComment(e.target.value)}
+                  placeholder="Provide explanation or justification for escalating this ticket..."
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 text-xs"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Escalate To</label>
-                <select
-                  value={escalateTo}
-                  onChange={(e) => setEscalateTo(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none text-xs"
-                >
-                  <option value="Tier 3 Operations">Tier 3 Operations</option>
-                  <option value="SecOps Incident Response">SecOps Incident Response</option>
-                  <option value="Infrastructure Team">Infrastructure Team</option>
-                  <option value="Executive Escalations">Executive Escalations</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Escalated Priority</label>
-                <select
-                  value={escalatePriority}
-                  onChange={(e) => setEscalatePriority(e.target.value as TicketPriority)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none text-xs"
-                >
-                  <option value="High">High</option>
-                  <option value="Critical">Critical</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsEscalateModalOpen(false)}
-                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!escalationReason.trim()}
-                  className="px-4 py-2 font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 transition-colors shadow-xs"
+                  disabled={!escalationReason || !escalationComment.trim()}
+                  className="px-4 py-2 font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
                 >
                   Escalate Ticket
                 </button>

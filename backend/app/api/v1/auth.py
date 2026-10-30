@@ -83,7 +83,7 @@ def _issue(row: dict[str, Any]) -> dict[str, Any]:
         "access_token": token,
         "refresh_token": create_refresh_token(user_id),
         "token_type": "bearer",
-        "expires_in": 60 * 60,
+        "expires_in": 7 * 24 * 3600,  # 7 days persistent session
         "user": _public_user({**row, "role": role}),
     }
 

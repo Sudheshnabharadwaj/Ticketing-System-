@@ -357,7 +357,7 @@ export async function authenticatedFetch(input: RequestInfo | URL, init?: Reques
     const renewed = await refreshBackendSession();
     if (renewed) {
       res = await doFetch();
-    } else {
+    } else if (!readStorage(REFRESH_KEY) && !memoryRefresh) {
       handleSessionExpiration();
     }
   }

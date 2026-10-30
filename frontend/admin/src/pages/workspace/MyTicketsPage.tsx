@@ -146,7 +146,7 @@ export const MyTicketsPage: React.FC = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => navigate('/admin/dashboard')}
+            onClick={() => navigate('/admin/workspace/create-ticket')}
             className="bg-[#0284C7] hover:bg-[#0369a1] text-white shadow-2xs font-semibold"
           >
             <PlusCircle className="w-4 h-4 mr-1.5" />
@@ -197,7 +197,7 @@ export const MyTicketsPage: React.FC = () => {
           emptyMessage={
             searchTerm || statusFilter !== 'ALL'
               ? 'No tickets match your search filters'
-              : 'No tickets created yet. Use "Create Ticket" on the Admin Dashboard to submit a ticket.'
+              : 'No tickets created yet. Use "Create Ticket" to submit a ticket.'
           }
         />
       </div>

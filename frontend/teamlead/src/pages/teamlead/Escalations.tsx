@@ -61,7 +61,14 @@ export const Escalations: React.FC = () => {
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filteredEscalations.map((esc) => (
+              {filteredEscalations.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-xs">
+                    No data available
+                  </td>
+                </tr>
+              ) : (
+                filteredEscalations.map((esc) => (
                 <tr key={esc.id} className="hover:bg-slate-50/70 transition-colors">
                   <td
                     onClick={() => handleOpenTicket(esc.ticketId)}
@@ -97,7 +104,8 @@ export const Escalations: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>

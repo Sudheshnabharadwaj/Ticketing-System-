@@ -354,7 +354,7 @@ export const ticketService = {
     try {
       await apiRequest(
         `/tickets/${encodeURIComponent(ticketId)}/escalate`,
-        jsonInit('POST', { reason }),
+        jsonInit('POST', { reason, escalated_to: _escalatedBy }),
       );
       invalidateTeamLeadTicketsCache();
       return true;

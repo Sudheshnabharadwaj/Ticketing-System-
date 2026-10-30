@@ -118,7 +118,7 @@ export const SLABreachedPage: React.FC = () => {
       cell: (row) => <span className="text-[13px] text-slate-800 font-medium">{row.assignedTo || 'Unassigned'}</span>
     },
     {
-      header: 'Overdue Deadline',
+      header: 'Overview Deadline',
       cell: (row) => <span className="text-[12.5px] text-red-600 font-mono font-bold">{row.dueDate}</span>
     },
     {

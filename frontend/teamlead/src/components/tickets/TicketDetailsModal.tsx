@@ -24,6 +24,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTickets } from '../../hooks/useTickets';
 import { PRIORITIES, STATUSES } from '../../utils/constants';
 import { ticketService } from '../../services/ticketService';
+import { OrganizationService } from '../../services/organizationService';
 import { authenticatedFetch, API_BASE, withAccessToken } from '../../services/backendAuth';
 
 interface TicketDetailsModalProps {
@@ -81,7 +82,9 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   const [newComment, setNewComment] = useState('');
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
+  const [selectedTeamLead, setSelectedTeamLead] = useState('');
   const [escalationReasonInput, setEscalationReasonInput] = useState('');
+  const [escalationCommentInput, setEscalationCommentInput] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState<{
     name: string;
     size?: string;
@@ -168,10 +171,14 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   };
 
   const handleConfirmEscalation = () => {
-    if (!escalationReasonInput.trim()) return;
-    escalateTicket(ticket.id, escalationReasonInput.trim(), user.name);
+    if (!escalationReasonInput.trim() || !escalationCommentInput.trim()) return;
+    const targetLead = selectedTeamLead || user.name || 'Team Lead';
+    const fullReason = `${escalationReasonInput}: ${escalationCommentInput.trim()}`;
+    escalateTicket(ticket.id, fullReason, targetLead);
     setEscalationModalOpen(false);
     setEscalationReasonInput('');
+    setEscalationCommentInput('');
+    showToast(`Ticket ${ticket.id} escalated successfully to ${targetLead}`);
   };
 
   return (
@@ -632,37 +639,101 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
       {/* Escalation Confirmation Dialog */}
       {escalationModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center space-x-2 text-rose-600 font-bold text-lg mb-2">
-              <AlertTriangle className="w-6 h-6" />
-              <span>Escalate Ticket {ticket.id}</span>
+            <div className="flex items-center space-x-2 text-rose-600 font-bold text-base mb-1">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Escalate Ticket</span>
             </div>
-            <p className="text-xs text-slate-600 mb-4">
-              Escalating will transfer ownership to Tier 3 Incident Management. Please state the justification.
+            <p className="text-xs text-slate-500 mb-4">
+              Escalate ticket <span className="font-mono font-bold text-slate-700">{ticket.id}</span> to supervisory team lead or department management.
             </p>
-            <textarea
-              rows={3}
-              value={escalationReasonInput}
-              onChange={(e) => setEscalationReasonInput(e.target.value)}
-              placeholder="State escalation reason (e.g., SLA breach risk, hardware replacement required)..."
-              className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:border-rose-500"
-            />
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setEscalationModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmEscalation}
-                disabled={!escalationReasonInput.trim()}
-                className="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50"
-              >
-                Confirm Escalation
-              </button>
-            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConfirmEscalation();
+              }}
+              className="space-y-4 text-xs"
+            >
+              {/* Selected Team Lead */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Team Lead <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={selectedTeamLead || user?.name || ''}
+                  onChange={(e) => setSelectedTeamLead(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer font-medium"
+                >
+                  {(() => {
+                    const deptLeads = OrganizationService.getTeamLeadsByDepartment(ticket.department || '');
+                    const allLeads = deptLeads.length > 0 ? deptLeads : OrganizationService.getTeamLeadsByDepartment('IT Support');
+                    const leadNames = Array.from(new Set([user?.name, ...allLeads.map((l) => l.name), 'Kotesh', 'Manikanta', 'soniya'].filter(Boolean)));
+                    return leadNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name} {name === user?.name ? '(Current Lead)' : ''}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+
+              {/* Reason Dropdown */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={escalationReasonInput}
+                  onChange={(e) => setEscalationReasonInput(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
+                >
+                  <option value="">Select an escalation reason...</option>
+                  <option value="SLA Breach Risk">SLA Breach Risk</option>
+                  <option value="Technical Complexity">Technical Complexity</option>
+                  <option value="Management Urgency">Management Urgency</option>
+                  <option value="Dependency on Third Party / Vendor">Dependency on Third Party / Vendor</option>
+                  <option value="Requires Higher Privileges / Permissions">Requires Higher Privileges / Permissions</option>
+                  <option value="Unresponsive Requester">Unresponsive Requester</option>
+                  <option value="Hardware Replacement Required">Hardware Replacement Required</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Comment / Explanation Field */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Comment / Explanation <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={escalationCommentInput}
+                  onChange={(e) => setEscalationCommentInput(e.target.value)}
+                  placeholder="Provide explanation or justification for escalating this ticket..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEscalationModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!escalationReasonInput || !escalationCommentInput.trim()}
+                  className="px-4 py-2 font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+                >
+                  Escalate Ticket
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
