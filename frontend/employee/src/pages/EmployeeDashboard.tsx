@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -20,8 +20,18 @@ import type { EmployeeTicket } from '../types';
 export const EmployeeDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(() => EmployeeService.getTickets().length === 0);
-  const [recentTickets, setRecentTickets] = useState<EmployeeTicket[]>(() => EmployeeService.getEmployeeTickets().slice(0, 5));
+  const [allEmployeeTickets, setAllEmployeeTickets] = useState<EmployeeTicket[]>(() => EmployeeService.getEmployeeTickets());
   const [stats, setStats] = useState(() => EmployeeService.getSummaryStats());
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+
+  const displayedTickets = useMemo(() => {
+    if (!statusFilter) {
+      return allEmployeeTickets.slice(0, 5);
+    }
+    return allEmployeeTickets.filter(
+      (t) => (t.status || '').toLowerCase() === statusFilter.toLowerCase()
+    );
+  }, [allEmployeeTickets, statusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +45,7 @@ export const EmployeeDashboard: React.FC = () => {
         const employeeTickets = EmployeeService.getEmployeeTickets();
         const summary = EmployeeService.getSummaryStats();
         if (cancelled) return;
-        setRecentTickets(employeeTickets.slice(0, 5));
+        setAllEmployeeTickets(employeeTickets);
         setStats(summary);
       } finally {
         if (!cancelled) {
@@ -201,8 +211,12 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Open */}
         <div
-          onClick={() => navigate('/tickets?status=Open')}
-          className="bg-white border border-slate-200 hover:border-blue-400 rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group"
+          onClick={() => setStatusFilter((prev) => (prev === 'Open' ? null : 'Open'))}
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group ${
+            statusFilter === 'Open'
+              ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
+              : 'border-slate-200 hover:border-blue-400'
+          }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-xs font-semibold text-slate-600 group-hover:text-blue-700 transition-colors">Open</span>
@@ -218,8 +232,12 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* In Progress */}
         <div
-          onClick={() => navigate('/tickets?status=In Progress')}
-          className="bg-white border border-slate-200 hover:border-[#0284C7] rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group"
+          onClick={() => setStatusFilter((prev) => (prev === 'In Progress' ? null : 'In Progress'))}
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group ${
+            statusFilter === 'In Progress'
+              ? 'border-[#0284C7] ring-2 ring-sky-500/20 bg-sky-50/20'
+              : 'border-slate-200 hover:border-[#0284C7]'
+          }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-xs font-semibold text-slate-600 group-hover:text-[#0284C7] transition-colors">In Progress</span>
@@ -235,8 +253,12 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Pending */}
         <div
-          onClick={() => navigate('/tickets?status=Pending')}
-          className="bg-white border border-slate-200 hover:border-amber-400 rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group"
+          onClick={() => setStatusFilter((prev) => (prev === 'Pending' ? null : 'Pending'))}
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group ${
+            statusFilter === 'Pending'
+              ? 'border-amber-500 ring-2 ring-amber-500/20 bg-amber-50/20'
+              : 'border-slate-200 hover:border-amber-400'
+          }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-xs font-semibold text-slate-600 group-hover:text-amber-700 transition-colors">Pending</span>
@@ -252,8 +274,12 @@ export const EmployeeDashboard: React.FC = () => {
 
         {/* Resolved */}
         <div
-          onClick={() => navigate('/tickets?status=Resolved')}
-          className="bg-white border border-slate-200 hover:border-emerald-400 rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group"
+          onClick={() => setStatusFilter((prev) => (prev === 'Resolved' ? null : 'Resolved'))}
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs hover:shadow-xs cursor-pointer transition-all flex flex-col justify-between group ${
+            statusFilter === 'Resolved'
+              ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20'
+              : 'border-slate-200 hover:border-emerald-400'
+          }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-xs font-semibold text-slate-600 group-hover:text-emerald-700 transition-colors">Resolved</span>
@@ -273,20 +299,42 @@ export const EmployeeDashboard: React.FC = () => {
         headerClassName="px-5 py-3.5 bg-slate-50/50 border-b border-slate-200"
         bodyClassName="p-0"
         title={
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-[#0284C7]" />
-            <span className="text-base font-semibold text-slate-900">Recent Tickets</span>
-            <Badge variant="neutral" className="text-[11px] py-0.5 px-2">
-              {recentTickets.length} recent
-            </Badge>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#0284C7]" />
+              <span className="text-base font-semibold text-slate-900">Recent Tickets</span>
+              {statusFilter ? (
+                <Badge variant="primary" className="text-[11px] py-0.5 px-2 font-medium">
+                  {statusFilter} ({displayedTickets.length})
+                </Badge>
+              ) : (
+                <Badge variant="neutral" className="text-[11px] py-0.5 px-2">
+                  {displayedTickets.length} recent
+                </Badge>
+              )}
+            </div>
+            {statusFilter && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter(null)}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium underline cursor-pointer"
+              >
+                Clear filter
+              </button>
+            )}
           </div>
         }
       >
         <Table
           columns={recentColumns}
-          data={recentTickets}
+          data={displayedTickets}
           keyExtractor={(row) => row.id}
           compact
+          emptyMessage={
+            statusFilter
+              ? `No ${statusFilter.toLowerCase()} tickets found in recent tickets.`
+              : 'No recent tickets found.'
+          }
         />
       </Card>
     </div>
