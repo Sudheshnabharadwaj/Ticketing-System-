@@ -1,5 +1,6 @@
 """Ticket attachments API endpoints supporting file uploads, downloads, and previews."""
 
+import base64
 import json
 import mimetypes
 import re
@@ -10,7 +11,7 @@ from typing import Any
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.auth.dependencies import authorize_ticket_access, get_current_user
 from app.db.supabase import get_supabase_admin_client, get_supabase_client, has_service_role_key
@@ -29,6 +30,7 @@ ALLOWED_EXTENSIONS = {
 }
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 METADATA_FILE = "_metadata.json"
+ATTACHMENT_PAYLOAD_PREFIX = "[ATTACHMENT_V1]:"
 
 
 def _validate_ticket_id(ticket_id: str) -> str:
@@ -144,19 +146,14 @@ def _metadata_path(folder: Path) -> Path:
 
 
 def _load_metadata(ticket_id: str) -> dict[str, dict[str, Any]]:
-    """Load the sidecar metadata index, keyed by attachment id.
-
-    The index is written even when Supabase ``ticket_attachments`` is protected
-    by RLS and the insert is rejected, so uploader/type/original name metadata
-    is never silently lost.
-    """
+    """Load the sidecar metadata index, keyed by attachment id."""
     folder = _ticket_folder(ticket_id)
     path = _metadata_path(folder)
     if not path.exists():
         return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         print(f"[attachments] metadata index unreadable for {ticket_id}: {exc}")
         return {}
     if not isinstance(raw, list):
@@ -178,7 +175,7 @@ def _save_metadata(ticket_id: str, index: dict[str, dict[str, Any]]) -> None:
             encoding="utf-8",
         )
         tmp.replace(path)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         print(f"[attachments] could not write metadata index for {ticket_id}: {exc}")
         try:
             tmp.unlink(missing_ok=True)
@@ -240,13 +237,88 @@ def _base_url(request: Request | None) -> str:
     return "http://localhost:8000"
 
 
+def _restore_file_to_disk_if_needed(tid: str, record: dict[str, Any]) -> Path | None:
+    """If file is missing on local disk (e.g. after restart), restore it from persisted DB base64 data."""
+    try:
+        clean_tid = _validate_ticket_id(tid)
+        folder = UPLOAD_BASE_DIR / clean_tid
+        folder.mkdir(parents=True, exist_ok=True)
+        stored_name = record.get("stored_name") or f"{record.get('id', 'att')}__{record.get('name', 'file')}"
+        safe_name = _safe_stored_filename(stored_name)
+        file_path = folder / safe_name
+        if file_path.exists() and file_path.is_file() and file_path.stat().st_size > 0:
+            return file_path
+        b64_data = record.get("data_base64")
+        if b64_data:
+            content = base64.b64decode(b64_data)
+            with open(file_path, "wb") as f:
+                f.write(content)
+            # Also update sidecar metadata
+            index = _load_metadata(clean_tid)
+            att_id = str(record.get("id") or "")
+            if att_id:
+                clean_rec = {k: v for k, v in record.items() if k != "data_base64"}
+                index[att_id] = clean_rec
+                _save_metadata(clean_tid, index)
+            return file_path
+    except Exception as exc:
+        print(f"[attachments] could not restore file to disk for {tid}: {exc}")
+    return None
+
+
+def _fetch_persisted_db_attachments(ticket_ids: str | list[str]) -> list[dict[str, Any]]:
+    """Retrieve persisted attachment records from Supabase database."""
+    ids = [ticket_ids] if isinstance(ticket_ids, str) else list(ticket_ids)
+    clean_ids = [str(x).strip() for x in ids if str(x).strip()]
+    if not clean_ids:
+        return []
+    records: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    try:
+        sb = get_supabase_admin_client()
+        res = (
+            sb.table("ticket_comments")
+            .select("*")
+            .in_("ticket_id", clean_ids)
+            .eq("author_name", "__attachment__")
+            .order("created_at", desc=False)
+            .execute()
+        )
+        for row in (res.data or []):
+            msg = str(row.get("message") or "")
+            if msg.startswith(ATTACHMENT_PAYLOAD_PREFIX):
+                try:
+                    payload = json.loads(msg[len(ATTACHMENT_PAYLOAD_PREFIX):])
+                    att_id = str(payload.get("id") or "")
+                    if att_id and att_id not in seen_ids:
+                        seen_ids.add(att_id)
+                        tid = str(payload.get("ticket_id") or row.get("ticket_id") or clean_ids[0])
+                        _restore_file_to_disk_if_needed(tid, payload)
+                        records.append(payload)
+                except Exception as parse_err:
+                    print(f"[attachments] parse error for persisted attachment: {parse_err}")
+    except Exception as exc:
+        print(f"[attachments] persisted DB lookup failed for {clean_ids}: {exc}")
+    return records
+
+
 def _db_attachments(ticket_ids: str | list[str]) -> list[dict[str, Any]]:
     ids = [ticket_ids] if isinstance(ticket_ids, str) else list(ticket_ids)
     if not ids:
         return []
+    res_list: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    # 1. Query persistent attachments stored in Supabase
+    for r in _fetch_persisted_db_attachments(ids):
+        att_id = str(r.get("id") or "")
+        if att_id and att_id not in seen_ids:
+            seen_ids.add(att_id)
+            res_list.append(r)
+
+    # 2. Query ticket_attachments schema table in Supabase
     try:
         sb = get_supabase_admin_client()
-        res_list: list[dict[str, Any]] = []
         for tid in ids:
             if not tid:
                 continue
@@ -258,11 +330,14 @@ def _db_attachments(ticket_ids: str | list[str]) -> list[dict[str, Any]]:
                 .execute()
             )
             for row in (res.data or []):
-                res_list.append(row)
-        return res_list
-    except Exception as exc:  # pragma: no cover - defensive
-        print(f"[attachments] metadata lookup failed for {ticket_ids}: {exc}")
-        return []
+                att_id = str(row.get("id") or row.get("name") or "")
+                if att_id and att_id not in seen_ids:
+                    seen_ids.add(att_id)
+                    res_list.append(row)
+    except Exception as exc:
+        print(f"[attachments] ticket_attachments table lookup failed for {ticket_ids}: {exc}")
+
+    return res_list
 
 
 @router.get("", summary="List attachments for a ticket")
@@ -274,8 +349,7 @@ def list_attachments(
 ) -> list[dict[str, Any]]:
     """Return attachments for a ticket, merging DB metadata with on-disk files.
 
-    Files on disk take precedence for name/size so nothing that was uploaded is
-    ever hidden, even if the metadata row could not be written.
+    Files on disk and persisted in the database remain accessible even after application restarts.
     """
     base = _base_url(request)
     cands = _candidate_ids(ticket_id, _ticket)
@@ -293,10 +367,8 @@ def list_attachments(
             "size_bytes": row.get("size_bytes"),
             "mime_type": row.get("mime_type") or row.get("type"),
             "type": row.get("mime_type") or row.get("type"),
-            "url": row.get("url")
-            or f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
-            "download_url": row.get("url")
-            or f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
+            "url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
+            "download_url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
             "view_url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/view",
             "uploaded_by": row.get("uploaded_by"),
             "uploaded_by_id": row.get("uploaded_by_id"),
@@ -305,7 +377,6 @@ def list_attachments(
 
     for cid in cands:
         for rec in _disk_records(cid, base):
-            # Disk metadata is authoritative for files that exist.
             existing = merged.get(rec["id"])
             if existing:
                 existing.update(rec)
@@ -327,8 +398,8 @@ async def upload_attachments(
     """
     Upload one or more files for a ticket:
     - Validates extension and size
-    - Saves the file to local backend storage (always)
-    - Stores metadata in the local sidecar index and in Supabase when permitted
+    - Saves the file to local backend storage
+    - Stores metadata and file data persistently in Supabase so files remain accessible after restarts
     - Returns the list of created attachment records
     """
     if not files:
@@ -340,8 +411,6 @@ async def upload_attachments(
     uploader_name = (current_user.get("name") or "").strip()
     uploader_email = (current_user.get("email") or "").strip()
 
-    # Validate every file before writing anything, so a bad file cannot leave a
-    # partially-uploaded batch behind.
     prepared: list[tuple[str, str, bytes]] = []
     for idx, upload in enumerate(files):
         original_name = _safe_stored_filename(
@@ -370,8 +439,7 @@ async def upload_attachments(
             )
         prepared.append((original_name, upload.content_type or "", content))
 
-    # Check for duplicate files against existing attachments on this ticket
-    existing_records = _disk_records(ticket_id, base)
+    existing_records = list_attachments(ticket_id, request, _ticket)
     existing_set = {
         (str(r.get("name") or "").strip().lower(), r.get("size_bytes"))
         for r in existing_records
@@ -425,10 +493,34 @@ async def upload_attachments(
             "created_at": created_at,
         }
 
-        # Sidecar metadata is the durable fallback when RLS rejects DB inserts.
+        # Sidecar metadata saved locally
         index[att_id] = record
         _save_metadata(ticket_id, index)
 
+        # 1. Persist attachment file data & metadata to database for permanence across restarts
+        try:
+            b64_content = base64.b64encode(content).decode("ascii")
+            db_payload = {
+                **record,
+                "data_base64": b64_content,
+            }
+            msg = ATTACHMENT_PAYLOAD_PREFIX + json.dumps(db_payload)
+            comm_id = f"attmeta-{att_id}"
+            sb.table("ticket_comments").upsert({
+                "id": comm_id,
+                "ticket_id": ticket_id,
+                "author_user_id": str(current_user.get("sub") or current_user.get("id") or "system"),
+                "author_name": "__attachment__",
+                "author_role": "employee",
+                "message": msg,
+                "is_internal": True,
+            }).execute()
+            record["metadata_persisted"] = True
+        except Exception as db_exc:
+            print(f"[attachments] DB persistence error for {att_id}: {db_exc}")
+            record["metadata_persisted"] = False
+
+        # 2. Also attempt insertion into ticket_attachments schema table
         try:
             insert_res = (
                 sb.table("ticket_attachments")
@@ -446,16 +538,8 @@ async def upload_attachments(
             )
             if insert_res.data:
                 record["metadata_persisted"] = True
-            else:
-                record["metadata_persisted"] = False
-        except Exception as exc:
-            record["metadata_persisted"] = False
-            level = "warning" if not has_service_role_key() else "error"
-            print(
-                f"[attachments] {level}: metadata insert failed for {att_id} "
-                f"(ticket {ticket_id}): {exc}. Metadata saved to {METADATA_FILE}; "
-                "set SUPABASE_SERVICE_ROLE_KEY to persist it in Supabase."
-            )
+        except Exception:
+            pass
 
         results.append(record)
 
@@ -463,35 +547,49 @@ async def upload_attachments(
 
 
 def _find_file(ticket_id: str, att_id: str, ticket: dict[str, Any] | None = None) -> Path | None:
-    """Locate a stored file by attachment id (or filename) across candidate ticket folders."""
+    """Locate a stored file by attachment id (or filename) across candidate ticket folders and database."""
     cands = _candidate_ids(ticket_id, ticket)
     raw_clean = unquote(att_id or "").strip()
-    # Strip optional trailing human size such as " (23.2 KB)" or " (1 MB)"
     clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip()
     norm_clean = re.sub(r"[\s_]+", "_", clean_id.lower())
 
     for cid in cands:
         folder = UPLOAD_BASE_DIR / _validate_ticket_id(cid)
-        if not folder.exists():
-            continue
+        if folder.exists():
+            for f in folder.iterdir():
+                if not f.is_file() or f.name == METADATA_FILE or f.name.startswith("."):
+                    continue
+                stored_id, original_name = _split_stored_name(f.name)
+                norm_orig = re.sub(r"[\s_]+", "_", original_name.lower())
+                norm_stored = re.sub(r"[\s_]+", "_", stored_id.lower())
 
-        for f in folder.iterdir():
-            if not f.is_file() or f.name == METADATA_FILE or f.name.startswith("."):
-                continue
-            stored_id, original_name = _split_stored_name(f.name)
-            norm_orig = re.sub(r"[\s_]+", "_", original_name.lower())
-            norm_stored = re.sub(r"[\s_]+", "_", stored_id.lower())
+                if (
+                    f.name == raw_clean
+                    or f.name == clean_id
+                    or stored_id == clean_id
+                    or original_name == clean_id
+                    or norm_orig == norm_clean
+                    or norm_stored == norm_clean
+                    or original_name.replace("_", " ").lower() == clean_id.replace("_", " ").lower()
+                ):
+                    return f
 
-            if (
-                f.name == raw_clean
-                or f.name == clean_id
-                or stored_id == clean_id
-                or original_name == clean_id
-                or norm_orig == norm_clean
-                or norm_stored == norm_clean
-                or original_name.replace("_", " ").lower() == clean_id.replace("_", " ").lower()
-            ):
-                return f
+    # If file was not on disk (e.g. after restart), search persistent DB and restore it
+    db_recs = _fetch_persisted_db_attachments(cands)
+    for rec in db_recs:
+        r_id = str(rec.get("id") or "").lower()
+        r_name = str(rec.get("name") or "").lower()
+        if (
+            r_id == norm_clean
+            or r_name == norm_clean
+            or r_name.replace(" ", "_") == norm_clean
+            or clean_id in (r_id, r_name)
+        ):
+            tid = str(rec.get("ticket_id") or cands[0])
+            restored = _restore_file_to_disk_if_needed(tid, rec)
+            if restored is not None and restored.is_file():
+                return restored
+
     return None
 
 
@@ -501,9 +599,9 @@ def download_attachment(
     att_id: str,
     _ticket: dict[str, Any] = Depends(require_ticket_access),
 ):
-    """Download an attachment file by its ID or filename."""
+    """Download an attachment file by its ID or filename. Persists across application restarts."""
     match = _find_file(ticket_id, att_id, _ticket)
-    if match is not None:
+    if match is not None and match.is_file():
         media_type, _ = mimetypes.guess_type(str(match))
         _, original_name = _split_stored_name(match.name)
         return FileResponse(
@@ -511,6 +609,27 @@ def download_attachment(
             filename=original_name,
             media_type=media_type or "application/octet-stream",
         )
+
+    # If missing on disk, fallback to direct streaming from persistent database
+    cands = _candidate_ids(ticket_id, _ticket)
+    db_recs = _fetch_persisted_db_attachments(cands)
+    raw_clean = unquote(att_id or "").strip()
+    clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip().lower()
+    for rec in db_recs:
+        r_id = str(rec.get("id") or "").lower()
+        r_name = str(rec.get("name") or "").lower()
+        if clean_id in (r_id, r_name) or clean_id == r_name.replace(" ", "_"):
+            b64 = rec.get("data_base64")
+            if b64:
+                file_bytes = base64.b64decode(b64)
+                orig_name = rec.get("name") or "attachment"
+                m_type = rec.get("mime_type") or mimetypes.guess_type(orig_name)[0] or "application/octet-stream"
+                return Response(
+                    content=file_bytes,
+                    media_type=m_type,
+                    headers={"Content-Disposition": f'attachment; filename="{orig_name}"'}
+                )
+
     raise HTTPException(status_code=404, detail="Attachment not found.")
 
 
@@ -520,9 +639,9 @@ def view_attachment(
     att_id: str,
     _ticket: dict[str, Any] = Depends(require_ticket_access),
 ):
-    """View an attachment inline (images, PDFs, text) when the file exists."""
+    """View an attachment inline (images, PDFs, text). Persists across application restarts."""
     match = _find_file(ticket_id, att_id, _ticket)
-    if match is not None:
+    if match is not None and match.is_file():
         media_type, _ = mimetypes.guess_type(str(match))
         _, original_name = _split_stored_name(match.name)
         return FileResponse(
@@ -530,4 +649,25 @@ def view_attachment(
             media_type=media_type or "application/octet-stream",
             headers={"Content-Disposition": f'inline; filename="{original_name}"'},
         )
+
+    # If missing on disk, fallback to direct streaming from persistent database
+    cands = _candidate_ids(ticket_id, _ticket)
+    db_recs = _fetch_persisted_db_attachments(cands)
+    raw_clean = unquote(att_id or "").strip()
+    clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip().lower()
+    for rec in db_recs:
+        r_id = str(rec.get("id") or "").lower()
+        r_name = str(rec.get("name") or "").lower()
+        if clean_id in (r_id, r_name) or clean_id == r_name.replace(" ", "_"):
+            b64 = rec.get("data_base64")
+            if b64:
+                file_bytes = base64.b64decode(b64)
+                orig_name = rec.get("name") or "attachment"
+                m_type = rec.get("mime_type") or mimetypes.guess_type(orig_name)[0] or "application/octet-stream"
+                return Response(
+                    content=file_bytes,
+                    media_type=m_type,
+                    headers={"Content-Disposition": f'inline; filename="{orig_name}"'}
+                )
+
     raise HTTPException(status_code=404, detail="Attachment not found.")

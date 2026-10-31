@@ -28,9 +28,14 @@ export const EmployeeDashboard: React.FC = () => {
     if (!statusFilter) {
       return allEmployeeTickets.slice(0, 5);
     }
-    return allEmployeeTickets.filter(
-      (t) => (t.status || '').toLowerCase() === statusFilter.toLowerCase()
-    );
+    const filterLower = statusFilter.toLowerCase();
+    return allEmployeeTickets.filter((t) => {
+      const statusLower = (t.status || '').toLowerCase();
+      if (statusLower === filterLower) return true;
+      if (filterLower === 'pending' && statusLower === 'escalated') return true;
+      if (filterLower === 'resolved' && statusLower === 'closed') return true;
+      return false;
+    });
   }, [allEmployeeTickets, statusFilter]);
 
   useEffect(() => {

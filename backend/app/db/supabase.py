@@ -44,7 +44,7 @@ def get_supabase_admin_client() -> Client:
     environments where the service role key has not been configured yet (the
     attachment endpoints additionally fall back to on-disk storage in that case).
     """
-    key = settings.supabase_publishable_key or settings.supabase_anon_key or settings.supabase_service_role_key
+    key = settings.supabase_service_role_key or settings.supabase_anon_key or settings.supabase_publishable_key
     return create_client(settings.supabase_url, key, options=_build_client_options())
 
 

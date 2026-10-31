@@ -422,7 +422,12 @@ def get_ticket(
             .order("created_at", desc=False)
             .execute()
         )
-        comments = res.data or []
+        raw_comments = res.data or []
+        comments = [
+            c for c in raw_comments
+            if c.get("author_name") != "__attachment__"
+            and not str(c.get("message") or "").startswith("[ATTACHMENT_V1]:")
+        ]
     except Exception as exc:
         print(f"[tickets] comments unavailable: {exc}")
 
@@ -1210,7 +1215,12 @@ def list_comments(
         .order("created_at", desc=False)
         .execute()
     )
-    rows = res.data or []
+    raw_rows = res.data or []
+    rows = [
+        r for r in raw_rows
+        if r.get("author_name") != "__attachment__"
+        and not str(r.get("message") or "").startswith("[ATTACHMENT_V1]:")
+    ]
     if not can_manage_ticket(payload, user, ticket):
         rows = [r for r in rows if not r.get("is_internal")]
     return rows
