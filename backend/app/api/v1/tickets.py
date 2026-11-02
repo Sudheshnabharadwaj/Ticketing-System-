@@ -647,8 +647,8 @@ def create_ticket(
             raw_emp_ids.add(agent_id)
 
     # Ticket Assignment:
-    # When a ticket is created with a Team Lead selected, assign it to that Team Lead.
-    # If no Team Lead is selected, automatically assign it to the creating user's Team Lead.
+    # 1. When a ticket is created with a Team Lead selected, assign it to that Team Lead.
+    # 2. When created without selecting a Team Lead or assignee, leave it Unassigned.
     from app.services.access import find_user_team_lead
 
     if raw_tl_ids:
@@ -661,16 +661,20 @@ def create_ticket(
             agent_email = str(tl_target.get("email") or "").lower() or None
             assigned_to_type = "teamlead"
             handled_by = "teamlead"
+    elif agent_id and agent.lower() != "unassigned":
+        # Assignee was explicitly specified (e.g. by admin or team lead)
+        target_user = _find_user(user_id=agent_id)
+        if target_user:
+            target_role = normalize_role(target_user.get("role"))
+            assigned_to_type = "teamlead" if target_role == ROLE_TEAMLEAD else "employee"
+            handled_by = assigned_to_type
     else:
-        # No Team Lead selected: automatically assign to creating user's Team Lead
-        creator_tl = find_user_team_lead(user)
-        if creator_tl:
-            agent_id = str(creator_tl.get("id") or "")
-            agent = str(creator_tl.get("name") or "Team Lead")
-            agent_email = str(creator_tl.get("email") or "").lower() or None
-            assigned_to_type = "teamlead"
-            handled_by = "teamlead"
-            raw_tl_ids.add(agent_id)
+        # No Team Lead or assignee selected: leave as Unassigned
+        agent = "Unassigned"
+        agent_id = None
+        agent_email = None
+        assigned_to_type = "unassigned"
+        handled_by = "unassigned" 
 
     if raw_tl_ids:
         permitted_employee_ids: set[str] = set()
@@ -680,7 +684,8 @@ def create_ticket(
                 raise HTTPException(status_code=400, detail=f"Invalid Team Lead ID: {tlid}")
             if departments:
                 tl_dept = tl_row.get("department")
-                if not any(_scopes_overlap(tl_dept, d) for d in departments):
+                has_custom = any(d.strip().lower() not in {"it support", "it", "finance", "hr", "facilities", "general administration"} for d in departments)
+                if not has_custom and not any(_scopes_overlap(tl_dept, d) for d in departments):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Team Lead {tl_row.get('name') or tlid} does not belong to the selected department(s)",
@@ -702,7 +707,8 @@ def create_ticket(
                 )
             if departments:
                 emp_dept = emp_row.get("department")
-                if not any(_scopes_overlap(emp_dept, d) for d in departments):
+                has_custom = any(d.strip().lower() not in {"it support", "it", "finance", "hr", "facilities", "general administration"} for d in departments)
+                if not has_custom and not any(_scopes_overlap(emp_dept, d) for d in departments):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Employee {emp_row.get('name') or empid} does not belong to the selected department(s)",
@@ -740,6 +746,14 @@ def create_ticket(
                 resolve_team_id(target_row.get("team"))
                 or resolve_team_id(target_row.get("id"))
                 or resolve_team_id(target_row.get("department"))
+            )
+    if not assigned_team_id:
+        creator_tl = find_user_team_lead(user)
+        if creator_tl:
+            assigned_team_id = (
+                resolve_team_id(creator_tl.get("team"))
+                or resolve_team_id(creator_tl.get("id"))
+                or resolve_team_id(creator_tl.get("department"))
             )
     if not assigned_team_id and is_teamlead(payload):
         assigned_team_id = (

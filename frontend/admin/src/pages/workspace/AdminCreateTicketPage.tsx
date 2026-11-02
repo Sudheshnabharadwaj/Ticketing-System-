@@ -25,7 +25,7 @@ export const AdminCreateTicketPage: React.FC = () => {
   const [departmentOptions, setDepartmentOptions] = useState<string[]>(DEFAULT_DEPARTMENT_OPTIONS);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Hardware & Devices');
+  const [category, setCategory] = useState('Hardware');
   const [customCategory, setCustomCategory] = useState('');
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['IT Support']);
   const [customDepartment, setCustomDepartment] = useState('');
@@ -43,7 +43,9 @@ export const AdminCreateTicketPage: React.FC = () => {
     OrganizationService.syncFromDatabase().then(() => {
       const depts = OrganizationService.getDepartments();
       if (depts && depts.length > 0) {
-        setDepartmentOptions(depts.map((d) => d.name));
+        const names = depts.map((d) => d.name);
+        if (!names.includes('Other')) names.push('Other');
+        setDepartmentOptions(names);
       }
     });
   }, []);
@@ -71,11 +73,7 @@ export const AdminCreateTicketPage: React.FC = () => {
       setValidationError('Department is required');
       return;
     }
-    const deptLeads = selectedDepartments.flatMap((d) => OrganizationService.getTeamLeadsByDepartment(d));
-    if (deptLeads.length > 0 && selectedTeamLeadIds.length === 0) {
-      setValidationError('Team Lead is required');
-      return;
-    }
+
     const finalCategory = category === 'Other' ? (customCategory.trim() || 'Other') : category;
     if (!finalCategory.trim()) {
       setValidationError('Category is required');
@@ -275,12 +273,12 @@ export const AdminCreateTicketPage: React.FC = () => {
                   }
                 }}
                 options={[
-                  { value: 'Hardware & Devices', label: 'Hardware & Devices' },
-                  { value: 'Software & Applications', label: 'Software & Applications' },
-                  { value: 'Network & Connectivity', label: 'Network & Connectivity' },
-                  { value: 'Access & Accounts', label: 'Access & Accounts' },
-                  { value: 'Payroll & Benefits', label: 'Payroll & Benefits' },
-                  { value: 'Facilities & Logistics', label: 'Facilities & Logistics' },
+                  { value: 'Hardware', label: 'Hardware' },
+                  { value: 'Software', label: 'Software' },
+                  { value: 'Network', label: 'Network' },
+                  { value: 'Access Issue', label: 'Access Issue' },
+                  { value: 'Email', label: 'Email' },
+                  { value: 'Application', label: 'Application' },
                   { value: 'Other', label: 'Other' },
                 ]}
               />

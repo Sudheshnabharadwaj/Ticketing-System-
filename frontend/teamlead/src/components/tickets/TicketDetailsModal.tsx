@@ -520,6 +520,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                           setCurrentTicket((prev) => ({ ...prev, assignedAgent: 'Unassigned', assignedAgentId: undefined }));
                           await assignAgent(currentTicket.id, '', 'Unassigned', currentTicket.priority);
                           showToast('Ticket marked as unassigned');
+                        } else if (user && val === user.name) {
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: user.name, assignedAgentId: user.id }));
+                          await assignAgent(currentTicket.id, user.id, user.name, currentTicket.priority);
+                          showToast(`Assigned to ${user.name}`);
                         } else {
                           const selectedUser = users.find((u) => u.name === val);
                           if (!selectedUser) return;
@@ -539,6 +543,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                       className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
                     >
                       <option value="Unassigned">Unassigned</option>
+                      {user && (
+                        <option value={user.name}>
+                          {user.name} (Myself - Team Lead)
+                        </option>
+                      )}
                       {users.map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name} - {u.id} ({u.status})
