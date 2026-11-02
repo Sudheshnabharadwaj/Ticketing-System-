@@ -30,7 +30,7 @@ export const WorkflowSettingsPage: React.FC = () => {
     { id: 'r-3', name: 'Open to In Progress Transition', type: 'transition', details: 'Automatically set status to In Progress when Lead opens ticket', enabled: true },
     { id: 'r-4', name: 'Pending Wait Handler', type: 'transition', details: 'Allow In Progress ↔ Pending back-and-forth transitions', enabled: true },
     { id: 'r-5', name: 'SLA Risk Lead Alert', type: 'escalation', details: 'Trigger email & notification to Team Lead when SLA reaches 75%', enabled: true },
-    { id: 'r-6', name: 'SLA Breached Admin Escalation', type: 'escalation', details: 'Reassign to Admin & set priority Urgent if resolution time breaches', enabled: true },
+    { id: 'r-6', name: 'SLA Breached Admin Escalation', type: 'escalation', details: 'Reassign to Admin & set priority Critical if resolution time breaches', enabled: true },
   ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);

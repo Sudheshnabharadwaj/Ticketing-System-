@@ -19,7 +19,7 @@ export interface User {
   createdAt: string;
 }
 
-export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 
 export type TicketStatus = 'Open' | 'In Progress' | 'Pending' | 'Escalated' | 'Resolved' | 'Closed';
 

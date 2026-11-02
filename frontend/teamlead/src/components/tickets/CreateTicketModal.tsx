@@ -368,7 +368,13 @@ const CreateTicketModalContent: React.FC<{
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                onChange={(e) => {
+                  const val = e.target.value as TicketCategory;
+                  setCategory(val);
+                  if (val !== 'Other') {
+                    setCustomCategory('');
+                  }
+                }}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 font-medium cursor-pointer"
               >
                 {CATEGORIES.map((cat) => (

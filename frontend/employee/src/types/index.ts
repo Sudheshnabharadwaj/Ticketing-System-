@@ -1,4 +1,4 @@
-export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 export type TicketStatus = 'Open' | 'In Progress' | 'Pending' | 'Resolved' | 'Closed' | 'Escalated';
 
 export interface AssignedTeamLead {

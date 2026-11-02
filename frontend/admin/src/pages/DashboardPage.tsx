@@ -253,9 +253,11 @@ export const DashboardPage: React.FC = () => {
   };
 
   const isUnassigned = (t: Ticket) =>
+    (t as any).isUnassigned ||
     !t.assignedTo ||
     t.assignedTo.trim() === '' ||
-    t.assignedTo.toLowerCase() === 'unassigned';
+    t.assignedTo.toLowerCase() === 'unassigned' ||
+    (t as any).assignedToType === 'unassigned';
 
   const unassignedCount = stats?.unassignedTickets ?? tickets.filter(
     (t) => isUnassigned(t) && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
@@ -393,7 +395,7 @@ export const DashboardPage: React.FC = () => {
     {
       header: 'Priority',
       cell: (row) => {
-        const variant = row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
+        const variant = row.priority === 'Critical' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
         return <Badge variant={variant} dot className="text-[11px] py-0.5 px-2">{row.priority}</Badge>;
       }
     },
@@ -813,7 +815,13 @@ export const DashboardPage: React.FC = () => {
                 </label>
                 <Select
                   value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewCategory(val);
+                    if (val !== 'Other') {
+                      setCustomCategory('');
+                    }
+                  }}
                   options={[
                     { value: 'Hardware & Devices', label: 'Hardware & Devices' },
                     { value: 'Access & Permissions', label: 'Access & Permissions' },
@@ -845,10 +853,10 @@ export const DashboardPage: React.FC = () => {
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
                   options={[
-                    { value: 'Low', label: 'Low' },
-                    { value: 'Medium', label: 'Medium' },
+                    { value: 'Critical', label: 'Critical' },
                     { value: 'High', label: 'High' },
-                    { value: 'Urgent', label: 'Urgent' },
+                    { value: 'Medium', label: 'Medium' },
+                    { value: 'Low', label: 'Low' },
                   ]}
                 />
               </div>

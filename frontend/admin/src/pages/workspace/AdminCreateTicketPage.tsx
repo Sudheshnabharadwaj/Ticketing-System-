@@ -267,7 +267,13 @@ export const AdminCreateTicketPage: React.FC = () => {
               <Select
                 label="Category *"
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCategory(val);
+                  if (val !== 'Other') {
+                    setCustomCategory('');
+                  }
+                }}
                 options={[
                   { value: 'Hardware & Devices', label: 'Hardware & Devices' },
                   { value: 'Software & Applications', label: 'Software & Applications' },
@@ -286,10 +292,10 @@ export const AdminCreateTicketPage: React.FC = () => {
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TicketPriority)}
                 options={[
-                  { value: 'Low', label: 'Low (48 hrs SLA)' },
-                  { value: 'Medium', label: 'Medium (24 hrs SLA)' },
+                  { value: 'Critical', label: 'Critical (4 hrs SLA)' },
                   { value: 'High', label: 'High (8 hrs SLA)' },
-                  { value: 'Urgent', label: 'Urgent (4 hrs SLA)' },
+                  { value: 'Medium', label: 'Medium (24 hrs SLA)' },
+                  { value: 'Low', label: 'Low (48 hrs SLA)' },
                 ]}
               />
             </div>

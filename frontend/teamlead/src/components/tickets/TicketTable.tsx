@@ -74,7 +74,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
               <th className="py-3 px-4 w-36 whitespace-nowrap">Assigned To</th>
               <th className="py-3 px-4 w-28 whitespace-nowrap">SLA</th>
               {showActionsColumn && (
-                <th className="py-3 px-4 w-32 text-right whitespace-nowrap">Actions</th>
+                <th className="py-3 px-4 w-44 text-left whitespace-nowrap">Actions</th>
               )}
             </tr>
           </thead>
@@ -141,8 +141,8 @@ export const TicketTable: React.FC<TicketTableProps> = ({
 
                   {/* Actions Column */}
                   {showActionsColumn && (
-                    <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                    <td className="py-3 px-4 text-left whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-start gap-2 whitespace-nowrap">
                         {/* Always provide View button */}
                         <button
                           type="button"

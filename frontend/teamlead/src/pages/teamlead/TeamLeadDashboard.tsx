@@ -42,11 +42,11 @@ export const TeamLeadDashboard: React.FC = () => {
     (t: Ticket) =>
       t.status !== 'Resolved' &&
       t.status !== 'Closed' &&
-      (typeof t.isUnassigned === 'boolean'
-        ? t.isUnassigned
-        : !t.assignedAgent ||
-          t.assignedAgent.trim() === '' ||
-          t.assignedAgent.toLowerCase() === 'unassigned'),
+      (t.isUnassigned === true ||
+        !t.assignedAgent ||
+        t.assignedAgent.trim() === '' ||
+        t.assignedAgent.toLowerCase() === 'unassigned' ||
+        (t as any).assignedToType === 'unassigned'),
     [],
   );
 

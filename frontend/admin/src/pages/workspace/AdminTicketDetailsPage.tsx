@@ -355,7 +355,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
                 {ticket.ticketNumber}
               </span>
               <Badge
-                variant={ticket.priority === 'Urgent' ? 'danger' : ticket.priority === 'High' ? 'warning' : 'neutral'}
+                variant={ticket.priority === 'Critical' ? 'danger' : ticket.priority === 'High' ? 'warning' : 'neutral'}
                 dot
                 className="text-xs"
               >

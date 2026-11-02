@@ -376,6 +376,60 @@ def teamlead_member_index(
     return index
 
 
+def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    """Find the Team Lead of a user (or the user themselves if they are already a Team Lead)."""
+    role = normalize_role(user.get("role"))
+    if role == ROLE_TEAMLEAD:
+        return user
+
+    users = all_users if all_users is not None else fetch_all_users_cached()
+    uid = str(user.get("id") or "").strip()
+    uteam = str(user.get("team") or "").strip()
+    udept = user.get("department")
+    tl_id_field = str(user.get("team_lead_id") or "").strip()
+
+    # 1. Direct team_lead_id match
+    if tl_id_field:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("id") or "").strip() == tl_id_field:
+                return u
+
+    # 2. uteam matches team lead's id (e.g. team='OKL013')
+    if uteam:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                tl_id = str(u.get("id") or "").strip()
+                if tl_id and tl_id.lower() == uteam.lower():
+                    return u
+
+    # 3. uteam matches team lead's team name (e.g. team='Team Alpha')
+    if uteam:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                tl_team = str(u.get("team") or "").strip()
+                if tl_team and (tl_team.lower() == uteam.lower() or _teams_overlap(tl_team, uteam)):
+                    return u
+
+    # 4. Department match fallback
+    if udept:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                if _scopes_overlap(udept, u.get("department")):
+                    return u
+
+    # 5. Fallback: first active team lead
+    for u in users:
+        if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("status") or "").strip().lower() == "active":
+            return u
+
+    # 6. Fallback: any team lead
+    for u in users:
+        if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+            return u
+
+    return None
+
+
 # ── Ticket authorization ─────────────────────────────────────────────────────
 
 
@@ -385,6 +439,12 @@ def _norm(value: Any) -> str:
 
 def _same_person(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any], prefix: str) -> bool:
     """Compare the authenticated user with ``<prefix>_id``/``<prefix>_email``/``<prefix>``."""
+    if prefix == "assigned_agent":
+        ag_name = _norm(ticket.get("assigned_agent"))
+        to_type = _norm(ticket.get("assigned_to_type"))
+        if ag_name in ("", "unassigned", "none", "null") or to_type == "unassigned":
+            return False
+
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
     email = _norm(user.get("email") or payload.get("email"))
     name = _norm(user.get("name") or payload.get("name"))
@@ -646,7 +706,10 @@ def serialize_ticket(
 
     cached_users = fetch_all_users_cached()
     agent = _norm(ticket.get("assigned_agent"))
-    if agent and agent not in ("", "unassigned", "none", "null"):
+    to_type = _norm(ticket.get("assigned_to_type"))
+    is_ticket_unassigned = agent in ("", "unassigned", "none", "null") or to_type == "unassigned"
+
+    if not is_ticket_unassigned and agent:
         matched = None
         for u in cached_users:
             uname = _norm(u.get("name"))
@@ -660,6 +723,10 @@ def serialize_ticket(
                 result["assigned_agent_email"] = matched.get("email")
             if not result.get("assigned_team_id"):
                 result["assigned_team_id"] = resolve_team_id(matched.get("team")) or resolve_team_id(matched.get("id"))
+    elif is_ticket_unassigned:
+        result["assigned_agent"] = "Unassigned"
+        result["assigned_agent_id"] = None
+        result["assigned_agent_email"] = None
 
     emp = _norm(ticket.get("employee"))
     if emp and emp not in ("", "unassigned", "none", "null") and not result.get("employee_id"):
@@ -672,9 +739,7 @@ def serialize_ticket(
                     result["employee_email"] = u.get("email")
                 break
 
-    result["is_unassigned"] = agent in ("", "unassigned", "none", "null") and not result.get(
-        "assigned_agent_id"
-    )
+    result["is_unassigned"] = is_ticket_unassigned
     if payload is not None and user is not None:
         result["is_assigned_to_me"] = _same_person(user, payload, result, "assigned_agent")
         result["is_created_by_me"] = (
@@ -826,7 +891,8 @@ def ticket_stats(
 
             ag = _norm(t.get("assigned_agent"))
             ag_id = str(t.get("assigned_agent_id") or "")
-            if (not ag or ag in ("unassigned", "none", "null")) and not ag_id:
+            to_type = _norm(t.get("assigned_to_type"))
+            if (not ag or ag in ("unassigned", "none", "null")) or to_type == "unassigned":
                 unassigned_cnt += 1
 
         if payload is not None and user is not None:

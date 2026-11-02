@@ -97,7 +97,14 @@ export const AssignedTickets: React.FC = () => {
     if (activeTab !== 'All' && ticket.status !== activeTab) return false;
     if (statusFilter !== 'All' && ticket.status !== statusFilter) return false;
     if (priorityFilter !== 'All' && ticket.priority !== priorityFilter) return false;
-    if (categoryFilter !== 'All' && ticket.category !== categoryFilter) return false;
+    if (categoryFilter !== 'All') {
+      if (categoryFilter === 'Other') {
+        const standardCats = ['Hardware', 'Software', 'Network', 'Access Issue', 'Email', 'Application'];
+        if (standardCats.includes(ticket.category)) return false;
+      } else if (ticket.category !== categoryFilter) {
+        return false;
+      }
+    }
     if (agentFilter !== 'All' && ticket.assignedAgent !== agentFilter) return false;
     if (slaFilter !== 'All' && ticket.slaStatus !== slaFilter) return false;
 

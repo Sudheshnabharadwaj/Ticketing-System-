@@ -429,7 +429,13 @@ export const CreateTicket: React.FC = () => {
             </label>
             <Select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCategory(val);
+                if (val !== 'Other') {
+                  setCustomCategory('');
+                }
+              }}
               options={[
                 { value: 'Hardware & Devices', label: 'Hardware & Devices' },
                 { value: 'Access & Permissions', label: 'Access & Permissions' },
@@ -463,10 +469,10 @@ export const CreateTicket: React.FC = () => {
               value={priority}
               onChange={(e) => setPriority(e.target.value as TicketPriority)}
               options={[
-                { value: 'Low', label: 'Low - General Inquiry' },
-                { value: 'Medium', label: 'Medium - Standard Support' },
+                { value: 'Critical', label: 'Critical - Work Stopped' },
                 { value: 'High', label: 'High - High Impact' },
-                { value: 'Urgent', label: 'Urgent - Work Stopped' },
+                { value: 'Medium', label: 'Medium - Standard Support' },
+                { value: 'Low', label: 'Low - General Inquiry' },
               ]}
             />
           </div>

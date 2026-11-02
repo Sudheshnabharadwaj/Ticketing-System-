@@ -40,9 +40,11 @@ export const TeamTickets: React.FC = () => {
   const isTicketUnassigned = (t: Ticket) =>
     t.status !== 'Resolved' &&
     t.status !== 'Closed' &&
-    (!t.assignedAgent ||
+    (t.isUnassigned === true ||
+      !t.assignedAgent ||
       t.assignedAgent.trim() === '' ||
-      t.assignedAgent.toLowerCase() === 'unassigned');
+      t.assignedAgent.toLowerCase() === 'unassigned' ||
+      (t as any).assignedToType === 'unassigned');
 
   const isTicketSLARisk = (t: Ticket) => {
     const st = (t.status || '').toLowerCase();
@@ -152,7 +154,14 @@ export const TeamTickets: React.FC = () => {
     if (priorityFilter !== 'All' && ticket.priority !== priorityFilter) return false;
 
     // Category Filter
-    if (categoryFilter !== 'All' && ticket.category !== categoryFilter) return false;
+    if (categoryFilter !== 'All') {
+      if (categoryFilter === 'Other') {
+        const standardCats = ['Hardware', 'Software', 'Network', 'Access Issue', 'Email', 'Application'];
+        if (standardCats.includes(ticket.category)) return false;
+      } else if (ticket.category !== categoryFilter) {
+        return false;
+      }
+    }
 
     // Agent Filter
     if (agentFilter !== 'All' && ticket.assignedAgent !== agentFilter) return false;

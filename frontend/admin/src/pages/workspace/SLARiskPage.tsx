@@ -92,15 +92,15 @@ export const SLARiskPage: React.FC = () => {
         message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} reassigned to ${newAssignee}. Notifications sent.`
       });
     } else if (actionType === 'escalate') {
-      const logMessage = `SLA Intervention: Escalated priority to Urgent & status to Escalated.${reasonNote ? ` Note: ${reasonNote}` : ''}`;
+      const logMessage = `SLA Intervention: Escalated priority to Critical & status to Escalated.${reasonNote ? ` Note: ${reasonNote}` : ''}`;
       await AdminApiService.updateTicket(
         selectedTicket.id,
-        { priority: 'Urgent', status: 'Escalated' },
+        { priority: 'Critical', status: 'Escalated' },
         logMessage
       );
       setToast({
         type: 'success',
-        message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} escalated to Urgent status. Team Lead notified.`
+        message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} escalated to Critical status. Team Lead notified.`
       });
     } else if (actionType === 'notify') {
       const logMessage = `SLA Intervention: Urgent warning alert sent to Team Lead (${teamLeadName}).${reasonNote ? ` Note: ${reasonNote}` : ''}`;
@@ -287,7 +287,7 @@ export const SLARiskPage: React.FC = () => {
                     <Zap className="w-3.5 h-3.5 text-red-600" />
                     Escalate
                   </div>
-                  <div className="text-[11px] text-slate-500 font-normal">Elevate to Urgent status</div>
+                  <div className="text-[11px] text-slate-500 font-normal">Elevate to Critical status</div>
                 </button>
 
                 <button
@@ -336,7 +336,7 @@ export const SLARiskPage: React.FC = () => {
                 <div className="flex items-start gap-2 text-xs text-red-800">
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <span>
-                    Escalating will raise ticket priority to <strong>Urgent</strong> and set status to <strong>Escalated</strong>, signaling immediate action required.
+                    Escalating will raise ticket priority to <strong>Critical</strong> and set status to <strong>Escalated</strong>, signaling immediate action required.
                   </span>
                 </div>
                 <div>
@@ -366,7 +366,7 @@ export const SLARiskPage: React.FC = () => {
                     rows={2}
                     value={reasonNote}
                     onChange={(e) => setReasonNote(e.target.value)}
-                    placeholder="Urgent SLA risk alert details..."
+                    placeholder="Critical SLA risk alert details..."
                     className="w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500"
                   />
                 </div>

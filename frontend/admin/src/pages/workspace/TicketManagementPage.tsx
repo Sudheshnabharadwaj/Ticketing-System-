@@ -146,8 +146,8 @@ export const TicketManagementPage: React.FC = () => {
       persisted = await AdminApiService.updateTicket(selectedTicket.id, { priority: modalPriority }, modalNote || `Priority changed to ${modalPriority}`);
     } else if (actionModalType === 'escalate') {
       updatedTicket.status = 'Escalated';
-      updatedTicket.priority = 'Urgent';
-      persisted = await AdminApiService.updateTicket(selectedTicket.id, { status: 'Escalated', priority: 'Urgent' }, modalNote || 'Ticket escalated');
+      updatedTicket.priority = 'Critical';
+      persisted = await AdminApiService.updateTicket(selectedTicket.id, { status: 'Escalated', priority: 'Critical' }, modalNote || 'Ticket escalated');
     } else if (actionModalType === 'deadline') {
       const formatted = modalDeadline.replace('T', ' ').slice(0, 16);
       updatedTicket.dueDate = formatted;
@@ -341,7 +341,7 @@ export const TicketManagementPage: React.FC = () => {
           className="bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-[#0284C7] cursor-pointer"
         >
           <option value="all">Priority: All</option>
-          <option value="Urgent">Urgent</option>
+          <option value="Critical">Critical</option>
           <option value="High">High</option>
           <option value="Medium">Medium</option>
           <option value="Low">Low</option>
@@ -463,7 +463,7 @@ export const TicketManagementPage: React.FC = () => {
                     <td className="py-3 px-3">
                       <Badge
                         variant={
-                          t.priority === 'Urgent'
+                          t.priority === 'Critical'
                             ? 'danger'
                             : t.priority === 'High'
                             ? 'warning'
@@ -605,10 +605,10 @@ export const TicketManagementPage: React.FC = () => {
                   onChange={(e) => setModalPriority(e.target.value as TicketPriority)}
                   className="w-full bg-white border border-slate-300 rounded-md p-2 text-slate-800 focus:outline-none focus:border-[#0284C7]"
                 >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
+                  <option value="Critical">Critical</option>
                   <option value="High">High</option>
-                  <option value="Urgent">Urgent</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
                 </select>
               </div>
             )}
@@ -619,7 +619,7 @@ export const TicketManagementPage: React.FC = () => {
                   <AlertTriangle className="w-4 h-4 text-red-600" /> Escalation Warning
                 </div>
                 <p className="text-[11px] mt-1">
-                  Escalating this ticket will set status to <strong>Escalated</strong> and priority to <strong>Urgent</strong>, flagging it for immediate management review.
+                  Escalating this ticket will set status to <strong>Escalated</strong> and priority to <strong>Critical</strong>, flagging it for immediate management review.
                 </p>
               </div>
             )}
@@ -636,7 +636,7 @@ export const TicketManagementPage: React.FC = () => {
                     }}
                     className="px-2 py-1.5 text-[11px] rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-left cursor-pointer hover:bg-rose-100"
                   >
-                    +4 Hours (Urgent)
+                    +4 Hours (Critical)
                   </button>
                   <button
                     type="button"
@@ -713,7 +713,7 @@ export const TicketManagementPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-bold text-[#0284C7]">{selectedTicket.ticketNumber}</span>
-                  <Badge variant={selectedTicket.priority === 'Urgent' ? 'danger' : 'warning'} dot>
+                  <Badge variant={selectedTicket.priority === 'Critical' ? 'danger' : 'warning'} dot>
                     {selectedTicket.priority}
                   </Badge>
                   <Badge variant={selectedTicket.status === 'Escalated' ? 'danger' : 'info'}>

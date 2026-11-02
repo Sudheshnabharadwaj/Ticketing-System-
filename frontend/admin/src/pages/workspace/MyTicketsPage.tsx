@@ -79,7 +79,7 @@ export const MyTicketsPage: React.FC = () => {
     {
       header: 'Priority',
       cell: (row) => {
-        const variant = row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
+        const variant = row.priority === 'Critical' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
         return <Badge variant={variant} dot className="text-[11px] py-0.5 px-2">{row.priority}</Badge>;
       },
     },
