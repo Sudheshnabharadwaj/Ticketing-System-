@@ -43,8 +43,19 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
         isSelf: false,
       });
     }
+    if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+      const exists = list.some((u) => u.name.toLowerCase().trim() === ticket.assignedAgent!.toLowerCase().trim());
+      if (!exists) {
+        list.push({
+          id: ticket.assignedAgentId || '',
+          name: ticket.assignedAgent,
+          department: ticket.department || 'Team',
+          isSelf: false,
+        });
+      }
+    }
     return list;
-  }, [user, users]);
+  }, [user, users, ticket.assignedAgent, ticket.assignedAgentId, ticket.department]);
 
   const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>(
     ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned'
@@ -97,11 +108,8 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
     try {
       // Call Context Assign passing priority atomically
       await assignAgent(ticket.id, empId, selectedEmployeeName, priority);
-      if (priority && priority !== ticket.priority) {
-        await changePriority(ticket.id, priority);
-      }
 
-      const toastMsg = `Ticket ${ticket.id} assigned to ${selectedEmployeeName} with ${priority} priority successfully.`;
+      const toastMsg = `Ticket ${(ticket as any).ticket_number || ticket.id} assigned to ${selectedEmployeeName} with ${priority} priority successfully.`;
       if (onSuccessToast) {
         onSuccessToast(toastMsg);
       } else {

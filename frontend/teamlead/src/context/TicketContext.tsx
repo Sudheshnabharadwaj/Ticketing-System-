@@ -278,9 +278,6 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setErrorFrom('Could not assign the ticket. Please try again.');
       throw new Error('Could not assign the ticket. Please try again.');
     }
-    if (priority) {
-      await ticketService.changePriority(ticketId, priority);
-    }
     ticketService.invalidateCache();
     await refresh(true, true);
     await refreshTicketDetail(ticketId);
