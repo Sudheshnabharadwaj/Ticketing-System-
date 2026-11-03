@@ -102,10 +102,26 @@ export const TicketDetailsPage: React.FC = () => {
       }
     };
     fetchTicket();
+
+    const handleUpdate = () => {
+      void fetchTicket();
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, [ticketId]);
+
+  useEffect(() => {
+    const updated = tickets.find((t) => t.id === ticketId);
+    if (updated) {
+      setTicketData(updated);
+    }
+  }, [tickets, ticketId]);
 
   const ticket = ticketData || tickets.find((t) => t.id === ticketId);
 

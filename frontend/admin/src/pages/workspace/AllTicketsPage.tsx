@@ -92,12 +92,23 @@ export const AllTicketsPage: React.FC = () => {
 
     if (departmentFilter !== 'all') {
       const targetDept = departmentFilter.toLowerCase();
-      result = result.filter(t => {
-        if (!t.department) return false;
-        const deptStr = String(t.department).toLowerCase();
-        const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
-        return parts.some(p => p.includes(targetDept) || targetDept.includes(p)) || deptStr.includes(targetDept);
-      });
+      const standardDepts = new Set(['it support', 'it', 'hr', 'finance', 'operations', 'sales', 'marketing', 'legal', 'facilities', 'general administration']);
+      if (targetDept === 'other') {
+        result = result.filter(t => {
+          if (!t.department) return false;
+          const deptStr = String(t.department).toLowerCase().trim();
+          if (deptStr === 'other') return true;
+          const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
+          return !parts.some(p => standardDepts.has(p));
+        });
+      } else {
+        result = result.filter(t => {
+          if (!t.department) return false;
+          const deptStr = String(t.department).toLowerCase();
+          const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
+          return parts.some(p => p.includes(targetDept) || targetDept.includes(p)) || deptStr.includes(targetDept);
+        });
+      }
     }
 
     if (statusFilter !== 'all') {
@@ -258,6 +269,7 @@ export const AllTicketsPage: React.FC = () => {
                 { value: 'Marketing', label: 'Marketing' },
                 { value: 'Legal', label: 'Legal' },
                 { value: 'Facilities', label: 'Facilities' },
+                { value: 'Other', label: 'Other' },
               ]}
             />
           </div>

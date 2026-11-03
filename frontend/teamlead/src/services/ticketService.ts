@@ -287,7 +287,21 @@ export const ticketService = {
           priority: priority || undefined,
         }),
       );
+      if (priority) {
+        await apiRequest(
+          `/tickets/${encodeURIComponent(id)}`,
+          jsonInit('PATCH', { priority }),
+        );
+      }
       invalidateTeamLeadTicketsCache();
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id } }));
+        window.dispatchEvent(new Event('storage'));
+      }
       return true;
     } catch (e) {
       console.warn('Error assigning ticket:', e);
@@ -302,6 +316,14 @@ export const ticketService = {
         jsonInit('PATCH', { priority }),
       );
       invalidateTeamLeadTicketsCache();
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id } }));
+        window.dispatchEvent(new Event('storage'));
+      }
       return true;
     } catch (e) {
       console.warn('Error changing priority:', e);

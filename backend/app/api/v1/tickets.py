@@ -1103,6 +1103,7 @@ def assign_ticket(
     _log_activity(ticket_id, actor, f"Assigned to {agent_name}")
     if body.priority and body.priority.strip().lower() != str(ticket.get("priority") or "").lower():
         _log_activity(ticket_id, actor, f"Priority changed to {body.priority.strip()}")
+        _notify_ticket_change(ticket_id, updated_row, payload, user, "priority")
     _notify(
         title=f"Ticket Assigned: {ticket_id}",
         message=f"{actor} assigned \"{ticket.get('subject')}\" to {agent_name}.",

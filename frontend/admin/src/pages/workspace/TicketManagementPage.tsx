@@ -35,6 +35,7 @@ export const TicketManagementPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [slaFilter, setSlaFilter] = useState('all');
+  const [assigneeOptions, setAssigneeOptions] = useState<{ id: string; name: string; role: string }[]>([]);
 
   // Drawer / Modal states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -56,8 +57,32 @@ export const TicketManagementPage: React.FC = () => {
     setIsLoading(false);
   };
 
+  const loadAssignees = async () => {
+    try {
+      const allUsers = await AdminApiService.getUsers();
+      if (Array.isArray(allUsers)) {
+        const eligible = allUsers.filter(
+          (u) => (u.role || '').toLowerCase().includes('employee') || (u.role || '').toLowerCase().includes('lead')
+        );
+        const uniqueMap = new Map<string, { id: string; name: string; role: string }>();
+        eligible.forEach((u) => {
+          const trimmed = (u.name || '').trim();
+          if (trimmed && !uniqueMap.has(trimmed.toLowerCase())) {
+            uniqueMap.set(trimmed.toLowerCase(), { id: u.id, name: trimmed, role: u.role });
+          }
+        });
+        const list = Array.from(uniqueMap.values());
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setAssigneeOptions(list);
+      }
+    } catch (err) {
+      console.warn('Failed to load assignees for filter:', err);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadAssignees();
     window.addEventListener('ticket-updated', loadData);
     window.addEventListener('storage', loadData);
     return () => {
@@ -95,7 +120,26 @@ export const TicketManagementPage: React.FC = () => {
       String(t.priority || '').toLowerCase().includes(q) ||
       String(t.status || '').toLowerCase().includes(q);
 
-    const matchesDept = deptFilter === 'all' || t.department.toLowerCase() === deptFilter.toLowerCase();
+    const standardDepts = new Set(['it support', 'it', 'hr', 'finance', 'operations', 'sales', 'marketing', 'legal', 'facilities', 'general administration']);
+    const isCustomDepartment = (deptStr: string) => {
+      if (!deptStr || !deptStr.trim()) return false;
+      const lower = deptStr.toLowerCase().trim();
+      if (lower === 'other') return true;
+      const parts = lower.split(/[,/&]+/).map((p) => p.trim());
+      return !parts.some((p) => standardDepts.has(p));
+    };
+
+    const matchesDept =
+      deptFilter === 'all'
+        ? true
+        : deptFilter.toLowerCase() === 'other'
+        ? isCustomDepartment(String(t.department || ''))
+        : (() => {
+            const target = deptFilter.toLowerCase();
+            const dept = String(t.department || '').toLowerCase();
+            const parts = dept.split(/[,/&]+/).map((p) => p.trim());
+            return parts.some((p) => p === target || p.includes(target) || target.includes(p)) || dept.includes(target);
+          })();
     const matchesPriority = priorityFilter === 'all' || t.priority.toLowerCase() === priorityFilter.toLowerCase();
     const matchesStatus = statusFilter === 'all' || t.status.toLowerCase() === statusFilter.toLowerCase();
     const matchesAssignee =
@@ -103,7 +147,17 @@ export const TicketManagementPage: React.FC = () => {
         ? true
         : assigneeFilter === 'unassigned'
         ? isTicketUnassigned(t)
-        : t.assignedTo?.toLowerCase() === assigneeFilter.toLowerCase();
+        : (() => {
+            const target = assigneeFilter.toLowerCase().trim();
+            const assigned = String(t.assignedTo || '').toLowerCase().trim();
+            if (!assigned || assigned === 'unassigned') return false;
+            return (
+              assigned === target ||
+              assigned.includes(target) ||
+              target.includes(assigned) ||
+              String((t as any).assignedAgentId || (t as any).assigned_agent_id || '') === assigneeFilter
+            );
+          })();
     const matchesSla = slaFilter === 'all' || t.slaStatus.toLowerCase().replace(' ', '_') === slaFilter.toLowerCase();
 
     return matchesSearch && matchesDept && matchesPriority && matchesStatus && matchesAssignee && matchesSla;
@@ -332,6 +386,8 @@ export const TicketManagementPage: React.FC = () => {
           <option value="Operations">Operations</option>
           <option value="Sales">Sales</option>
           <option value="Legal">Legal</option>
+          <option value="Facilities">Facilities</option>
+          <option value="Other">Other</option>
         </select>
 
         {/* Priority Filter */}
@@ -370,9 +426,11 @@ export const TicketManagementPage: React.FC = () => {
         >
           <option value="all">Assignee: All</option>
           <option value="unassigned">Unassigned</option>
-          <option value="Kotesh Goud">Kotesh Goud</option>
-          <option value="aditya">aditya</option>
-          <option value="Hyma">Hyma</option>
+          {assigneeOptions.map((u) => (
+            <option key={u.id} value={u.name}>
+              {u.name}
+            </option>
+          ))}
         </select>
 
         {/* SLA Filter */}
@@ -570,11 +628,12 @@ export const TicketManagementPage: React.FC = () => {
                   onChange={(e) => setModalAssignee(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-md p-2 text-slate-800 focus:outline-none focus:border-[#0284C7]"
                 >
-                  <option value="Sudheshna Bharadwaj">Sudheshna Bharadwaj (Admin)</option>
-                  <option value="Kotesh Goud">Kotesh Goud (IT Lead)</option>
-                  <option value="Lahari Pedada">Lahari Pedada (IT Lead)</option>
-                  <option value="aditya">aditya (Employee)</option>
-                  <option value="Hyma">Hyma (Employee)</option>
+                  <option value="">Select Assignee</option>
+                  {assigneeOptions.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name} ({u.role})
+                    </option>
+                  ))}
                 </select>
               </div>
             )}

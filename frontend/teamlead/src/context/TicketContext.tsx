@@ -263,8 +263,8 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [loadEscalations, loadNotifications, refreshTicketDetail, setErrorFrom]);
 
   const assignAgent = useCallback(async (ticketId: string, agentId: string, agentName: string, priority?: TicketPriority) => {
-    const isUnassign = !agentId || agentName === 'Unassigned';
-    const isTeamLead = !isUnassign && agentId === currentUserId;
+    const isUnassign = !agentName || agentName === 'Unassigned';
+    const isTeamLead = !isUnassign && (agentId === currentUserId || agentName.toLowerCase() === currentUserName.toLowerCase());
     const ok = await ticketService.assignAgent(
       ticketId,
       isUnassign ? 'Unassigned' : agentName,
@@ -278,12 +278,20 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setErrorFrom('Could not assign the ticket. Please try again.');
       throw new Error('Could not assign the ticket. Please try again.');
     }
+    if (priority) {
+      await ticketService.changePriority(ticketId, priority);
+    }
     ticketService.invalidateCache();
     await refresh(true, true);
     await refreshTicketDetail(ticketId);
     await loadEscalations();
     if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
       window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: ticketId } }));
+      window.dispatchEvent(new Event('storage'));
     }
   }, [currentUserId, currentUserName, loadEscalations, refresh, refreshTicketDetail, setErrorFrom]);
 
@@ -297,7 +305,12 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await refresh(true, true);
     await refreshTicketDetail(ticketId);
     if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
       window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: ticketId } }));
+      window.dispatchEvent(new Event('storage'));
     }
   }, [refresh, refreshTicketDetail, setErrorFrom]);
 

@@ -414,9 +414,8 @@ export const AddUserPage: React.FC = () => {
                 error={errors.role}
                 options={[
                   { value: '', label: 'Select Role', disabled: true, hidden: true },
-                  { value: 'Employee', label: 'Employee (Submit & Track Tickets)' },
-                  { value: 'Team Lead', label: 'Team Lead (Manage Team & Escalate)' },
-                  { value: 'Admin', label: 'System Admin (Full Access & Oversight)' },
+                  { value: 'Employee', label: 'Employee' },
+                  { value: 'Team Lead', label: 'Team Lead' },
                 ]}
               />
 

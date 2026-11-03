@@ -83,13 +83,23 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
       return;
     }
 
-    const selectedAssignee = candidateAssignees.find((u) => u.name === selectedEmployeeName);
-    const empId = selectedAssignee ? selectedAssignee.id : '';
+    const selectedAssignee = candidateAssignees.find(
+      (u) => u.name.toLowerCase().trim() === selectedEmployeeName.toLowerCase().trim()
+    );
+    const empId =
+      selectedAssignee?.id ||
+      (selectedEmployeeName.toLowerCase() === (ticket.assignedAgent || '').toLowerCase()
+        ? ticket.assignedAgentId
+        : '') ||
+      '';
 
     setIsSubmitting(true);
     try {
       // Call Context Assign passing priority atomically
       await assignAgent(ticket.id, empId, selectedEmployeeName, priority);
+      if (priority && priority !== ticket.priority) {
+        await changePriority(ticket.id, priority);
+      }
 
       const toastMsg = `Ticket ${ticket.id} assigned to ${selectedEmployeeName} with ${priority} priority successfully.`;
       if (onSuccessToast) {
