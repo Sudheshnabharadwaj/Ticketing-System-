@@ -19,10 +19,10 @@ interface CreateTicketModalProps {
 
 const DEPARTMENT_OPTIONS = [
   'IT Support',
-  'Finance',
   'HR',
-  'Facilities',
-  'General Administration',
+  'Finance',
+  'Development',
+  'QA Team',
   'Other',
 ];
 

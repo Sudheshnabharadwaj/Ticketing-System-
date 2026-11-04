@@ -23,7 +23,9 @@ from app.services.access import (
     ROLE_EMPLOYEE,
     _scopes_overlap,
     fetch_all_users_cached,
+    invalidate_all_users_cache,
     invalidate_team_cache,
+    invalidate_tickets_cache,
     invalidate_user_cache,
     is_admin,
     is_teamlead,
@@ -522,6 +524,80 @@ def admin_update_user(user_id: str, body: UserAdminUpdate) -> dict[str, Any]:
     return _safe_user((res.data or [])[0])
 
 
+def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
+    """Permanently delete a user from authentication, database records, and safe-handle existing tickets and audit history."""
+    clean_id = str(user_id).strip()
+    sb = get_supabase_admin_client()
+
+    # 1. Fetch user to obtain email and details before deletion
+    user_res = sb.table("users").select("*").eq("id", clean_id).limit(1).execute()
+    user_row = (user_res.data or [])[0] if user_res.data else None
+    if not user_row:
+        res_alt = sb.table("users").select("*").or_(f"email.eq.{clean_id},employee_id.eq.{clean_id}").limit(1).execute()
+        user_row = (res_alt.data or [])[0] if res_alt.data else None
+
+    user_email = (user_row.get("email") if user_row else "").strip().lower()
+    canonical_id = str(user_row.get("id") or clean_id).strip()
+
+    # 2. Safely handle ticket_comments to satisfy FK constraints without losing audit history/messages
+    fallback_uid = actor_id if (actor_id and actor_id != canonical_id) else "usr-admin-1791538577749"
+    try:
+        sb.table("ticket_comments").update({
+            "author_user_id": fallback_uid,
+        }).eq("author_user_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] ticket_comments FK update notice: {exc}")
+
+    # 3. Safely handle tickets where user was assigned agent
+    try:
+        sb.table("tickets").update({
+            "assigned_agent": "Unassigned",
+            "assigned_agent_id": None,
+            "assigned_to_type": "unassigned",
+        }).eq("assigned_agent_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] tickets assigned_agent_id update notice: {exc}")
+
+    # 4. Safely handle tickets where user was employee/requester
+    try:
+        sb.table("tickets").update({
+            "employee_id": None,
+        }).eq("employee_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] tickets employee_id update notice: {exc}")
+
+    # 5. Remove user from ticket_tagged_members
+    try:
+        sb.table("ticket_tagged_members").delete().eq("user_id", canonical_id).execute()
+        sb.table("ticket_tagged_members").delete().eq("member_uid", canonical_id).execute()
+    except Exception:
+        pass
+
+    # 6. Delete user from auth system if applicable
+    if user_row:
+        auth_uid = user_row.get("auth_id") or user_row.get("id")
+        try:
+            if hasattr(sb, "auth") and hasattr(sb.auth, "admin") and hasattr(sb.auth.admin, "delete_user"):
+                sb.auth.admin.delete_user(auth_uid)
+        except Exception as auth_exc:
+            print(f"[portal] auth user deletion notice: {auth_exc}")
+
+    # 7. Delete user from users table
+    try:
+        sb.table("users").delete().eq("id", canonical_id).execute()
+    except Exception as exc:
+        if user_email:
+            sb.table("users").delete().eq("email", user_email).execute()
+        else:
+            raise exc
+
+    # 8. Invalidate all caches so user disappears immediately from every dashboard
+    invalidate_user_cache(canonical_id, user_email)
+    invalidate_all_users_cache()
+    invalidate_team_cache()
+    invalidate_tickets_cache()
+
+
 @router.delete(
     "/admin/users/{user_id}",
     summary="Delete a user (admin only)",
@@ -531,11 +607,11 @@ def admin_delete_user(
     user_id: str,
     payload: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    if str(payload.get("sub") or "") == user_id:
+    actor_id = str(payload.get("sub") or "")
+    if actor_id == user_id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
-    sb = get_supabase_admin_client()
     try:
-        sb.table("users").delete().eq("id", user_id).execute()
+        _permanently_delete_user(user_id, actor_id=actor_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
     return {"success": True, "id": user_id}
@@ -661,9 +737,7 @@ def team_delete_user(user_id: str, context: tuple[dict[str, Any], dict[str, Any]
     if not _team_lead_can_manage(user, target):
         raise HTTPException(status_code=403, detail="Not allowed to delete this user")
     try:
-        sb.table("users").delete().eq("id", user_id).execute()
+        _permanently_delete_user(user_id, actor_id=str(user.get("id") or payload.get("sub") or ""))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
-    invalidate_team_cache(str(user.get("id") or ""))
-    invalidate_user_cache(user_id)
     return {"success": True, "id": user_id}

@@ -24,6 +24,8 @@ from app.services.access import (
     _scopes_overlap,
     can_manage_ticket,
     can_view_internal_notes,
+    can_view_ticket_chat,
+    can_reply_ticket_chat,
     _same_person,
     fetch_all_users_cached,
     invalidate_tickets_cache,
@@ -613,10 +615,15 @@ def get_ticket(
     activities = _fetch_all_activities(cands)
 
     result = serialize_ticket(ticket, load_attachments=True)
-    # Internal notes are strictly visible only to authorized internal team members (Admin and Team Lead)
-    if not can_view_internal_notes(payload, user, ticket):
+    can_chat = can_view_ticket_chat(payload, user, ticket)
+    can_reply = can_reply_ticket_chat(payload, user, ticket)
+    if not can_chat:
+        comments = []
+    elif not can_view_internal_notes(payload, user, ticket):
         comments = [c for c in comments if not c.get("is_internal")]
     result["comments"] = comments
+    result["can_chat"] = can_chat
+    result["can_reply"] = can_reply
     result["activities"] = activities
     result["history"] = [
         {
@@ -1368,6 +1375,8 @@ def list_comments(
 ) -> list[dict[str, Any]]:
     payload, user = context
     ticket = _require_visible(payload, user, ticket_id)
+    if not can_view_ticket_chat(payload, user, ticket):
+        raise HTTPException(status_code=403, detail="You do not have chat access to this ticket")
     cands: list[str] = [ticket_id]
     for cand in (ticket.get("id"), ticket.get("ticket_number")):
         if cand and str(cand).strip() not in cands:
@@ -1400,14 +1409,10 @@ def add_comment(
     payload, user = context
     ticket = _require_visible(payload, user, ticket_id)
 
-    # Everyone authorized to access the ticket (Admin, assigned Team Lead, assigned Employee, and original ticket creator) can send replies
-    user_id = str(user.get("id") or payload.get("sub") or "").strip()
-    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or ticket.get("created_by") or "").strip()
-    is_creator = bool(user_id and creator_id and user_id.lower() == creator_id.lower()) or _same_person(user, payload, ticket, "employee")
-    is_assigned = _same_person(user, payload, ticket, "assigned_agent")
-    can_reply = is_admin(payload) or is_teamlead(payload) or is_creator or is_assigned or can_manage_ticket(payload, user, ticket)
-    if not can_reply:
-        raise HTTPException(status_code=403, detail="You cannot comment on this ticket")
+    if is_admin(payload):
+        raise HTTPException(status_code=403, detail="Admin can view the complete conversation but cannot reply")
+    if not can_reply_ticket_chat(payload, user, ticket):
+        raise HTTPException(status_code=403, detail="You do not have permission to reply to this ticket")
 
     role = role_of(payload)
     is_internal = bool(body.is_internal)

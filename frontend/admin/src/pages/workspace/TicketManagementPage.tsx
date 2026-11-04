@@ -383,10 +383,8 @@ export const TicketManagementPage: React.FC = () => {
           <option value="IT Support">IT Support</option>
           <option value="HR">HR</option>
           <option value="Finance">Finance</option>
-          <option value="Operations">Operations</option>
-          <option value="Sales">Sales</option>
-          <option value="Legal">Legal</option>
-          <option value="Facilities">Facilities</option>
+          <option value="Development">Development</option>
+          <option value="QA Team">QA Team</option>
           <option value="Other">Other</option>
         </select>
 

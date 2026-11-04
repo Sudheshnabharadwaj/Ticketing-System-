@@ -460,37 +460,24 @@ export const AssignedTicketDetails: React.FC = () => {
           })()}
         </div>
 
-        {/* Assigned Team Leads & Multi-Department Routing Card */}
-        <div className="p-6 bg-sky-50/50 border-b border-sky-100">
-          <h3 className="text-xs font-bold text-[#0284C7] uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Assigned Department Team Leads ({ticket.teamLeads?.length || 1})
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {ticket.teamLeads && ticket.teamLeads.length > 0 ? (
-              ticket.teamLeads.map((tl) => (
-                <div key={tl.id} className="bg-white border border-sky-200/90 rounded-xl p-3.5 flex items-center gap-3 shadow-2xs">
-                  <div className="w-9 h-9 rounded-full bg-[#0284C7] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                    {tl.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">{tl.name}</div>
-                    <div className="text-[11px] font-medium text-slate-500">{tl.role}</div>
-                    <div className="text-[10px] font-mono text-[#0284C7] mt-0.5">{tl.email}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700">
-                <span className="font-bold">{ticket.assignedBy || 'Team Lead'}</span> — {ticket.department}
-              </div>
-            )}
-          </div>
-        </div>
+        
 
         {/* Metadata Grid */}
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Created By
+            </span>
+            <span className="text-xs font-semibold text-slate-800">
+              {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
+            </span>
+            {Boolean((ticket as any).requesterEmail || (ticket as any).employeeEmail) && (
+              <span className="text-[10px] font-mono text-slate-400 block">
+                {(ticket as any).requesterEmail || (ticket as any).employeeEmail}
+              </span>
+            )}
+          </div>
+
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Category
@@ -712,7 +699,7 @@ export const AssignedTicketDetails: React.FC = () => {
             </div>
 
             {/* Comment Form - Authorized creator and assigned employee can reply */}
-            {(isAssignedToMe || isCreatedByMe || canWorkOnTicket || Boolean(currentUser)) ? (
+            {(isAssignedToMe || isCreatedByMe || canWorkOnTicket) ? (
               <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
                 <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
                 <textarea

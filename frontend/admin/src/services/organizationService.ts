@@ -34,10 +34,10 @@ export interface EmployeeItem {
 
 export const DEPARTMENTS: DepartmentItem[] = [
   { id: 'D001', name: 'IT Support' },
-  { id: 'D002', name: 'Finance' },
-  { id: 'D003', name: 'HR' },
-  { id: 'D004', name: 'Facilities' },
-  { id: 'D005', name: 'General Administration' },
+  { id: 'D002', name: 'HR' },
+  { id: 'D003', name: 'Finance' },
+  { id: 'D004', name: 'Development' },
+  { id: 'D005', name: 'QA Team' },
   { id: 'D006', name: 'Other' },
 ];
 

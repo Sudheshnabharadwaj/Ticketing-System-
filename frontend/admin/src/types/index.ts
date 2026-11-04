@@ -1,6 +1,6 @@
 export type UserRole = 'Admin' | 'Team Lead' | 'Employee' | '';
 
-export type UserDepartment = 'IT Support' | 'HR' | 'Finance' | 'Operations' | 'Sales' | 'Marketing' | 'Legal' | 'Facilities' | '';
+export type UserDepartment = 'IT Support' | 'HR' | 'Finance' | 'Development' | 'QA Team' | 'Other' | string;
 
 export type UserStatus = 'Active' | 'Inactive' | 'Pending Invitation' | 'Invite Expired' | 'Invite Failed';
 

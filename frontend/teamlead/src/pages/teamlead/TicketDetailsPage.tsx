@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Clock,
   UserCheck,
+  User,
   Paperclip,
   CheckCircle2,
   AlertTriangle,
@@ -132,6 +133,7 @@ export const TicketDetailsPage: React.FC = () => {
   }, [tickets, ticketId]);
 
   const ticket = ticketData || tickets.find((t) => t.id === ticketId);
+
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -308,6 +310,26 @@ export const TicketDetailsPage: React.FC = () => {
 
   const slaBadge = getSlaBadge(ticket.slaStatus);
 
+  // Calculate chat access and permissions
+  const isCreatedByMe = Boolean(
+    (ticket as any).is_created_by_me ||
+    (user?.id && (ticket.employeeId === user.id || (ticket as any).employee_id === user.id || (ticket as any).requester_id === user.id)) ||
+    (user?.email && (ticket.employeeEmail === user.email || (ticket as any).employee_email === user.email || (ticket as any).requesterEmail === user.email)) ||
+    (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase())
+  );
+  const isAssignedToMe = Boolean(
+    (ticket as any).is_assigned_to_me ||
+    (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id)) ||
+    (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase())
+  );
+  const isAssignedLead = Boolean(
+    (user?.name && ticket.assignedBy && ticket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
+    (user?.id && ((ticket as any).teamLeadIds || []).includes(user.id)) ||
+    (user?.name && (ticket as any).assignedTeamLead && (ticket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
+  );
+  const hasChatAccess = (ticket as any).can_chat !== undefined ? (ticket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
+  const canReply = (ticket as any).can_reply !== undefined ? (ticket as any).can_reply : hasChatAccess;
+
   return (
     <div className="space-y-6 w-full max-w-full min-w-0">
       {/* Toast Notification */}
@@ -408,158 +430,168 @@ export const TicketDetailsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* MAIN TICKET CARD */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 sm:p-6 space-y-6">
-        {/* Top Badges & Title & SLA Box Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="space-y-3 flex-1 min-w-0">
-            {/* Badges Row */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono font-bold text-xs px-2.5 py-1 bg-sky-100 text-sky-700 rounded-md border border-sky-200/80">
+      {/* Main Ticket Card - Matching Admin Dashboard Layout */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        {/* Ticket Header & Title */}
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <span className="font-mono text-xs font-bold text-[#0284C7] bg-sky-50 px-2.5 py-1 rounded-md border border-sky-200">
                 {ticket.id}
               </span>
               <PriorityBadge priority={ticket.priority} size="sm" />
               <StatusBadge status={ticket.status} size="sm" />
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
-                <UserCheck className="w-3 h-3 text-indigo-600" />
-                Assigned Ticket
-              </span>
             </div>
-
-            {/* Ticket Subject Title */}
-            <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight leading-tight">
-              {ticket.subject}
-            </h1>
+            <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.subject}</h1>
           </div>
 
-          {/* Compact SLA STATUS Box */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 shrink-0 min-w-[170px] text-left">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SLA STATUS
-            </span>
-            <div className="flex items-center space-x-2">
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${slaBadge.style}`}>
-                {slaBadge.label}
-              </span>
+          {/* SLA Badge */}
+          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
+            <Clock className="w-4 h-4 text-[#0284C7]" />
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
+              </div>
+              <div className="font-bold text-slate-800">{(ticket as any).slaDeadline || (ticket as any).dueDate || (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</div>
+              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{ticket.slaStatus}</div>
             </div>
-            <span className="text-xs font-semibold text-slate-600 block mt-1.5 flex items-center gap-1">
-              <Clock className="w-3 h-3 text-slate-400" />
-              {ticket.slaRemaining}
-            </span>
           </div>
         </div>
 
-        {/* TICKET INFORMATION GRID */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 pt-4 border-t border-slate-100 text-xs">
+        {/* 11 Metadata Fields Display Grid */}
+        <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CATEGORY
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Ticket ID
             </span>
-            <span className="font-semibold text-slate-900 truncate block">
-              {ticket.category}
-            </span>
+            <span className="text-xs font-mono font-bold text-[#0284C7]">{ticket.id}</span>
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SUB-CATEGORY
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Status
             </span>
-            <span className="font-semibold text-slate-900 truncate block">
-              {ticket.subCategory || (ticket.category === 'Network' ? 'GlobalProtect VPN' : ticket.category === 'Access Issue' ? 'Azure AD / MFA' : 'System Software')}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.status}</span>
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              DEPARTMENT
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Priority
             </span>
-            <span className="font-semibold text-slate-900 truncate block">
-              {ticket.department || 'IT Support'}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.priority}</span>
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              ASSIGNED TO
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Department
             </span>
-            <span className="font-bold text-sky-700 truncate block">
-              {ticket.assignedAgent}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              ASSIGNED BY
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Category
             </span>
-            <span className="font-semibold text-slate-800 truncate block">
-              {ticket.assignedBy || (ticket.employee ? `${ticket.employee} (Requester)` : 'Unassigned')}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              ASSIGNED DATE
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Created By
             </span>
-            <span className="font-medium text-slate-700 truncate block">
-              {formatDate(ticket.assignedDate || ticket.createdAt)}
-            </span>
+            <div className="text-xs font-semibold text-slate-800">{ticket.employee || (ticket as any).requesterName || 'N/A'}</div>
+            {(ticket.employeeEmail || (ticket as any).requesterEmail) && (
+              <div className="text-[10px] font-mono text-slate-400">{ticket.employeeEmail || (ticket as any).requesterEmail}</div>
+            )}
           </div>
 
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              LAST UPDATED
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Assigned Employee
             </span>
-            <span className="font-medium text-slate-700 truncate block">
-              {formatDate(ticket.updatedAt)}
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-[#0284C7]" />
+              {ticket.assignedAgent || 'Unassigned'}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Created Date
             </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A'}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Last Updated Date
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.updatedAt ? formatDate(ticket.updatedAt) : (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              SLA Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.slaStatus}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              SLA Deadline
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{(ticket as any).slaDeadline || (ticket as any).dueDate || (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</span>
           </div>
         </div>
 
-        {/* DESCRIPTION SECTION */}
-        <div className="pt-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-            DESCRIPTION
-          </span>
-          <div className="bg-slate-50/80 border border-slate-200 p-4 rounded-xl text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+        {/* Description Section */}
+        <div className="p-6 bg-white border-b border-slate-100">
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+            Description
+          </h3>
+          <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
             {ticket.description}
           </div>
         </div>
 
-        {/* ATTACHMENTS SECTION IN MAIN CARD */}
-        <div className="pt-2 border-t border-slate-100">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+        {/* Resolution Summary Section (if resolved) */}
+        {ticket.status === 'Resolved' && (
+          <div className="p-6 bg-emerald-50/60 border-b border-emerald-100">
+            <h3 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Resolution Summary
+            </h3>
+            <div className="bg-white border border-emerald-200 rounded-xl p-4 text-xs text-emerald-900 leading-relaxed font-medium">
+              {ticket.resolutionSummary || 'Issue resolved following standard troubleshooting & verification.'}
+            </div>
+          </div>
+        )}
+
+        {/* Attachments Section */}
+        <div className="p-6 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <Paperclip className="w-3.5 h-3.5 text-slate-400" />
-              ATTACHMENTS ({attachments.length})
-            </span>
-            {!isReadOnly && (
-              <button
-                type="button"
-                onClick={() => setIsAttachmentModalOpen(true)}
-                className="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline cursor-pointer flex items-center gap-1"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>+ Add Attachment</span>
-              </button>
-            )}
+              Attachments ({attachments.length})
+            </h3>
           </div>
 
           {attachmentsLoading ? (
             <div className="flex items-center gap-2 text-xs text-slate-500 py-3 bg-slate-50 rounded-xl px-4 border border-slate-200">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-600" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0284C7]" />
               <span>Loading ticket attachments...</span>
             </div>
           ) : attachmentsError ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
                 <div className="flex-1">
                   <p className="font-semibold">Attachments could not be loaded.</p>
-                  <p className="mt-0.5 text-[11px] text-amber-700">{attachmentsError}</p>
+                  <p className="mt-0.5">{attachmentsError}</p>
                   <button
                     type="button"
                     onClick={loadAttachments}
-                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100 text-xs"
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100"
                   >
                     <RefreshCw className="w-3 h-3" />
                     Retry
@@ -568,46 +600,34 @@ export const TicketDetailsPage: React.FC = () => {
               </div>
             </div>
           ) : attachments.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex flex-wrap gap-3">
               {attachments.map((att) => {
                 const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;
-                const extension = cleanName.split('.').pop()?.toUpperCase() || 'FILE';
                 return (
                   <div
                     key={att.id || att.name}
-                    className="flex items-center justify-between p-3 bg-slate-50 hover:bg-white border border-slate-200 hover:border-sky-300 rounded-xl text-xs transition-all shadow-2xs group"
+                    className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs text-slate-700 font-medium hover:border-[#0284C7] transition-all"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                      <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-[10px] shrink-0 font-mono">
-                        {extension.slice(0, 4)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-800 truncate" title={cleanName}>
-                          {cleanName}
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          {att.size} {att.uploadedBy ? `• by ${att.uploadedBy}` : ''}
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-2 max-w-[200px] truncate">
+                      <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
+                      <span className="truncate" title={cleanName}>{cleanName}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
                       <button
                         type="button"
                         onClick={() => handleViewAttachment(att)}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:text-sky-600 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        title="View inline preview"
+                        className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
+                        title="View Attachment"
                       >
-                        <Eye className="w-3 h-3 text-slate-500" />
-                        <span>View</span>
+                        <Eye className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDownloadAttachment(att.name, att.url)}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        title="Download attachment"
+                        className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
+                        title="Download Attachment"
                       >
-                        <Download className="w-3 h-3 text-sky-600" />
-                        <span>Download</span>
+                        <Download className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -615,49 +635,17 @@ export const TicketDetailsPage: React.FC = () => {
               })}
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic py-1">No attachments for this ticket.</p>
-          )}
-        </div>
-
-        {/* RESOLUTION SUMMARY SECTION */}
-        <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-            RESOLUTION SUMMARY
-          </span>
-          {ticket.status === 'Resolved' ? (
-            <div className="bg-emerald-50/80 border border-emerald-200/90 p-4 rounded-xl text-emerald-950 flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-xs text-emerald-900 block mb-0.5">
-                  Issue Resolved
-                </span>
-                <p className="text-xs text-emerald-800 leading-relaxed">
-                  {ticket.resolutionSummary || 'Issue resolved by assigned employee after verifying configuration and running diagnostics.'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-xl text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-xs">
-                <span className="font-semibold text-slate-800 block">Work in Progress</span>
-                <span className="text-slate-500">Ticket is currently open. Click "Mark as Resolved" when work is completed.</span>
-              </div>
-              <button
-                onClick={() => setIsResolveModalOpen(true)}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer shrink-0"
-              >
-                Mark as Resolved
-              </button>
-            </div>
+            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
           )}
         </div>
       </div>
 
-      {/* LOWER TAB PANEL: Activity, Notes, Attachments */}
+      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
         {/* Tab Headers */}
         <div className="flex space-x-2 border-b border-slate-200 pb-2">
           <button
+            type="button"
             onClick={() => setActiveTab('conversation')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'conversation'
@@ -669,6 +657,7 @@ export const TicketDetailsPage: React.FC = () => {
             Conversation & Notes ({ticket.comments?.length || 0})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('history')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'history'
@@ -680,6 +669,7 @@ export const TicketDetailsPage: React.FC = () => {
             Audit History ({ticket.activities?.length || 0})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('attachments')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'attachments'
@@ -692,106 +682,118 @@ export const TicketDetailsPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Tab 1: Conversation & Internal Notes */}
+        {/* Tab 1: Conversation & Notes */}
         {activeTab === 'conversation' && (
           <div className="space-y-4">
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {ticket.comments?.length === 0 ? (
-                <p className="text-center text-xs text-slate-400 py-6">
-                  No replies recorded yet. Post an update or internal note below.
-                </p>
-              ) : (
-                ticket.comments?.map((comment: TicketComment) => (
-                  <div
-                    key={comment.id}
-                    className={`p-3.5 rounded-xl border text-xs ${
-                      comment.isInternal
-                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-slate-900">{comment.authorName}</span>
-                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
-                          {comment.authorRole}
-                        </span>
-                        {comment.isInternal && (
-                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
-                            <Lock className="w-3 h-3 mr-1" /> Internal Note
-                          </span>
-                        )}
+            {!hasChatAccess ? (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>You are not assigned to or involved in this ticket and do not have chat access.</span>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {!ticket.comments || ticket.comments.length === 0 ? (
+                    <p className="text-center text-xs text-slate-400 py-6">
+                      No replies recorded yet. Post a message or internal note below.
+                    </p>
+                  ) : (
+                    ticket.comments.map((comment: TicketComment) => (
+                      <div
+                        key={comment.id}
+                        className={`p-3.5 rounded-xl border text-xs ${
+                          comment.isInternal
+                            ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                            : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-slate-900">{comment.authorName}</span>
+                            <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                              {comment.authorRole}
+                            </span>
+                            {comment.isInternal && (
+                              <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
+                                <Lock className="w-3 h-3 mr-1" /> Internal Note
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-medium">{formatDate(comment.createdAt)}</span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
                       </div>
-                      <span className="text-[10px] text-slate-400">{formatDate(comment.createdAt)}</span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-slate-700">{comment.message}</p>
-                  </div>
-                ))
-              )}
-            </div>
+                    ))
+                  )}
+                </div>
 
-            {/* Comment Form or Read-Only Notice */}
-            {!isReadOnly ? (
-              <form onSubmit={handlePostComment} className="pt-3 border-t border-slate-100">
-                {role === 'teamlead' && (
-                  <div className="flex items-center space-x-2 mb-2">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isInternalNote}
-                        onChange={(e) => setIsInternalNote(e.target.checked)}
-                        className="rounded-xs text-sky-600 focus:ring-sky-500"
-                      />
-                      <Lock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Add as Internal Team Note (Hidden from employee)</span>
-                    </label>
+                {/* Comment Form or Read-Only Notice */}
+                {!isReadOnly && canReply ? (
+                  <form onSubmit={handlePostComment} className="pt-3 border-t border-slate-100 space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isInternalNote}
+                          onChange={(e) => setIsInternalNote(e.target.checked)}
+                          className="rounded text-sky-600 focus:ring-sky-500"
+                        />
+                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Add as Internal Team Note (Hidden from employee)</span>
+                      </label>
+                    </div>
+
+                    <textarea
+                      rows={3}
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                    />
+
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        type="submit"
+                        disabled={!newComment.trim()}
+                        className="px-4 py-2 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{isInternalNote ? 'Post Internal Note' : 'Post Reply'}</span>
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>{isReadOnly ? 'This ticket is open in read-only view.' : 'You have read-only access to this conversation.'}</span>
                   </div>
                 )}
-
-                <div className="relative">
-                  <textarea
-                    rows={3}
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder={
-                      isInternalNote
-                        ? 'Type internal team note...'
-                        : 'Type response or update...'
-                    }
-                    className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newComment.trim()}
-                    className="absolute right-3 bottom-3 px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Post Note
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="pt-3 border-t border-slate-100 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="text-xs text-slate-500 italic">
-                  This ticket is open in read-only view. Edit controls and comment submission are hidden.
-                </p>
-              </div>
+              </>
             )}
           </div>
         )}
 
         {/* Tab 2: Audit History */}
         {activeTab === 'history' && (
-          <div className="space-y-2 max-h-80 overflow-y-auto">
-            {ticket.activities?.map((act: TicketActivity) => (
-              <div key={act.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex items-center justify-between">
-                <div>
-                  <span className="font-bold text-slate-900">{act.user}</span>
-                  <span className="text-slate-600 ml-2">{act.action}</span>
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+            {ticket.activities && ticket.activities.length > 0 ? (
+              ticket.activities.map((item: TicketActivity) => (
+                <div key={item.id} className="flex items-start gap-3 text-xs">
+                  <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-100 text-[#0284C7] flex items-center justify-center font-bold shrink-0 mt-0.5">
+                    {item.user.charAt(0)}
+                  </div>
+                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-900">{item.user}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{formatDate(item.timestamp)}</span>
+                    </div>
+                    <p className="text-slate-700">{item.action}</p>
+                  </div>
                 </div>
-                <span className="text-[10px] text-slate-400">{formatDate(act.timestamp)}</span>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-center text-xs text-slate-400 py-6">No audit activities recorded for this ticket.</p>
+            )}
           </div>
         )}
 
@@ -800,7 +802,7 @@ export const TicketDetailsPage: React.FC = () => {
           <div className="space-y-3">
             {attachmentsLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-500">
-                <RefreshCw className="w-4 h-4 animate-spin text-sky-500" />
+                <RefreshCw className="w-4 h-4 animate-spin text-[#0284C7]" />
                 Loading attachments...
               </div>
             ) : attachmentsError ? (
@@ -827,7 +829,7 @@ export const TicketDetailsPage: React.FC = () => {
               attachments.map((att, i) => (
                 <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
-                    <FileText className="w-4 h-4 text-sky-600" />
+                    <FileText className="w-4 h-4 text-[#0284C7]" />
                     <div>
                       <p className="font-semibold text-slate-800">{att.name}</p>
                       <p className="text-[10px] text-slate-400">{att.size}</p>

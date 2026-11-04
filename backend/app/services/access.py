@@ -587,12 +587,110 @@ def can_manage_ticket(payload: dict[str, Any], user: dict[str, Any], ticket: dic
     )
 
 
+def is_ticket_creator(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or ticket.get("created_by") or "").strip().lower()
+    if user_id and creator_id and user_id == creator_id:
+        return True
+    return _same_person(user, payload, ticket, "employee")
+
+
+def is_teamlead_involved_in_ticket(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Check if a Team Lead is assigned to or involved in the ticket."""
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    user_name = str(user.get("name") or "").strip().lower()
+    user_email = str(user.get("email") or payload.get("email") or "").strip().lower()
+
+    # 1. Directly assigned agent
+    agent_id = str(ticket.get("assigned_agent_id") or "").strip().lower()
+    agent_name = str(ticket.get("assigned_agent") or "").strip().lower()
+    agent_email = str(ticket.get("assigned_agent_email") or "").strip().lower()
+    if user_id and agent_id and user_id == agent_id:
+        return True
+    if user_name and agent_name and user_name == agent_name:
+        return True
+    if user_email and agent_email and user_email == agent_email:
+        return True
+
+    # 2. Creator
+    if is_ticket_creator(user, payload, ticket):
+        return True
+
+    # 3. Explicitly assigned/tagged team leads
+    tl_ids = [str(x).strip().lower() for x in (ticket.get("team_lead_ids") or []) if x]
+    if user_id and user_id in tl_ids:
+        return True
+    for tl in (ticket.get("team_leads") or []):
+        if isinstance(tl, dict):
+            tl_id = str(tl.get("id") or tl.get("employeeId") or "").strip().lower()
+            tl_em = str(tl.get("email") or "").strip().lower()
+            if (user_id and tl_id == user_id) or (user_email and tl_em == user_email):
+                return True
+        elif isinstance(tl, str) and (user_id == tl.lower() or user_name == tl.lower()):
+            return True
+
+    # 4. Assigned by this team lead
+    assigned_by = str(ticket.get("assigned_by") or "").strip().lower()
+    if user_name and user_name in assigned_by:
+        return True
+
+    # 5. Lead of the assigned employee who is working on the ticket
+    if agent_id or agent_name or agent_email:
+        managed = teamlead_managed_employees(user)
+        for m in managed:
+            mid = str(m.get("id") or "").strip().lower()
+            mem = str(m.get("email") or "").strip().lower()
+            mnm = str(m.get("name") or "").strip().lower()
+            if (agent_id and mid == agent_id) or (agent_email and mem == agent_email) or (agent_name and mnm == agent_name):
+                return True
+
+    return False
+
+
+def can_view_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Who has chat access to view the conversation:
+    - Admin: can view complete conversation
+    - Ticket Creator: can view
+    - Assigned Team Lead & working employees: can view
+    - Team Leads not assigned/involved: NO access
+    """
+    if is_admin(payload):
+        return True
+    if is_ticket_creator(user, payload, ticket):
+        return True
+    if is_teamlead(payload):
+        return is_teamlead_involved_in_ticket(user, payload, ticket)
+    # Regular employee: must be assigned agent working on ticket or creator
+    return _same_person(user, payload, ticket, "assigned_agent") or (
+        str(user.get("id") or "").strip().lower() == str(ticket.get("assigned_agent_id") or "").strip().lower()
+    )
+
+
+def can_reply_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Who can send replies:
+    - Admin: CANNOT reply (read-only view)
+    - Ticket Creator: can reply
+    - Assigned Team Lead and Employees actually working on the ticket: can reply
+    - Others: cannot reply
+    """
+    if is_admin(payload):
+        return False
+    if is_ticket_creator(user, payload, ticket):
+        return True
+    if is_teamlead(payload):
+        return is_teamlead_involved_in_ticket(user, payload, ticket)
+    # Regular employee: must be assigned agent working on ticket or creator
+    return _same_person(user, payload, ticket, "assigned_agent") or (
+        str(user.get("id") or "").strip().lower() == str(ticket.get("assigned_agent_id") or "").strip().lower()
+    )
+
+
 def can_view_internal_notes(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
     """Internal notes are strictly restricted to Admin and authorized Team Leads, never regular employees."""
     if is_admin(payload):
         return True
     if is_teamlead(payload):
-        return ticket_visible(payload, user, ticket)
+        return is_teamlead_involved_in_ticket(user, payload, ticket) and ticket_visible(payload, user, ticket)
     return False
 
 

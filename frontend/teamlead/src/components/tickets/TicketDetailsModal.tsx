@@ -334,7 +334,46 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 </div>
 
                 {/* Reply Form (Hidden in Read-Only View) */}
-                {!isReadOnlyMode && (
+                {/* Check chat access */}
+            {(() => {
+              const isCreatedByMe = Boolean(
+                (currentTicket as any).is_created_by_me ||
+                (user?.id && (currentTicket.employeeId === user.id || (currentTicket as any).employee_id === user.id)) ||
+                (user?.email && (currentTicket.employeeEmail === user.email || (currentTicket as any).employee_email === user.email)) ||
+                (user?.name && currentTicket.employee && currentTicket.employee.toLowerCase() === user.name.toLowerCase())
+              );
+              const isAssignedToMe = Boolean(
+                (currentTicket as any).is_assigned_to_me ||
+                (user?.id && (currentTicket.assignedAgentId === user.id || (currentTicket as any).assigned_agent_id === user.id)) ||
+                (user?.name && currentTicket.assignedAgent && currentTicket.assignedAgent.toLowerCase() === user.name.toLowerCase())
+              );
+              const isAssignedLead = Boolean(
+                (user?.name && currentTicket.assignedBy && currentTicket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
+                (user?.id && ((currentTicket as any).teamLeadIds || []).includes(user.id)) ||
+                (user?.name && (currentTicket as any).assignedTeamLead && (currentTicket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
+              );
+              const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
+              const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
+
+              if (!hasChatAccess) {
+                return (
+                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>You are not assigned to or involved in this ticket and do not have chat access.</span>
+                  </div>
+                );
+              }
+
+              if (!canReply || isReadOnlyMode) {
+                return (
+                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>{isReadOnlyMode ? 'This ticket is open in read-only view.' : 'You have read-only access to this conversation.'}</span>
+                  </div>
+                );
+              }
+
+              return (
                   <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
                     {role === 'teamlead' && (
                       <div className="flex items-center space-x-2 mb-2">
@@ -373,7 +412,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                       </button>
                     </div>
                   </form>
-                )}
+              );
+            })()}
               </div>
             )}
 
@@ -491,7 +531,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               </div>
 
               <div className="pt-1 border-t border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Employee / Requester</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Created By</span>
                 <span className="font-semibold text-slate-800">{currentTicket.employee}</span>
                 <span className="text-slate-400 block text-[10px]">{currentTicket.employeeEmail}</span>
               </div>

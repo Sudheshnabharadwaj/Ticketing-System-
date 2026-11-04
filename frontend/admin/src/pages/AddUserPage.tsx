@@ -382,12 +382,9 @@ export const AddUserPage: React.FC = () => {
                   { value: 'IT Support', label: 'IT Support' },
                   { value: 'HR', label: 'HR' },
                   { value: 'Finance', label: 'Finance' },
-                  { value: 'Operations', label: 'Operations' },
-                  { value: 'Sales', label: 'Sales' },
-                  { value: 'Marketing', label: 'Marketing' },
-                  { value: 'Legal', label: 'Legal' },
-                  { value: 'Facilities', label: 'Facilities' },
-                  { value: 'Others', label: 'Others (Custom)' },
+                  { value: 'Development', label: 'Development' },
+                  { value: 'QA Team', label: 'QA Team' },
+                  { value: 'Others', label: 'Other' },
                 ]}
               />
 
