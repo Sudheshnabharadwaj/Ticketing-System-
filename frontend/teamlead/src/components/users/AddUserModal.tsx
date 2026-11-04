@@ -384,7 +384,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                   className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all duration-200 cursor-pointer hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <UserPlus className="w-4 h-4" />
-                  {isSubmitting ? 'Adding Employee...' : 'Add Employee'}
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>

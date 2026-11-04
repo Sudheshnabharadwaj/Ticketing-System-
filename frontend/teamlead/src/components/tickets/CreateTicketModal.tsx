@@ -1,14 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTickets } from '../../hooks/useTickets';
 import { TicketCategory, TicketPriority } from '../../types/ticket';
 import { CATEGORIES, PRIORITIES } from '../../utils/constants';
-import { X, PlusCircle, AlertCircle, CheckCircle2, Check, Shield } from 'lucide-react';
+import { X, PlusCircle, AlertCircle, CheckCircle2, Check } from 'lucide-react';
 import { AttachmentPicker, FileAttachmentItem } from '../common/AttachmentPicker';
 import { TeamLeadEmployeeSelector } from './TeamLeadEmployeeSelector';
 import { useAuth } from '../../hooks/useAuth';
-import { teamLeadService } from '../../services/teamLeadService';
 import {
-  OrganizationService,
   type TeamLeadItem,
   type EmployeeItem,
 } from '../../services/organizationService';
@@ -44,52 +42,8 @@ const CreateTicketModalContent: React.FC<{
   onClose: () => void;
   onSuccess?: (msg: string) => void;
 }> = ({ onClose, onSuccess }) => {
-  const { user, users } = useAuth();
+  const { user } = useAuth();
   const { createTicket } = useTickets();
-
-  // Admin Assistance State
-  const [notifyAdmin, setNotifyAdmin] = useState(false);
-  const [selectedAdminId, setSelectedAdminId] = useState('');
-  const [adminList, setAdminList] = useState<{ id: string; name: string; email: string; department?: string }[]>([]);
-
-  const adminsFromContext = useMemo(
-    () => (users || []).filter((u) => u.role === 'admin'),
-    [users],
-  );
-
-  useEffect(() => {
-    if (adminsFromContext.length > 0) {
-      setAdminList(adminsFromContext);
-      setSelectedAdminId((prev) => prev || adminsFromContext[0].id);
-      return;
-    }
-    let cancelled = false;
-    const fallback = [
-      { id: 'usr-admin-1791538577749', name: 'shruthi', email: 's.ronda@oklut.com', department: 'IT Operations' },
-    ];
-
-    if (typeof OrganizationService?.fetchAdmins === 'function') {
-      OrganizationService.fetchAdmins()
-        .then((data) => {
-          if (cancelled) return;
-          const admins = (data && data.length > 0 ? data : fallback) as { id: string; name: string; email: string; department?: string }[];
-          setAdminList(admins);
-          setSelectedAdminId((prev) => prev || admins[0]?.id || '');
-        })
-        .catch((err) => {
-          console.warn('OrganizationService.fetchAdmins error:', err);
-          if (cancelled) return;
-          setAdminList(fallback);
-          setSelectedAdminId((prev) => prev || fallback[0].id);
-        });
-    } else {
-      setAdminList(fallback);
-      setSelectedAdminId((prev) => prev || fallback[0].id);
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [adminsFromContext]);
 
   // Logged-in Team Lead Identity. Memoized so the picker does not treat a new
   // object identity as "a different user" on every parent render.
@@ -186,22 +140,12 @@ const CreateTicketModalContent: React.FC<{
       );
       const mainDepartmentStr = finalDepartments.join(' & ');
 
-      const selectedAdmin = notifyAdmin && selectedAdminId ? adminList.find(a => a.id === selectedAdminId) : null;
       const combinedTaggedMembers = [...selectedEmployeeObjs.map((emp) => ({
         id: emp.id,
         name: emp.name,
         department: emp.departmentName,
         avatar: '',
       }))];
-
-      if (selectedAdmin) {
-        combinedTaggedMembers.push({
-          id: selectedAdmin.id,
-          name: `${selectedAdmin.name} (Admin)`,
-          department: selectedAdmin.department || 'Administration',
-          avatar: '',
-        });
-      }
 
       const assignedTarget =
         selectedEmployeeObjs.length > 0
@@ -255,22 +199,6 @@ const CreateTicketModalContent: React.FC<{
           .map((f) => f.file)
           .filter((f): f is File => !!f),
       });
-
-      // Optional admin assistance ping. In-app notifications are persisted by
-      // the backend; email delivery is a separate, SMTP-dependent capability.
-      if (selectedAdmin) {
-        try {
-          await teamLeadService.createNotification({
-            ticketId: newTicket.id,
-            title: `Admin assistance requested: ${newTicket.id}`,
-            message: `${currentTeamLead.name} requested admin assistance on "${newTicket.subject}".`,
-            type: 'warning',
-            forRole: 'admin',
-          });
-        } catch {
-          /* notification failure must not hide a successfully created ticket */
-        }
-      }
 
       const successMsg = `Ticket ${newTicket.id} created successfully.`;
       setSuccessToast(successMsg);
@@ -504,46 +432,6 @@ const CreateTicketModalContent: React.FC<{
               placeholder="Detailed description of the issue or request..."
               className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 resize-none font-normal"
             />
-          </div>
-
-          {/* Mention / Assign Admin for Assistance */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifyAdmin}
-                  onChange={(e) => setNotifyAdmin(e.target.checked)}
-                  className="rounded-xs text-sky-600 focus:ring-sky-500 w-4 h-4 cursor-pointer"
-                />
-                <Shield className="w-4 h-4 text-sky-600" />
-                <span>Mention / Assign Admin for Assistance</span>
-              </label>
-              <span className="text-[10px] text-slate-400 font-medium">Optional Escalation Assistance</span>
-            </div>
-
-            {notifyAdmin && (
-              <div className="pt-2 border-t border-slate-200 animate-in fade-in duration-150">
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                  Select System Administrator
-                </label>
-                <select
-                  value={selectedAdminId}
-                  onChange={(e) => setSelectedAdminId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
-                >
-                  {adminList.length === 0 ? (
-                    <option value="">No administrators found in system</option>
-                  ) : (
-                    adminList.map((adm) => (
-                      <option key={adm.id} value={adm.id}>
-                        {adm.name} ({adm.email}) - {adm.department || 'Administration'}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            )}
           </div>
 
           {/* Native Attachment Upload */}

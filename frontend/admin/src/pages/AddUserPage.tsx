@@ -472,19 +472,6 @@ export const AddUserPage: React.FC = () => {
                 />
               </div>
 
-              {/* Additional User Details */}
-              <div className="sm:col-span-2">
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  User Notes / Access Details (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.userDetails}
-                  onChange={(e) => setFormData({ ...formData, userDetails: e.target.value })}
-                  placeholder="Additional notes, office location, or special workspace instructions..."
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20 transition-all"
-                />
-              </div>
             </div>
 
             {/* Action Buttons: Cancel and Add User */}
@@ -506,7 +493,7 @@ export const AddUserPage: React.FC = () => {
                   disabled={isSubmitting}
                   icon={<UserPlus className="w-4 h-4" />}
                 >
-                  {isSubmitting ? 'Creating User...' : 'Add User'}
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </Button>
               </div>
             </div>
