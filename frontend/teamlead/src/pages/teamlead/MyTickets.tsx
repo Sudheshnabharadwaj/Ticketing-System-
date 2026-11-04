@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
 import { TicketTable } from '../../components/tickets/TicketTable';
@@ -10,6 +11,7 @@ import { UserCheck, CheckCircle2 } from 'lucide-react';
 import { Ticket } from '../../types/ticket';
 
 export const MyTickets: React.FC = () => {
+  const navigate = useNavigate();
   const { tickets, selectedTicket, setSelectedTicket } = useTickets();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
@@ -74,7 +76,7 @@ export const MyTickets: React.FC = () => {
         <TicketTable
           tickets={filtered}
           tableType="my"
-          onSelectTicket={(t) => setSelectedTicket(t)}
+          onSelectTicket={(t) => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
           onAssignTicket={(t) => setAssignModalTicket(t)}
         />
       )}

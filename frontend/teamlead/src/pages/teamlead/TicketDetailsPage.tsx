@@ -319,15 +319,17 @@ export const TicketDetailsPage: React.FC = () => {
     (ticket as any).is_created_by_me === true ||
     (user?.id && (ticket.employeeId === user.id || (ticket as any).employee_id === user.id || (ticket as any).requester_id === user.id)) ||
     (user?.email && (ticket.employeeEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).employee_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).requesterEmail?.toLowerCase() === user.email?.toLowerCase())) ||
-    (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase())
+    (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase()) ||
+    (user?.name && (ticket as any).requesterName && (ticket as any).requesterName.toLowerCase() === user.name.toLowerCase())
   );
   const isAssignedToMe = Boolean(
     (ticket as any).is_assigned_to_me === true ||
-    (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id)) ||
-    (user?.email && (ticket as any).assigned_agent_email?.toLowerCase() === user.email?.toLowerCase()) ||
-    (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase())
+    (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id || (ticket as any).assignee_id === user.id)) ||
+    (user?.email && ((ticket as any).assigned_agent_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedToEmail?.toLowerCase() === user.email?.toLowerCase())) ||
+    (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
+    (user?.name && (ticket as any).assignedTo && (ticket as any).assignedTo.toLowerCase() === user.name.toLowerCase())
   );
-  const canReply = isReadOnly ? false : (isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true);
+  const canReply = Boolean(isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true);
 
   // Exact SLA Deadline & Status matching Admin view
   const deadlineDisplay = calculateSLADeadline(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).sla_due_at || (ticket as any).slaDeadline);
@@ -347,13 +349,14 @@ export const TicketDetailsPage: React.FC = () => {
       {/* TOP AREA: Back Button + Action Buttons Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Left: Back Link */}
-        <Link
-          to="/teamlead/assigned-tickets"
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
           className="inline-flex items-center text-xs font-semibold text-slate-600 hover:text-sky-600 transition-colors cursor-pointer group"
         >
           <ArrowLeft className="w-4 h-4 mr-1.5 transition-transform group-hover:-translate-x-1" />
           <span>Back to Tickets</span>
-        </Link>
+        </button>
 
         {/* Right: Action Buttons Row */}
         <div className="flex items-center flex-wrap gap-2">
@@ -437,82 +440,89 @@ export const TicketDetailsPage: React.FC = () => {
       {/* Main Ticket Card - Exactly Matching Admin Dashboard Layout & Screenshot */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Ticket Header & Title */}
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className="font-mono text-xs font-bold text-[#0284C7] bg-sky-50 px-2.5 py-1 rounded-md border border-sky-200">
                 {(ticket as any).ticketNumber || ticket.id}
               </span>
-              <Badge
-                variant={ticket.priority === 'Critical' ? 'danger' : ticket.priority === 'High' ? 'warning' : 'neutral'}
-                dot
-                className="text-xs"
-              >
-                {ticket.priority}
-              </Badge>
-              <Badge
-                variant={ticket.status === 'Escalated' ? 'danger' : ticket.status === 'In Progress' ? 'info' : ticket.status === 'Resolved' ? 'success' : 'neutral'}
-                className="text-xs"
-              >
-                {ticket.status}
-              </Badge>
+              <Badge priority={ticket.priority} />
+              <Badge status={ticket.status} />
             </div>
             <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.subject}</h1>
           </div>
 
-          {/* SLA Badge */}
-          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
-            <Clock className="w-4 h-4 text-[#0284C7]" />
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
+          {/* SLA Status Box - Exactly matching attached screenshot */}
+          {(() => {
+            const slaText = ticket.slaRemaining || ticket.slaStatus || (ticket as any).sla || '';
+            const slaLower = String(slaText).toLowerCase();
+            const rawStatusLower = String((ticket as any).slaStatusRaw || ticket.slaStatus || '').toLowerCase();
+            const isBreached = rawStatusLower.includes('breached') || slaLower.includes('breached') || slaLower.includes('overdue');
+            const isRisk = rawStatusLower.includes('risk') || slaLower.includes('risk') || /([1-3]h|\d+m remaining)/i.test(slaText);
+            const isResolved = ticket.status === 'Resolved' || ticket.status === 'Closed';
+
+            if (isResolved) {
+              return (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-800 text-xs font-medium shrink-0">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <div>
+                    <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">SLA Status</div>
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">COMPLETED</span>
+                      <span className="text-slate-800 text-xs">{ticket.slaRemaining || 'Completed'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isBreached) {
+              return (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-2 rounded-xl text-red-800 text-xs font-medium shrink-0">
+                  <AlertTriangle className="w-4 h-4 text-red-600 animate-pulse" />
+                  <div>
+                    <div className="text-[10px] font-bold text-red-700 uppercase tracking-wider">SLA Status</div>
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA BREACHED</span>
+                      <span className="text-slate-800 text-xs">{ticket.slaRemaining || 'Overdue'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isRisk) {
+              return (
+                <div className="flex items-center gap-2 bg-amber-50/50 border border-amber-200 px-3 py-2 rounded-xl text-amber-900 text-xs font-medium shrink-0">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  <div>
+                    <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">SLA STATUS</div>
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA RISK</span>
+                      <span className="font-bold text-slate-800 text-xs">{ticket.slaRemaining || '2h 04m remaining'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
+                <Clock className="w-4 h-4 text-[#0284C7]" />
+                <div>
+                  <div className="text-[10px] font-bold text-[#0284C7] uppercase tracking-wider">SLA STATUS</div>
+                  <div className="font-bold text-slate-800 text-xs">{ticket.slaRemaining || 'Normal'}</div>
+                </div>
               </div>
-              <div className="font-bold text-slate-800">{deadlineDisplay}</div>
-              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{slaStatusDisplay}</div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
 
-        {/* 11 Metadata Fields Display Grid */}
+        {/* 6 Metadata Fields Display Grid - Exactly matching attached screenshot */}
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Ticket ID
-            </span>
-            <span className="text-xs font-mono font-bold text-[#0284C7]">{(ticket as any).ticketNumber || ticket.id}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Status
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.status}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Priority
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.priority}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Department
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Category
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Created By
+              CREATED BY
             </span>
             <div className="text-xs font-semibold text-slate-800">{ticket.employee || (ticket as any).requesterName || 'N/A'}</div>
             {Boolean(ticket.employeeEmail || (ticket as any).requesterEmail) && (
@@ -522,40 +532,39 @@ export const TicketDetailsPage: React.FC = () => {
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Assigned Employee
+              CATEGORY
             </span>
-            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
-              <User className="w-3.5 h-3.5 text-[#0284C7]" />
-              {ticket.assignedAgent || 'Unassigned'}
-            </div>
+            <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Created Date
+              SUB-CATEGORY
+            </span>
+            <span className="text-xs font-semibold text-slate-800">
+              {(ticket as any).subCategory || (ticket as any).sub_category || 'General Support'}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              DEPARTMENT(S)
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              CREATED DATE
             </span>
             <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Last Updated Date
+              LAST UPDATED
             </span>
             <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.updatedAt || ticket.createdAt)}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SLA Status
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{slaStatusDisplay}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SLA Deadline
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
         </div>
 
@@ -650,7 +659,7 @@ export const TicketDetailsPage: React.FC = () => {
               })}
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
+            <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
           )}
         </div>
       </div>
@@ -664,7 +673,7 @@ export const TicketDetailsPage: React.FC = () => {
             onClick={() => setActiveTab('conversation')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'conversation'
-                ? 'bg-sky-600 text-white shadow-xs'
+                ? 'bg-[#0284C7] text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -676,19 +685,19 @@ export const TicketDetailsPage: React.FC = () => {
             onClick={() => setActiveTab('history')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'history'
-                ? 'bg-sky-600 text-white shadow-xs'
+                ? 'bg-[#0284C7] text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
             <Activity className="w-4 h-4" />
-            Audit History ({ticket.activities?.length || 0})
+            Audit History ({ticket.activities?.length || (ticket as any).history?.length || 0})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('attachments')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
               activeTab === 'attachments'
-                ? 'bg-sky-600 text-white shadow-xs'
+                ? 'bg-[#0284C7] text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
@@ -709,20 +718,20 @@ export const TicketDetailsPage: React.FC = () => {
                 ticket.comments.map((comment: TicketComment) => (
                   <div
                     key={comment.id}
-                    className={`p-3.5 rounded-xl border text-xs ${
+                    className={`p-3.5 rounded-xl border text-xs mb-3 ${
                       comment.isInternal
                         ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                        : 'bg-white border-slate-200/80 text-slate-800'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-slate-900">{comment.authorName}</span>
-                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-100 text-slate-600">
                           {comment.authorRole}
                         </span>
                         {comment.isInternal && (
-                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
+                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md">
                             <Lock className="w-3 h-3 mr-1" /> Internal Note
                           </span>
                         )}
@@ -736,8 +745,9 @@ export const TicketDetailsPage: React.FC = () => {
             </div>
 
             {/* Chat/Reply access: for creator and assigned user working on the ticket */}
-            {!isReadOnly && canReply && (
-              <form onSubmit={handlePostComment} className="pt-3 border-t border-slate-100 space-y-3">
+            {canReply && (
+              <form onSubmit={handlePostComment} className="pt-4 border-t border-slate-100 space-y-3">
+                <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
                 <div className="flex items-center space-x-2">
                   <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
                     <input
@@ -755,7 +765,7 @@ export const TicketDetailsPage: React.FC = () => {
                   rows={3}
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
+                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type your reply or progress update here...'}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
                 />
 
@@ -766,7 +776,7 @@ export const TicketDetailsPage: React.FC = () => {
                     className="px-4 py-2 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{isInternalNote ? 'Post Internal Note' : 'Post Reply'}</span>
+                    <span>{isInternalNote ? 'Post Internal Note' : 'Send Reply'}</span>
                   </button>
                 </div>
               </form>

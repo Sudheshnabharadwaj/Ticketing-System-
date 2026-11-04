@@ -206,14 +206,16 @@ export const AssignedTicketDetails: React.FC = () => {
   const isAssignedToMe = Boolean(
     (ticket as any).is_assigned_to_me === true ||
     (currentUser?.id && ((ticket as any).assignedAgentId === currentUser.id || (ticket as any).assignee_id === currentUser.id)) ||
-    (currentUser?.email && ((ticket as any).assignedToEmail === currentUser.email || (ticket as any).assignedAgentEmail === currentUser.email)) ||
-    (currentUser?.name && (ticket.assignedTo === currentUser.name || (ticket as any).assignedAgent === currentUser.name))
+    (currentUser?.email && ((ticket as any).assignedToEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+    (currentUser?.name && (ticket.assignedTo?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).assignedAgent?.toLowerCase() === currentUser.name?.toLowerCase()))
   );
   const isCreatedByMe = Boolean(
     (ticket as any).is_created_by_me === true ||
     (currentUser?.id && ((ticket as any).requester_id === currentUser.id || (ticket as any).employee_id === currentUser.id)) ||
-    (currentUser?.email && ((ticket as any).requesterEmail === currentUser.email || (ticket as any).employeeEmail === currentUser.email))
+    (currentUser?.email && ((ticket as any).requesterEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).employeeEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+    (currentUser?.name && ((ticket as any).requesterName?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).employee?.toLowerCase() === currentUser.name?.toLowerCase()))
   );
+  const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any).can_reply === true);
   const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
@@ -466,7 +468,7 @@ export const AssignedTicketDetails: React.FC = () => {
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Created By
+              CREATED BY
             </span>
             <span className="text-xs font-semibold text-slate-800">
               {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
@@ -480,30 +482,30 @@ export const AssignedTicketDetails: React.FC = () => {
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Category
+              CATEGORY
             </span>
             <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Sub-category
+              SUB-CATEGORY
             </span>
             <span className="text-xs font-semibold text-slate-800">
-              {ticket.subCategory || 'General'}
+              {ticket.subCategory || 'General Support'}
             </span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Department(s)
+              DEPARTMENT(S)
             </span>
             <span className="text-xs font-semibold text-slate-800">{ticket.department}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Created Date
+              CREATED DATE
             </span>
             <span className="text-xs font-semibold text-slate-800">
               {ticket.createdAt}
@@ -512,7 +514,7 @@ export const AssignedTicketDetails: React.FC = () => {
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Last Updated
+              LAST UPDATED
             </span>
             <span className="text-xs font-semibold text-slate-800">{ticket.updatedAt}</span>
           </div>
@@ -521,7 +523,7 @@ export const AssignedTicketDetails: React.FC = () => {
         {/* Description */}
         <div className="p-6 bg-white border-b border-slate-100">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            Description
+            DESCRIPTION
           </h3>
           <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
             {ticket.description}
@@ -546,7 +548,7 @@ export const AssignedTicketDetails: React.FC = () => {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <Paperclip className="w-3.5 h-3.5 text-slate-400" />
-              Attachments ({ticket.attachments?.length || 0})
+              ATTACHMENTS ({ticket.attachments?.length || 0})
             </h3>
             {!isReadOnly && canWorkOnTicket && (
               <button
@@ -699,7 +701,7 @@ export const AssignedTicketDetails: React.FC = () => {
             </div>
 
             {/* Comment Form - Authorized creator and assigned employee can reply; all others have view-only access without chat/reply options */}
-            {!isReadOnly && (isAssignedToMe || isCreatedByMe || canWorkOnTicket || (ticket as any).can_reply === true) && (
+            {canReply && (
               <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
                 <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
                 <textarea

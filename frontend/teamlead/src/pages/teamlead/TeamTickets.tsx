@@ -8,11 +8,12 @@ import { AssignTicketModal } from '../../components/tickets/AssignTicketModal';
 import { Pagination } from '../../components/common/Pagination';
 import { SearchBar } from '../../components/common/SearchBar';
 import { EmptyState } from '../../components/common/EmptyState';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket } from '../../types/ticket';
 import { CheckCircle2 } from 'lucide-react';
 
 export const TeamTickets: React.FC = () => {
+  const navigate = useNavigate();
   const { tickets, selectedTicket, setSelectedTicket } = useTickets();
   const { users } = useAuth();
   const outletContext = useOutletContext<{ globalSearch?: string }>();
@@ -310,7 +311,7 @@ export const TeamTickets: React.FC = () => {
           <TicketTable
             tickets={paginatedTickets}
             tableType="team"
-            onSelectTicket={(t) => setSelectedTicket(t)}
+            onSelectTicket={(t) => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
             onAssignTicket={(t) => setAssignModalTicket(t)}
           />
 
