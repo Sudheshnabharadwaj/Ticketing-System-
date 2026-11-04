@@ -304,6 +304,26 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     updatedAt: formatDateTime(t.updated_at || t.created_at),
     dueDate: calculateSLADeadline(t.created_at, t.priority, t.sla_due_at),
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    comments: Array.isArray(t.comments)
+      ? t.comments.map((c: any) => ({
+          id: c.id,
+          ticketId: c.ticket_id,
+          authorName: c.author_name || c.author || 'User',
+          authorRole: c.author_role || 'admin',
+          message: c.message || '',
+          createdAt: c.created_at ? formatDateTime(c.created_at) : '',
+          isInternal: !!c.is_internal,
+        }))
+      : [],
+    history: Array.isArray(t.activities)
+      ? t.activities.map((a: any) => ({
+          id: a.id,
+          author: a.user || 'System',
+          text: a.action,
+          timestamp: a.timestamp ? formatDateTime(a.timestamp) : '',
+        }))
+      : Array.isArray(t.history) ? t.history : [],
+    activities: t.activities || [],
   };
 }
 
@@ -766,10 +786,12 @@ export const AdminApiService = {
     throw new Error('The ticket was updated but could not be reloaded. Refresh the page.');
   },
 
-  async addComment(ticketId: string, text: string, _attachmentName?: string): Promise<Ticket | null> {
+  async addComment(ticketId: string, text: string, attachmentNameOrInternal?: string | boolean, isInternal?: boolean): Promise<Ticket | null> {
+    const internal = typeof attachmentNameOrInternal === 'boolean' ? attachmentNameOrInternal : (isInternal || false);
+    const attachmentNote = typeof attachmentNameOrInternal === 'string' && attachmentNameOrInternal ? ` (Attachment: ${attachmentNameOrInternal})` : '';
     await apiRequest(
       `/tickets/${encodeURIComponent(ticketId)}/comments`,
-      jsonInit('POST', { message: text })
+      jsonInit('POST', { message: text + attachmentNote, is_internal: internal })
     );
     invalidateAdminCache();
     return this.getTicketById(ticketId);

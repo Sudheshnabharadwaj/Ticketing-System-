@@ -119,7 +119,15 @@ export const TicketDetailsPage: React.FC = () => {
   useEffect(() => {
     const updated = tickets.find((t) => t.id === ticketId);
     if (updated) {
-      setTicketData(updated);
+      setTicketData((prev) => {
+        if (!prev) return updated;
+        return {
+          ...updated,
+          comments: prev.comments && prev.comments.length > 0 ? prev.comments : updated.comments,
+          activities: prev.activities && prev.activities.length > 0 ? prev.activities : updated.activities,
+          attachments: prev.attachments && prev.attachments.length > 0 ? prev.attachments : updated.attachments,
+        };
+      });
     }
   }, [tickets, ticketId]);
 
@@ -276,11 +284,15 @@ export const TicketDetailsPage: React.FC = () => {
     showToast(`Ticket ${ticket.id} marked as Resolved.`);
   };
 
-  const handlePostComment = (e: React.FormEvent) => {
+  const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    addComment(ticket.id, user.name, role, newComment.trim(), isInternalNote);
+    await addComment(ticket.id, user.name, role, newComment.trim(), isInternalNote);
     setNewComment('');
+    const fresh = await ticketService.getTicketById(ticket.id);
+    if (fresh) {
+      setTicketData(fresh);
+    }
   };
 
   // SLA Badge style helper

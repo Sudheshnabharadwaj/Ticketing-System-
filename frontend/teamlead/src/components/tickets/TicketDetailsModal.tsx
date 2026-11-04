@@ -58,7 +58,12 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (ticket) setCurrentTicket(ticket);
+    let active = true;
+    if (ticket?.id) {
+      ticketService.getTicketById(ticket.id).then((fresh) => {
+        if (active && fresh) setCurrentTicket(fresh);
+      });
+    }
     const handleTicketUpdated = async () => {
       if (ticket?.id) {
         const fresh = await ticketService.getTicketById(ticket.id);
@@ -68,10 +73,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     window.addEventListener('ticket-updated', handleTicketUpdated);
     window.addEventListener('storage', handleTicketUpdated);
     return () => {
+      active = false;
       window.removeEventListener('ticket-updated', handleTicketUpdated);
       window.removeEventListener('storage', handleTicketUpdated);
     };
-  }, [ticket]);
+  }, [ticket?.id]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -155,11 +161,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     }
   };
 
-  const handlePostComment = (e: React.FormEvent) => {
+  const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
 
-    addComment(
+    await addComment(
       ticket.id,
       user.name,
       role,
@@ -168,6 +174,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     );
 
     setNewComment('');
+    const fresh = await ticketService.getTicketById(ticket.id);
+    if (fresh) {
+      setCurrentTicket(fresh);
+    }
   };
 
   const handleConfirmEscalation = () => {

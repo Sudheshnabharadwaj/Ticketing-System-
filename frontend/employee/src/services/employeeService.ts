@@ -122,6 +122,17 @@ function mapDbTicket(row: any): EmployeeTicket {
             : a?.name || 'attachment'
         )
       : [],
+    comments: Array.isArray(row.comments)
+      ? row.comments.map((c: any) => ({
+          id: c.id,
+          ticketId: c.ticket_id,
+          authorName: c.author_name || c.author || 'User',
+          authorRole: c.author_role || 'employee',
+          message: c.message || '',
+          createdAt: c.created_at ? formatDateTime(c.created_at) : '',
+          isInternal: !!c.is_internal,
+        }))
+      : [],
     resolutionNotes: row.resolution_summary || '',
     history: Array.isArray(row.activities)
       ? row.activities.map((a: any) => ({
@@ -427,7 +438,8 @@ export const EmployeeService = {
       this.clearCache();
       await this.fetchTickets(true);
       window.dispatchEvent(new CustomEvent('ticket-updated'));
-      return this.getTicketById(ticketId) || null;
+      const fresh = await this.getTicketByIdAsync(ticketId);
+      return fresh || this.getTicketById(ticketId) || null;
     } catch (e) {
       console.error('Backend updateTicketStatus error:', e);
       return null;
@@ -443,7 +455,8 @@ export const EmployeeService = {
       this.clearCache();
       await this.fetchTickets(true);
       window.dispatchEvent(new CustomEvent('ticket-updated'));
-      return this.getTicketById(ticketId) || null;
+      const fresh = await this.getTicketByIdAsync(ticketId);
+      return fresh || this.getTicketById(ticketId) || null;
     } catch (e) {
       console.error('Backend resolveTicket error:', e);
       return null;

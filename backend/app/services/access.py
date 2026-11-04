@@ -578,9 +578,22 @@ def can_manage_ticket(payload: dict[str, Any], user: dict[str, Any], ticket: dic
         return ticket_visible(payload, user, ticket)
     # Employees may update the tickets they created (status/comment) and the
     # ones assigned to them.
+    user_id = str(user.get("id") or payload.get("sub") or "").strip()
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or ticket.get("created_by") or "").strip()
+    if user_id and creator_id and user_id.lower() == creator_id.lower():
+        return True
     return _same_person(user, payload, ticket, "employee") or _same_person(
         user, payload, ticket, "assigned_agent"
     )
+
+
+def can_view_internal_notes(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Internal notes are strictly restricted to Admin and authorized Team Leads, never regular employees."""
+    if is_admin(payload):
+        return True
+    if is_teamlead(payload):
+        return ticket_visible(payload, user, ticket)
+    return False
 
 
 # ── SLA ──────────────────────────────────────────────────────────────────────

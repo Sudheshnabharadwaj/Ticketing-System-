@@ -9,6 +9,16 @@ export interface AssignedTeamLead {
   role: string;
 }
 
+export interface TicketComment {
+  id: string;
+  ticketId?: string;
+  authorName: string;
+  authorRole: string;
+  message: string;
+  createdAt: string;
+  isInternal?: boolean;
+}
+
 export interface EmployeeTicket {
   id: string;
   ticketNumber: string;
@@ -30,6 +40,7 @@ export interface EmployeeTicket {
   assignedDate?: string;
   sla?: string;
   attachments?: string[];
+  comments?: TicketComment[];
   resolutionNotes?: string;
   history?: Array<{
     id: string;

@@ -25,6 +25,16 @@ export type TicketStatus = 'Open' | 'In Progress' | 'Pending' | 'Escalated' | 'R
 
 export type SLAStatus = 'Normal' | 'SLA Risk' | 'SLA Breached';
 
+export interface TicketComment {
+  id: string;
+  ticketId?: string;
+  authorName: string;
+  authorRole: string;
+  message: string;
+  createdAt: string;
+  isInternal?: boolean;
+}
+
 export interface TicketHistoryItem {
   id: string;
   author: string;
@@ -56,6 +66,8 @@ export interface Ticket {
   teamLeads?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   employees?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   history?: TicketHistoryItem[];
+  comments?: TicketComment[];
+  activities?: any[];
 }
 
 export interface DashboardStats {

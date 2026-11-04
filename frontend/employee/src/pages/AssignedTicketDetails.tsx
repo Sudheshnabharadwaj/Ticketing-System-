@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Activity,
+  MessageSquare,
   Eye,
   Download,
   X,
@@ -52,6 +53,7 @@ export const AssignedTicketDetails: React.FC = () => {
   const [ticket, setTicket] = useState<EmployeeTicket | null>(() => (id ? EmployeeService.getTicketById(id) || null : null));
   const [newComment, setNewComment] = useState('');
   const [commentAttachedFiles, setCommentAttachedFiles] = useState<AttachedFile[]>([]);
+  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('In Progress');
   const [statusNote, setStatusNote] = useState('');
@@ -260,10 +262,13 @@ export const AssignedTicketDetails: React.FC = () => {
     const updated = await EmployeeService.addComment(id, newComment, attachmentStr || undefined);
     if (updated) {
       setTicket({ ...updated });
-      setNewComment('');
-      setCommentAttachedFiles([]);
-      setToastMessage('Comment posted to activity log.');
+    } else {
+      const fresh = await EmployeeService.getTicketByIdAsync(id);
+      if (fresh) setTicket({ ...fresh });
     }
+    setNewComment('');
+    setCommentAttachedFiles([]);
+    setToastMessage('Reply posted successfully.');
   };
 
   const handleAddAttachmentSubmit = async (e: React.FormEvent) => {
@@ -635,77 +640,228 @@ export const AssignedTicketDetails: React.FC = () => {
         </div>
       </div>
 
-      {/* Activity & Comments Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-6 space-y-6">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
-          <Activity className="w-4 h-4 text-[#0284C7]" />
-          <h2 className="text-sm font-bold text-slate-900">Comments & Activity Log</h2>
+      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+        {/* Tab Headers */}
+        <div className="flex space-x-2 border-b border-slate-200 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('conversation')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'conversation'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Conversation & Notes ({ticket.comments?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Audit History ({ticket.history?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('attachments')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'attachments'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Paperclip className="w-4 h-4" />
+            Attachments ({ticket.attachments?.length || 0})
+          </button>
         </div>
 
-        {/* Activity Timeline */}
-        <div className="space-y-4">
-          {ticket.history && ticket.history.length > 0 ? (
-            ticket.history.map((item) => (
-              <div key={item.id} className="flex items-start gap-3 text-xs">
-                <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0 mt-0.5">
-                  {item.author.charAt(0)}
-                </div>
-                <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-slate-800">{item.author}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
-                  </div>
-                  <p className="text-slate-700 leading-relaxed">{item.text}</p>
-                  {item.attachment && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
-                      <Paperclip className="w-3 h-3" />
-                      {item.attachment}
+        {/* Tab 1: Conversation & Notes */}
+        {activeTab === 'conversation' && (
+          <div className="space-y-4">
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {!ticket.comments || ticket.comments.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  No replies recorded yet. Post a comment or reply below.
+                </p>
+              ) : (
+                ticket.comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900">{comment.authorName}</span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                          {comment.authorRole}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">{comment.createdAt}</span>
                     </div>
-                  )}
+                    <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Comment Form - Authorized creator and assigned employee can reply */}
+            {(isAssignedToMe || isCreatedByMe || canWorkOnTicket || Boolean(currentUser)) ? (
+              <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
+                <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Type your reply or progress update here..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                />
+                <AttachmentFilePicker
+                  files={commentAttachedFiles}
+                  onFilesChange={setCommentAttachedFiles}
+                  label=""
+                  buttonText="Attach Local File to Reply"
+                  compact
+                />
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newComment.trim()}
+                    className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Send Reply
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="pt-4 border-t border-slate-100 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <p className="text-xs text-slate-500 italic">
+                  You do not have permission to reply to this ticket.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Audit History */}
+        {activeTab === 'history' && (
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+            {ticket.history && ticket.history.length > 0 ? (
+              ticket.history.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 text-xs">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0 mt-0.5">
+                    {item.author.charAt(0)}
+                  </div>
+                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-800">{item.author}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
+                    </div>
+                    <p className="text-slate-700 leading-relaxed">{item.text}</p>
+                    {item.attachment && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
+                        <Paperclip className="w-3 h-3" />
+                        {item.attachment}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 italic text-center py-6">No activity logged yet.</p>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Attachments */}
+        {activeTab === 'attachments' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Attached Files ({ticket.attachments?.length || 0})
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAttachModal(true)}
+                className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
+              >
+                + Upload File
+              </button>
+            </div>
+            {attachmentsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-[#0284C7]" />
+                Loading attachments...
+              </div>
+            ) : attachmentsError ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <div className="flex-1">
+                    <p className="font-semibold">Attachments could not be loaded.</p>
+                    <p className="mt-0.5">{attachmentsError}</p>
+                    <button
+                      type="button"
+                      onClick={reloadAttachments}
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Retry
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))
-          ) : (
-            <p className="text-xs text-slate-400 italic text-center py-4">No activity logged yet.</p>
-          )}
-        </div>
-
-        {/* Add Comment Form or Read-Only Notice */}
-        {!isReadOnly && canWorkOnTicket ? (
-          <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
-            <label className="block text-xs font-bold text-slate-700">Add a Comment / Progress Update</label>
-            <textarea
-              rows={3}
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Type your comment or update here..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
-            />
-            <AttachmentFilePicker
-              files={commentAttachedFiles}
-              onFilesChange={setCommentAttachedFiles}
-              label=""
-              buttonText="Attach Local File to Comment"
-              compact
-            />
-            <div className="flex justify-end pt-1">
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                disabled={!newComment.trim()}
-                className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
-              >
-                <Send className="w-3.5 h-3.5 mr-1.5" />
-                Post Comment
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div className="pt-4 border-t border-slate-100 bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <p className="text-xs text-slate-500 italic">
-              {isReadOnly ? 'This ticket is open in read-only view. Edit controls and comment submission are hidden.' : 'You do not have permission to comment on this ticket.'}
-            </p>
+            ) : ticket.attachments && ticket.attachments.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ticket.attachments.map((file, idx) => {
+                  const cleanName = file.split(' (')[0] || file;
+                  const size = file.includes('(') ? file.split('(')[1].replace(')', '') : 'N/A';
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs hover:border-[#0284C7] transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{cleanName}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{size}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleViewAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3 text-slate-500" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-[#0284C7] bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Download className="w-3 h-3 text-[#0284C7]" />
+                          <span>Download</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
+            )}
           </div>
         )}
       </div>

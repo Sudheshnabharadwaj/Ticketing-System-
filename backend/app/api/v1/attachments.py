@@ -32,6 +32,25 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 METADATA_FILE = "_metadata.json"
 ATTACHMENT_PAYLOAD_PREFIX = "[ATTACHMENT_V1]:"
 
+def _resolve_attachment_author_uid(current_user: dict[str, Any], ticket: dict[str, Any] | None = None) -> str:
+    """Ensure a valid user ID from `users` table is used to satisfy FK constraints."""
+    try:
+        from app.services.access import load_current_user
+        u = load_current_user(current_user)
+        if u and u.get("id"):
+            return str(u.get("id"))
+    except Exception:
+        pass
+    sub = str(current_user.get("sub") or current_user.get("id") or "").strip()
+    if sub and sub.lower() != "system":
+        return sub
+    if ticket:
+        for cand in (ticket.get("employee_id"), ticket.get("requester_id"), ticket.get("assigned_agent_id")):
+            if cand and str(cand).strip() and str(cand).strip().lower() != "system":
+                return str(cand).strip()
+    return "usr-admin-1791538577749"
+
+
 
 def _validate_ticket_id(ticket_id: str) -> str:
     """Reject path traversal attempts in the ticket id path segment."""
@@ -506,10 +525,11 @@ async def upload_attachments(
             }
             msg = ATTACHMENT_PAYLOAD_PREFIX + json.dumps(db_payload)
             comm_id = f"attmeta-{att_id}"
+            author_uid = _resolve_attachment_author_uid(current_user, _ticket)
             sb.table("ticket_comments").upsert({
                 "id": comm_id,
                 "ticket_id": ticket_id,
-                "author_user_id": str(current_user.get("sub") or current_user.get("id") or "system"),
+                "author_user_id": author_uid,
                 "author_name": "__attachment__",
                 "author_role": "employee",
                 "message": msg,
@@ -542,6 +562,22 @@ async def upload_attachments(
             pass
 
         results.append(record)
+
+    if results:
+        names = ", ".join(r["name"] for r in results)
+        uploader_name = (current_user.get("name") or current_user.get("email") or "User").strip()
+        try:
+            from app.api.v1.tickets import _log_activity
+            author_uid = _resolve_attachment_author_uid(current_user, _ticket)
+            _log_activity(
+                ticket_id,
+                uploader_name,
+                f"Uploaded attachment(s): {names}",
+                user_id=author_uid,
+                ticket=_ticket,
+            )
+        except Exception as log_exc:
+            print(f"[attachments] log activity note: {log_exc}")
 
     return results
 
