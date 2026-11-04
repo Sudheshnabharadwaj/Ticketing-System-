@@ -21,6 +21,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { getCurrentSessionUser } from '../../services/unifiedAuth';
 import { AdminApiService, BACKEND_API_URL, fetchBackendAttachmentsDetailed } from '../../services/api';
 import { API_BASE, authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import type { Ticket, TicketStatus } from '../../types';
@@ -253,6 +254,21 @@ export const AdminTicketDetailsPage: React.FC = () => {
 
   const matchingLeads = OrganizationService.getTeamLeadsByDepartment(ticket.department);
   const assignedTeamLeadStr = ticket.assignedTeamLead || (matchingLeads.length > 0 ? `${matchingLeads[0].name} (${matchingLeads[0].role})` : 'Unassigned');
+
+    const currentUser = getCurrentSessionUser();
+  const isCreatedByMe = Boolean(
+    (ticket as any).is_created_by_me === true ||
+    (currentUser?.id && ((ticket as any).employeeId === currentUser.id || (ticket as any).employee_id === currentUser.id || (ticket as any).requester_id === currentUser.id)) ||
+    (currentUser?.email && ticket.requesterEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
+    (currentUser?.name && ticket.requesterName && ticket.requesterName.toLowerCase() === currentUser.name.toLowerCase())
+  );
+  const isAssignedToMe = Boolean(
+    (ticket as any).is_assigned_to_me === true ||
+    (currentUser?.id && ((ticket as any).assignedAgentId === currentUser.id || (ticket as any).assigned_agent_id === currentUser.id)) ||
+    (currentUser?.email && (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
+    (currentUser?.name && ticket.assignedTo && ticket.assignedTo.toLowerCase() === currentUser.name.toLowerCase())
+  );
+  const canReply = isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true;
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -632,11 +648,51 @@ export const AdminTicketDetailsPage: React.FC = () => {
               )}
             </div>
 
-            {/* Admin Read-Only Notice */}
-            <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-              <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Admin has read-only access to this conversation and cannot reply.</span>
-            </div>
+            {/* Chat/Reply access: for creator and assigned user working on the ticket */}
+            {canReply && (
+              <form onSubmit={handleAddCommentSubmit} className="pt-3 border-t border-slate-100 space-y-3">
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isInternalNote}
+                      onChange={(e) => setIsInternalNote(e.target.checked)}
+                      className="rounded text-sky-600 focus:ring-sky-500"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Add as Internal Team Note (Hidden from employee)</span>
+                  </label>
+                </div>
+
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                />
+
+                <div className="flex items-center justify-between pt-1">
+                  <AttachmentFilePicker
+                    files={commentAttachedFiles}
+                    onFilesChange={setCommentAttachedFiles}
+                    label=""
+                    buttonText="Attach Local File"
+                    compact
+                  />
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newComment.trim()}
+                    className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    {isInternalNote ? 'Post Internal Note' : 'Post Reply'}
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 

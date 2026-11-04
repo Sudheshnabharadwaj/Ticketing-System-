@@ -1,3 +1,4 @@
+import { Badge } from '../../components/ui/Badge';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
@@ -9,7 +10,7 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import { AttachmentPicker, FileAttachmentItem } from '../../components/common/AttachmentPicker';
-import { formatDate } from '../../utils/helpers';
+import { formatDate, calculateSLADeadline, computeSLAStatus } from '../../utils/helpers';
 import { OrganizationService } from '../../services/organizationService';
 import { Ticket, TicketStatus, TicketPriority, TicketComment, TicketActivity } from '../../types/ticket';
 import {
@@ -23,6 +24,7 @@ import {
   Send,
   Lock,
   MessageSquare,
+  Activity,
   History,
   FileText,
   Upload,
@@ -310,25 +312,27 @@ export const TicketDetailsPage: React.FC = () => {
 
   const slaBadge = getSlaBadge(ticket.slaStatus);
 
-  // Calculate chat access and permissions
+    // Calculate chat access and permissions:
+  // Tickets under My Tickets and Assigned Tickets have chat/reply access for the ticket creator
+  // and assigned users who are working on the ticket. All other users have view-only access without chat or reply options.
   const isCreatedByMe = Boolean(
-    (ticket as any).is_created_by_me ||
+    (ticket as any).is_created_by_me === true ||
     (user?.id && (ticket.employeeId === user.id || (ticket as any).employee_id === user.id || (ticket as any).requester_id === user.id)) ||
-    (user?.email && (ticket.employeeEmail === user.email || (ticket as any).employee_email === user.email || (ticket as any).requesterEmail === user.email)) ||
+    (user?.email && (ticket.employeeEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).employee_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).requesterEmail?.toLowerCase() === user.email?.toLowerCase())) ||
     (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase())
   );
   const isAssignedToMe = Boolean(
-    (ticket as any).is_assigned_to_me ||
+    (ticket as any).is_assigned_to_me === true ||
     (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id)) ||
+    (user?.email && (ticket as any).assigned_agent_email?.toLowerCase() === user.email?.toLowerCase()) ||
     (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase())
   );
-  const isAssignedLead = Boolean(
-    (user?.name && ticket.assignedBy && ticket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
-    (user?.id && ((ticket as any).teamLeadIds || []).includes(user.id)) ||
-    (user?.name && (ticket as any).assignedTeamLead && (ticket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
-  );
-  const hasChatAccess = (ticket as any).can_chat !== undefined ? (ticket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
-  const canReply = (ticket as any).can_reply !== undefined ? (ticket as any).can_reply : hasChatAccess;
+  const canReply = isReadOnly ? false : (isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true);
+
+  // Exact SLA Deadline & Status matching Admin view
+  const deadlineDisplay = calculateSLADeadline(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).sla_due_at || (ticket as any).slaDeadline);
+  const rawStatus = (ticket as any).slaStatusRaw || computeSLAStatus(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).sla_due_at || (ticket as any).slaDeadline, ticket.status);
+  const slaStatusDisplay = (rawStatus === 'Within SLA' || rawStatus === 'COMPLIANT' || rawStatus === 'Compliant') ? 'Normal' : (rawStatus || 'Normal');
 
   return (
     <div className="space-y-6 w-full max-w-full min-w-0">
@@ -430,17 +434,28 @@ export const TicketDetailsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Ticket Card - Matching Admin Dashboard Layout */}
+      {/* Main Ticket Card - Exactly Matching Admin Dashboard Layout & Screenshot */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Ticket Header & Title */}
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className="font-mono text-xs font-bold text-[#0284C7] bg-sky-50 px-2.5 py-1 rounded-md border border-sky-200">
-                {ticket.id}
+                {(ticket as any).ticketNumber || ticket.id}
               </span>
-              <PriorityBadge priority={ticket.priority} size="sm" />
-              <StatusBadge status={ticket.status} size="sm" />
+              <Badge
+                variant={ticket.priority === 'Critical' ? 'danger' : ticket.priority === 'High' ? 'warning' : 'neutral'}
+                dot
+                className="text-xs"
+              >
+                {ticket.priority}
+              </Badge>
+              <Badge
+                variant={ticket.status === 'Escalated' ? 'danger' : ticket.status === 'In Progress' ? 'info' : ticket.status === 'Resolved' ? 'success' : 'neutral'}
+                className="text-xs"
+              >
+                {ticket.status}
+              </Badge>
             </div>
             <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.subject}</h1>
           </div>
@@ -452,8 +467,8 @@ export const TicketDetailsPage: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
               </div>
-              <div className="font-bold text-slate-800">{(ticket as any).slaDeadline || (ticket as any).dueDate || (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</div>
-              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{ticket.slaStatus}</div>
+              <div className="font-bold text-slate-800">{deadlineDisplay}</div>
+              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{slaStatusDisplay}</div>
             </div>
           </div>
         </div>
@@ -464,7 +479,7 @@ export const TicketDetailsPage: React.FC = () => {
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Ticket ID
             </span>
-            <span className="text-xs font-mono font-bold text-[#0284C7]">{ticket.id}</span>
+            <span className="text-xs font-mono font-bold text-[#0284C7]">{(ticket as any).ticketNumber || ticket.id}</span>
           </div>
 
           <div>
@@ -500,7 +515,7 @@ export const TicketDetailsPage: React.FC = () => {
               Created By
             </span>
             <div className="text-xs font-semibold text-slate-800">{ticket.employee || (ticket as any).requesterName || 'N/A'}</div>
-            {(ticket.employeeEmail || (ticket as any).requesterEmail) && (
+            {Boolean(ticket.employeeEmail || (ticket as any).requesterEmail) && (
               <div className="text-[10px] font-mono text-slate-400">{ticket.employeeEmail || (ticket as any).requesterEmail}</div>
             )}
           </div>
@@ -519,28 +534,28 @@ export const TicketDetailsPage: React.FC = () => {
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Created Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A'}</span>
+            <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Last Updated Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.updatedAt ? formatDate(ticket.updatedAt) : (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</span>
+            <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.updatedAt || ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               SLA Status
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.slaStatus}</span>
+            <span className="text-xs font-semibold text-slate-800">{slaStatusDisplay}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               SLA Deadline
             </span>
-            <span className="text-xs font-semibold text-slate-800">{(ticket as any).slaDeadline || (ticket as any).dueDate || (ticket.createdAt ? formatDate(ticket.createdAt) : 'N/A')}</span>
+            <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
         </div>
 
@@ -665,7 +680,7 @@ export const TicketDetailsPage: React.FC = () => {
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
+            <Activity className="w-4 h-4" />
             Audit History ({ticket.activities?.length || 0})
           </button>
           <button
@@ -685,90 +700,76 @@ export const TicketDetailsPage: React.FC = () => {
         {/* Tab 1: Conversation & Notes */}
         {activeTab === 'conversation' && (
           <div className="space-y-4">
-            {!hasChatAccess ? (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>You are not assigned to or involved in this ticket and do not have chat access.</span>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                  {!ticket.comments || ticket.comments.length === 0 ? (
-                    <p className="text-center text-xs text-slate-400 py-6">
-                      No replies recorded yet. Post a message or internal note below.
-                    </p>
-                  ) : (
-                    ticket.comments.map((comment: TicketComment) => (
-                      <div
-                        key={comment.id}
-                        className={`p-3.5 rounded-xl border text-xs ${
-                          comment.isInternal
-                            ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                            : 'bg-slate-50 border-slate-200 text-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-slate-900">{comment.authorName}</span>
-                            <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
-                              {comment.authorRole}
-                            </span>
-                            {comment.isInternal && (
-                              <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
-                                <Lock className="w-3 h-3 mr-1" /> Internal Note
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-medium">{formatDate(comment.createdAt)}</span>
-                        </div>
-                        <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {!ticket.comments || ticket.comments.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  No replies recorded yet.
+                </p>
+              ) : (
+                ticket.comments.map((comment: TicketComment) => (
+                  <div
+                    key={comment.id}
+                    className={`p-3.5 rounded-xl border text-xs ${
+                      comment.isInternal
+                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900">{comment.authorName}</span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                          {comment.authorRole}
+                        </span>
+                        {comment.isInternal && (
+                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
+                            <Lock className="w-3 h-3 mr-1" /> Internal Note
+                          </span>
+                        )}
                       </div>
-                    ))
-                  )}
+                      <span className="text-[10px] text-slate-400 font-medium">{formatDate(comment.createdAt)}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Chat/Reply access: for creator and assigned user working on the ticket */}
+            {!isReadOnly && canReply && (
+              <form onSubmit={handlePostComment} className="pt-3 border-t border-slate-100 space-y-3">
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isInternalNote}
+                      onChange={(e) => setIsInternalNote(e.target.checked)}
+                      className="rounded text-sky-600 focus:ring-sky-500"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Add as Internal Team Note (Hidden from employee)</span>
+                  </label>
                 </div>
 
-                {/* Comment Form or Read-Only Notice */}
-                {!isReadOnly && canReply ? (
-                  <form onSubmit={handlePostComment} className="pt-3 border-t border-slate-100 space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isInternalNote}
-                          onChange={(e) => setIsInternalNote(e.target.checked)}
-                          className="rounded text-sky-600 focus:ring-sky-500"
-                        />
-                        <Lock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Add as Internal Team Note (Hidden from employee)</span>
-                      </label>
-                    </div>
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                />
 
-                    <textarea
-                      rows={3}
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
-                    />
-
-                    <div className="flex items-center justify-end pt-1">
-                      <button
-                        type="submit"
-                        disabled={!newComment.trim()}
-                        className="px-4 py-2 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>{isInternalNote ? 'Post Internal Note' : 'Post Reply'}</span>
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span>{isReadOnly ? 'This ticket is open in read-only view.' : 'You have read-only access to this conversation.'}</span>
-                  </div>
-                )}
-              </>
+                <div className="flex items-center justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={!newComment.trim()}
+                    className="px-4 py-2 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{isInternalNote ? 'Post Internal Note' : 'Post Reply'}</span>
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         )}

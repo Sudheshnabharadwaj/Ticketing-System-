@@ -24,6 +24,7 @@ export interface TicketActivity {
 
 export interface Ticket {
   id: string;
+  ticketNumber?: string;
   subject: string;
   description: string;
   employee: string;
@@ -38,6 +39,13 @@ export interface Ticket {
   isUnassigned?: boolean;
   slaStatus: SLAStatus;
   slaRemaining: string;
+  dueDate?: string;
+  slaDeadline?: string;
+  slaStatusRaw?: string;
+  can_chat?: boolean;
+  can_reply?: boolean;
+  is_created_by_me?: boolean;
+  is_assigned_to_me?: boolean;
   createdAt: string;
   updatedAt?: string;
   comments?: TicketComment[];

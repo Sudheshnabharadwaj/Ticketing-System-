@@ -698,8 +698,8 @@ export const AssignedTicketDetails: React.FC = () => {
               )}
             </div>
 
-            {/* Comment Form - Authorized creator and assigned employee can reply */}
-            {(isAssignedToMe || isCreatedByMe || canWorkOnTicket) ? (
+            {/* Comment Form - Authorized creator and assigned employee can reply; all others have view-only access without chat/reply options */}
+            {!isReadOnly && (isAssignedToMe || isCreatedByMe || canWorkOnTicket || (ticket as any).can_reply === true) && (
               <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
                 <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
                 <textarea
@@ -729,12 +729,6 @@ export const AssignedTicketDetails: React.FC = () => {
                   </Button>
                 </div>
               </form>
-            ) : (
-              <div className="pt-4 border-t border-slate-100 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="text-xs text-slate-500 italic">
-                  You do not have permission to reply to this ticket.
-                </p>
-              </div>
             )}
           </div>
         )}

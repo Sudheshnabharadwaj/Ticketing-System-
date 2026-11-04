@@ -355,22 +355,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
               const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
 
-              if (!hasChatAccess) {
-                return (
-                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span>You are not assigned to or involved in this ticket and do not have chat access.</span>
-                  </div>
-                );
-              }
-
               if (!canReply || isReadOnlyMode) {
-                return (
-                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-                    <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span>{isReadOnlyMode ? 'This ticket is open in read-only view.' : 'You have read-only access to this conversation.'}</span>
-                  </div>
-                );
+                return null;
               }
 
               return (

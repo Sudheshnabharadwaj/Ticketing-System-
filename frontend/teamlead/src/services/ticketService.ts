@@ -52,6 +52,14 @@ function mapSlaStatus(value: any): Ticket['slaStatus'] {
 export function mapTicket(row: any): Ticket {
   return {
     id: row.id,
+    ticketNumber: row.ticket_number || row.id,
+    dueDate: row.sla_due_at || row.dueDate,
+    slaDeadline: row.sla_due_at || row.dueDate,
+    slaStatusRaw: row.sla_status,
+    can_chat: row.can_chat,
+    can_reply: row.can_reply,
+    is_created_by_me: row.is_created_by_me,
+    is_assigned_to_me: row.is_assigned_to_me,
     subject: row.subject || 'No Subject',
     description: row.description || '',
     employee: row.employee || 'Employee',

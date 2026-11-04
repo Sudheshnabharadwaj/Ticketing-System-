@@ -1409,10 +1409,11 @@ def add_comment(
     payload, user = context
     ticket = _require_visible(payload, user, ticket_id)
 
-    if is_admin(payload):
-        raise HTTPException(status_code=403, detail="Admin can view the complete conversation but cannot reply")
     if not can_reply_ticket_chat(payload, user, ticket):
-        raise HTTPException(status_code=403, detail="You do not have permission to reply to this ticket")
+        raise HTTPException(
+            status_code=403,
+            detail="Tickets under My Tickets and Assigned Tickets have chat/reply access for the ticket creator and assigned users working on the ticket. All other users have view-only access."
+        )
 
     role = role_of(payload)
     is_internal = bool(body.is_internal)
