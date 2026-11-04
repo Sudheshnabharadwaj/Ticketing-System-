@@ -361,31 +361,14 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
               return (
                   <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
-                    {role === 'teamlead' && (
-                      <div className="flex items-center space-x-2 mb-2">
-                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isInternalNote}
-                            onChange={(e) => setIsInternalNote(e.target.checked)}
-                            className="rounded-xs text-sky-600 focus:ring-sky-500"
-                          />
-                          <Lock className="w-3.5 h-3.5 text-amber-600" />
-                          Add as Internal Team Note (Hidden from employee)
-                        </label>
-                      </div>
-                    )}
+                    
 
                     <div className="relative">
                       <textarea
                         rows={3}
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder={
-                          isInternalNote
-                            ? 'Write an internal note for support team...'
-                            : 'Type your message or response...'
-                        }
+                        placeholder="Type your message or response..."
                         className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
                       />
                       <button

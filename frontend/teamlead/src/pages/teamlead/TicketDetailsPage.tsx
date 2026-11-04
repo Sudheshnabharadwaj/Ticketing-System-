@@ -745,24 +745,12 @@ export const TicketDetailsPage: React.FC = () => {
             {canReply && (
               <form onSubmit={handlePostComment} className="pt-4 border-t border-slate-100 space-y-3">
                 <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
-                <div className="flex items-center space-x-2">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isInternalNote}
-                      onChange={(e) => setIsInternalNote(e.target.checked)}
-                      className="rounded text-sky-600 focus:ring-sky-500"
-                    />
-                    <Lock className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Add as Internal Team Note (Hidden from employee)</span>
-                  </label>
-                </div>
 
                 <textarea
                   rows={3}
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type your reply or progress update here...'}
+                  placeholder="Type your reply or progress update here..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
                 />
 
