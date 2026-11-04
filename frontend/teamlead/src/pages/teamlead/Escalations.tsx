@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { TicketDetailsModal } from '../../components/tickets/TicketDetailsModal';
@@ -8,6 +9,7 @@ import { AlertTriangle, ShieldAlert, Eye, UserPlus, CheckCircle2 } from 'lucide-
 import { Ticket } from '../../types/ticket';
 
 export const Escalations: React.FC = () => {
+  const navigate = useNavigate();
   const { escalations, tickets, setSelectedTicket, selectedTicket, resolveTicket, assignAgent } = useTickets();
   const [search, setSearch] = useState('');
 
@@ -20,10 +22,7 @@ export const Escalations: React.FC = () => {
   );
 
   const handleOpenTicket = (ticketId: string) => {
-    const found = tickets.find((t) => t.id === ticketId);
-    if (found) {
-      setSelectedTicket(found);
-    }
+    navigate(`/teamlead/tickets/${ticketId}?mode=view`);
   };
 
   return (

@@ -473,11 +473,6 @@ export const AssignedTicketDetails: React.FC = () => {
             <span className="text-xs font-semibold text-slate-800">
               {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
             </span>
-            {Boolean((ticket as any).requesterEmail || (ticket as any).employeeEmail) && (
-              <span className="text-[10px] font-mono text-slate-400 block">
-                {(ticket as any).requesterEmail || (ticket as any).employeeEmail}
-              </span>
-            )}
           </div>
 
           <div>

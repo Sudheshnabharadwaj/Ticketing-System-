@@ -485,7 +485,16 @@ export const TeamLeadDashboard: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
               {filteredRecentTickets.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="py-2.5 px-3 font-mono font-semibold text-[#0284C7] text-xs whitespace-nowrap">{t.id}</td>
+                  <td className="py-2.5 px-3 font-mono font-semibold text-[#0284C7] text-xs whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
+                      className="font-mono text-xs font-bold text-[#0284C7] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+                      title="View Ticket Details"
+                    >
+                      {(t as any).ticketNumber || t.id}
+                    </button>
+                  </td>
                   <td className="py-2.5 px-3 font-medium text-slate-900 truncate" title={t.subject}>
                     {t.subject}
                   </td>
@@ -493,7 +502,8 @@ export const TeamLeadDashboard: React.FC = () => {
                   <td className="py-2.5 px-3 whitespace-nowrap">{renderStatusBadge(t.status)}</td>
                   <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button
-                      onClick={() => setSelectedTicket(t)}
+                      type="button"
+                      onClick={() => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
                       className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer whitespace-nowrap"
                     >
                       View

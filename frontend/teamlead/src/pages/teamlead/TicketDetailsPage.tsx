@@ -525,9 +525,6 @@ export const TicketDetailsPage: React.FC = () => {
               CREATED BY
             </span>
             <div className="text-xs font-semibold text-slate-800">{ticket.employee || (ticket as any).requesterName || 'N/A'}</div>
-            {Boolean(ticket.employeeEmail || (ticket as any).requesterEmail) && (
-              <div className="text-[10px] font-mono text-slate-400">{ticket.employeeEmail || (ticket as any).requesterEmail}</div>
-            )}
           </div>
 
           <div>
@@ -571,7 +568,7 @@ export const TicketDetailsPage: React.FC = () => {
         {/* Description Section */}
         <div className="p-6 bg-white border-b border-slate-100">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            Description
+            DESCRIPTION
           </h3>
           <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
             {ticket.description}
