@@ -8,6 +8,8 @@ import { Badge } from '../components/ui/Badge';
 import { PasswordStrengthValidator, validatePassword } from '../components/ui/PasswordStrengthValidator';
 import type { UserRole, UserDepartment } from '../types';
 import { AdminApiService } from '../services/api';
+import { supabase } from '../services/supabaseClient';
+import { OrganizationService } from '../services/organizationService';
 import { apiRequestSafe } from '../services/backendAuth';
 import {
   UserPlus,
@@ -43,7 +45,14 @@ export const AddUserPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [copiedCreds, setCopiedCreds] = useState(false);
-  const [teamLeadsFromDb, setTeamLeadsFromDb] = useState<{ id: string; name: string; department: string; email: string }[]>([]);
+  const [teamLeadsFromDb, setTeamLeadsFromDb] = useState<{ id: string; name: string; department: string; email: string }[]>(() =>
+    OrganizationService.getAllTeamLeads().map((tl) => ({
+      id: tl.id || tl.employeeId,
+      name: tl.name,
+      department: tl.departmentName || 'IT Support',
+      email: tl.email || '',
+    }))
+  );
 
   const [createdUserSummary, setCreatedUserSummary] = useState<{
     employeeId: string;
@@ -55,25 +64,49 @@ export const AddUserPage: React.FC = () => {
     loginUrl: string;
   } | null>(null);
 
-  // Fetch actual Team Leads from the authenticated backend directory
+  // Fetch actual Team Leads with instant Supabase fallback
   useEffect(() => {
+    let cancelled = false;
     const fetchTeamLeads = async () => {
-      const result = await apiRequestSafe<any[]>('/users/directory?role=teamlead');
-      if (result.error || !Array.isArray(result.data)) {
-        console.warn('Error fetching team leads:', result.error);
-        return;
+      // 1. Direct Supabase query (instant)
+      try {
+        const { data: supaLeads, error: supaErr } = await supabase
+          .from('users')
+          .select('id, name, email, department, role')
+          .ilike('role', '%lead%');
+        if (!cancelled && !supaErr && Array.isArray(supaLeads) && supaLeads.length > 0) {
+          setTeamLeadsFromDb(
+            supaLeads.map((u) => ({
+              id: u.id,
+              name: u.name || (u.email || '').split('@')[0],
+              department: u.department || 'IT Support',
+              email: u.email || '',
+            }))
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn('Supabase leads query fallback warning:', err);
       }
-      setTeamLeadsFromDb(
-        result.data.map((u) => ({
-          id: u.id,
-          name: u.name || (u.email || '').split('@')[0],
-          department: u.department || 'IT Support',
-          email: u.email || '',
-        }))
-      );
+
+      // 2. Backend directory endpoint
+      const result = await apiRequestSafe<any[]>('/users/directory?role=teamlead');
+      if (!cancelled && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+        setTeamLeadsFromDb(
+          result.data.map((u) => ({
+            id: u.id,
+            name: u.name || (u.email || '').split('@')[0],
+            department: u.department || 'IT Support',
+            email: u.email || '',
+          }))
+        );
+      }
     };
 
-    fetchTeamLeads();
+    void fetchTeamLeads();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const validate = () => {

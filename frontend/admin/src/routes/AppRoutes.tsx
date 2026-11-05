@@ -162,6 +162,8 @@ export const AppRoutes: React.FC = () => {
 
         {/* Administration Sub-routes */}
         <Route path="administration/users" element={<UserManagementPage />} />
+        <Route path="users" element={<Navigate to="/admin/administration/users" replace />} />
+        <Route path="user-management" element={<Navigate to="/admin/administration/users" replace />} />
         <Route path="administration/roles" element={<RolesPermissionsPage />} />
         <Route path="administration/ticket-config" element={<TicketConfigPage />} />
         <Route path="administration/workflows" element={<WorkflowSettingsPage />} />
