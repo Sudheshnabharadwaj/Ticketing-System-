@@ -455,7 +455,7 @@ export const TicketDetailsPage: React.FC = () => {
       {/* Main Ticket Card - Exactly Matching Admin Dashboard Layout & Screenshot */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Ticket Header & Title */}
-        <div className="p-6 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className="font-mono text-xs font-bold text-[#0284C7] bg-sky-50 px-2.5 py-1 rounded-md border border-sky-200">
@@ -464,119 +464,113 @@ export const TicketDetailsPage: React.FC = () => {
               <Badge priority={ticket.priority} />
               <Badge status={ticket.status} />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.subject}</h1>
+            <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.subject || (ticket as any).title}</h1>
           </div>
 
-          {/* SLA Status Box - Exactly matching attached screenshot */}
-          {(() => {
-            const slaText = ticket.slaRemaining || ticket.slaStatus || (ticket as any).sla || '';
-            const slaLower = String(slaText).toLowerCase();
-            const rawStatusLower = String((ticket as any).slaStatusRaw || ticket.slaStatus || '').toLowerCase();
-            const isBreached = rawStatusLower.includes('breached') || slaLower.includes('breached') || slaLower.includes('overdue');
-            const isRisk = rawStatusLower.includes('risk') || slaLower.includes('risk') || /([1-3]h|\d+m remaining)/i.test(slaText);
-            const isResolved = ticket.status === 'Resolved' || ticket.status === 'Closed';
-
-            if (isResolved) {
-              return (
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-800 text-xs font-medium shrink-0">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <div>
-                    <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">COMPLETED</span>
-                      <span className="text-slate-800 text-xs">{ticket.slaRemaining || 'Completed'}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isBreached) {
-              return (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-2 rounded-xl text-red-800 text-xs font-medium shrink-0">
-                  <AlertTriangle className="w-4 h-4 text-red-600 animate-pulse" />
-                  <div>
-                    <div className="text-[10px] font-bold text-red-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA BREACHED</span>
-                      <span className="text-slate-800 text-xs">{ticket.slaRemaining || 'Overdue'}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isRisk) {
-              return (
-                <div className="flex items-center gap-2 bg-amber-50/50 border border-amber-200 px-3 py-2 rounded-xl text-amber-900 text-xs font-medium shrink-0">
-                  <Clock className="w-4 h-4 text-amber-600" />
-                  <div>
-                    <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">SLA STATUS</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA RISK</span>
-                      <span className="font-bold text-slate-800 text-xs">{ticket.slaRemaining || '2h 04m remaining'}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
-                <Clock className="w-4 h-4 text-[#0284C7]" />
-                <div>
-                  <div className="text-[10px] font-bold text-[#0284C7] uppercase tracking-wider">SLA STATUS</div>
-                  <div className="font-bold text-slate-800 text-xs">{ticket.slaRemaining || 'Normal'}</div>
-                </div>
+          {/* SLA Badge */}
+          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
+            <Clock className="w-4 h-4 text-[#0284C7]" />
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
               </div>
-            );
-          })()}
+              <div className="font-bold text-slate-800">{deadlineDisplay}</div>
+              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{ticket.slaStatus || (ticket as any).sla || 'Normal'}</div>
+            </div>
+          </div>
         </div>
 
-        {/* 6 Metadata Fields Display Grid - Exactly matching attached screenshot */}
+        {/* 11 Metadata Fields Display Grid */}
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CREATED BY
+              Ticket ID
             </span>
-            <div className="text-xs font-semibold text-slate-800">{ticket.employee || (ticket as any).requesterName || 'N/A'}</div>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CATEGORY
-            </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
-          </div>
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SUB-CATEGORY
-            </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {(ticket as any).subCategory || (ticket as any).sub_category || 'General Support'}
+            <span className="text-xs font-mono font-bold text-[#0284C7]">
+              {(ticket as any).ticketNumber || ticket.id}
             </span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              DEPARTMENT(S)
+              Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.status}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Priority
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.priority}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Department
             </span>
             <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CREATED DATE
+              Category
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Created By
+            </span>
+            <div className="text-xs font-semibold text-slate-800">
+              {ticket.employee || (ticket as any).requesterName || 'N/A'}
+            </div>
+            {((ticket as any).employeeEmail || (ticket as any).requesterEmail || (ticket as any).email) && (
+              <div className="text-[10px] font-mono text-slate-400">
+                {(ticket as any).employeeEmail || (ticket as any).requesterEmail || (ticket as any).email}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Assigned Employee
+            </span>
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-[#0284C7]" />
+              {(ticket as any).assignedTo || ticket.assignedAgent || (ticket as any).assigned_agent || (ticket as any).assigneeName || 'Unassigned'}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Created Date
             </span>
             <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              LAST UPDATED
+              Last Updated Date
             </span>
             <span className="text-xs font-semibold text-slate-800">{formatDate(ticket.updatedAt || ticket.createdAt)}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              SLA Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.slaStatus || (ticket as any).sla || 'Normal'}</span>
+          </div>
+
+          <div>
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                SLA Deadline
+              </span>
+            </div>
+            <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
         </div>
 
@@ -679,15 +673,15 @@ export const TicketDetailsPage: React.FC = () => {
               })}
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
+            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
           )}
         </div>
       </div>
 
       {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Tab Headers */}
-        <div className="flex space-x-2 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
           <button
             type="button"
             onClick={() => setActiveTab('conversation')}

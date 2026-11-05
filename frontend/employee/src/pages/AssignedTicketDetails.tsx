@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   Clock,
+  User,
   Users,
   Paperclip,
   Send,
@@ -236,6 +237,55 @@ export const AssignedTicketDetails: React.FC = () => {
   const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any).can_reply === true);
   const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
 
+  const calculateSLADeadline = (createdAtStr?: string, priority?: string, explicitDueDate?: string): string => {
+    if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+      const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+        ? explicitDueDate.replace(' ', 'T')
+        : explicitDueDate;
+      const due = new Date(raw);
+      if (!isNaN(due.getTime())) {
+        const yyyy = due.getFullYear();
+        const mm = String(due.getMonth() + 1).padStart(2, '0');
+        const dd = String(due.getDate()).padStart(2, '0');
+        const hh = String(due.getHours()).padStart(2, '0');
+        const min = String(due.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+      }
+      return explicitDueDate.replace('T', ' ').slice(0, 16);
+    }
+    const base = createdAtStr ? new Date(createdAtStr.includes(' ') ? createdAtStr.replace(' ', 'T') : createdAtStr) : new Date();
+    const valid = isNaN(base.getTime()) ? new Date() : base;
+    const hoursMap: Record<string, number> = { Critical: 4, High: 12, Medium: 24, Low: 48 };
+    const hrs = hoursMap[priority || 'Medium'] || 24;
+    const deadline = new Date(valid.getTime() + hrs * 60 * 60 * 1000);
+    const yyyy = deadline.getFullYear();
+    const mm = String(deadline.getMonth() + 1).padStart(2, '0');
+    const dd = String(deadline.getDate()).padStart(2, '0');
+    const hh = String(deadline.getHours()).padStart(2, '0');
+    const min = String(deadline.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  };
+
+  const formatDisplayDate = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    let s = dateStr;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) && !s.includes('Z') && !s.includes('+')) {
+      s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const deadlineDisplay = calculateSLADeadline(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).slaDeadline || (ticket as any).sla_due_at);
+
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
@@ -417,119 +467,108 @@ export const AssignedTicketDetails: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.title}</h1>
           </div>
 
-          {ticket.sla && (() => {
-            const slaLower = ticket.sla.toLowerCase();
-            const isBreached = slaLower.includes('breached') || slaLower.includes('overdue');
-            const isRisk = slaLower.includes('risk') || /([1-3]h|\d+m remaining)/i.test(ticket.sla);
-            const isResolved = ticket.status === 'Resolved' || ticket.status === 'Closed';
-
-            if (isResolved) {
-              return (
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-800 text-xs font-medium shrink-0">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <div>
-                    <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">COMPLETED</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isBreached) {
-              return (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-2 rounded-xl text-red-800 text-xs font-medium shrink-0">
-                  <AlertCircle className="w-4 h-4 text-red-600 animate-pulse" />
-                  <div>
-                    <div className="text-[10px] font-bold text-red-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA BREACHED</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isRisk) {
-              return (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-amber-900 text-xs font-medium shrink-0">
-                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
-                  <div>
-                    <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA RISK</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
-                <Clock className="w-4 h-4 text-[#0284C7]" />
-                <div>
-                  <div className="text-[10px] font-bold text-[#0284C7] uppercase tracking-wider">SLA Status</div>
-                  <div className="font-bold text-slate-800">{ticket.sla}</div>
-                </div>
+          {/* SLA Badge */}
+          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
+            <Clock className="w-4 h-4 text-[#0284C7]" />
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
               </div>
-            );
-          })()}
+              <div className="font-bold text-slate-800">{deadlineDisplay}</div>
+              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{(ticket as any).slaStatus || ticket.sla || 'Normal'}</div>
+            </div>
+          </div>
         </div>
 
-        
-
-        {/* Metadata Grid */}
+        {/* 11 Metadata Fields Display Grid */}
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CREATED BY
+              Ticket ID
             </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
-            </span>
+            <span className="text-xs font-mono font-bold text-[#0284C7]">{ticket.ticketNumber}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CATEGORY
+              Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.status}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Priority
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.priority}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Department
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Category
             </span>
             <span className="text-xs font-semibold text-slate-800">{ticket.category}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              SUB-CATEGORY
+              Created By
             </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {ticket.subCategory || 'General Support'}
-            </span>
+            <div className="text-xs font-semibold text-slate-800">
+              {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
+            </div>
+            {((ticket as any).requesterEmail || (ticket as any).employeeEmail) && (
+              <div className="text-[10px] font-mono text-slate-400">
+                {(ticket as any).requesterEmail || (ticket as any).employeeEmail}
+              </div>
+            )}
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              DEPARTMENT(S)
+              Assigned Employee
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.department}</span>
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-[#0284C7]" />
+              {ticket.assignedTo || (ticket as any).assignedAgent || (ticket as any).assigneeName || 'Unassigned'}
+            </div>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              CREATED DATE
+              Created Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {ticket.createdAt}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{formatDisplayDate(ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              LAST UPDATED
+              Last Updated Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.updatedAt}</span>
+            <span className="text-xs font-semibold text-slate-800">{formatDisplayDate(ticket.updatedAt || ticket.createdAt)}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              SLA Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{(ticket as any).slaStatus || ticket.sla || 'Normal'}</span>
+          </div>
+
+          <div>
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                SLA Deadline
+              </span>
+            </div>
+            <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
         </div>
 
@@ -645,15 +684,15 @@ export const AssignedTicketDetails: React.FC = () => {
               })}
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
+            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
           )}
         </div>
       </div>
 
       {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Tab Headers */}
-        <div className="flex space-x-2 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
           <button
             type="button"
             onClick={() => setActiveTab('conversation')}
@@ -694,7 +733,7 @@ export const AssignedTicketDetails: React.FC = () => {
 
         {/* Tab 1: Conversation & Notes */}
         {activeTab === 'conversation' && (
-          <div className="space-y-4">
+          <div className="p-6 space-y-4">
             <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
               {!ticket.comments || ticket.comments.length === 0 ? (
                 <p className="text-center text-xs text-slate-400 py-6">
@@ -704,16 +743,16 @@ export const AssignedTicketDetails: React.FC = () => {
                 ticket.comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800"
+                    className="p-3.5 rounded-xl border border-slate-200/80 bg-white text-xs text-slate-800"
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-slate-900">{comment.authorName}</span>
-                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-100 text-slate-600">
                           {comment.authorRole}
                         </span>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-medium">{comment.createdAt}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{comment.createdAt}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
                   </div>
