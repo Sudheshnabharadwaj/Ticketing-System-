@@ -987,12 +987,12 @@ def ticket_stats(
                 pending_cnt += 1
             if st == "escalated":
                 escalated_cnt += 1
-            else:
-                sla = compute_sla(t, now)
-                if sla["state"] == "risk":
-                    sla_risk_cnt += 1
-                elif sla["state"] == "breached":
-                    sla_breached_cnt += 1
+
+            sla = compute_sla(t, now)
+            if sla["state"] == "risk":
+                sla_risk_cnt += 1
+            elif sla["state"] == "breached":
+                sla_breached_cnt += 1
 
             ag = _norm(t.get("assigned_agent"))
             ag_id = str(t.get("assigned_agent_id") or "")

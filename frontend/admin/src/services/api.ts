@@ -91,6 +91,19 @@ export async function uploadBackendAttachments(
   return Array.isArray(data) ? (data as BackendAttachment[]) : [];
 }
 
+export async function deleteBackendAttachment(ticketId: string, attId: string): Promise<boolean> {
+  const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+  const res = await authenticatedFetch(
+    `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Attachment deletion failed (${res.status}): ${detail}`);
+  }
+  return true;
+}
+
 export function computeSLAStatus(
   createdAtStr?: string,
   priority?: string,
@@ -617,10 +630,10 @@ export const AdminApiService = {
       return mapped.filter((t) => isActive(t) && isEscalated(t));
     }
     if (filterType === 'sla-risk') {
-      return mapped.filter((t) => isActive(t) && !isEscalated(t) && t.slaStatus === 'SLA Risk');
+      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk')));
     }
     if (filterType === 'sla-breached') {
-      return mapped.filter((t) => isActive(t) && !isEscalated(t) && t.slaStatus === 'SLA Breached');
+      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach')));
     }
     if (filterType === 'resolved') {
       return mapped.filter((t) => !isActive(t));

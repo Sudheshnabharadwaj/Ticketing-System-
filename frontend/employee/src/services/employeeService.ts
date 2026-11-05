@@ -71,6 +71,20 @@ export async function fetchBackendAttachmentsDetailed(ticketId: string): Promise
   }
 }
 
+export async function deleteBackendAttachment(ticketId: string, attId: string): Promise<boolean> {
+  try {
+    const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+    const res = await authenticatedFetch(
+      `${BACKEND_API_URL}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
+      { method: 'DELETE' }
+    );
+    return res.ok;
+  } catch (e) {
+    console.warn('Error deleting attachment:', e);
+    return false;
+  }
+}
+
 async function fetchBackendAttachmentStrings(ticketId: string): Promise<string[]> {
   const result = await fetchBackendAttachmentsDetailed(ticketId);
   return result.attachments;

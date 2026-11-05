@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Eye,
   Download,
+  Trash2,
   X,
   RefreshCw
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import {
   EmployeeService,
   BACKEND_API_URL,
   fetchBackendAttachmentsDetailed,
+  deleteBackendAttachment,
   getEmployeeSessionUser,
 } from '../services/employeeService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../services/backendAuth';
@@ -59,7 +61,7 @@ export const AssignedTicketDetails: React.FC = () => {
   const [statusNote, setStatusNote] = useState('');
 
   const [showEscalateModal, setShowEscalateModal] = useState(false);
-  const [escalateReason, setEscalateReason] = useState('Unable to Resolve');
+  const [escalateReason, setEscalateReason] = useState('Lack of Knowledge');
   const [escalateComment, setEscalateComment] = useState('');
 
   const [showResolveModal, setShowResolveModal] = useState(false);
@@ -98,6 +100,22 @@ export const AssignedTicketDetails: React.FC = () => {
       setToastMessage(`Could not download "${cleanName}". Please try again.`);
     }
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleDeleteAttachment = async (fileName: string) => {
+    const rawName = fileName.includes(' (') ? fileName.split(' (')[0] : fileName;
+    const ticketId = (ticket as any)?.ticketNumber || (ticket as any)?.id || id;
+    if (!ticketId) return;
+    if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
+      return;
+    }
+    const success = await deleteBackendAttachment(ticketId, rawName);
+    if (success) {
+      setToastMessage(`Attachment "${rawName}" deleted successfully.`);
+      await reloadAttachments();
+    } else {
+      setToastMessage(`Failed to delete attachment "${rawName}". Please try again.`);
+    }
   };
 
   const handleViewAttachment = async (fileName: string) => {
@@ -613,6 +631,14 @@ export const AssignedTicketDetails: React.FC = () => {
                         <Download className="w-3 h-3 text-[#0284C7]" />
                         <span>Download</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(file)}
+                        className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-600" />
+                        <span>Delete</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -832,6 +858,14 @@ export const AssignedTicketDetails: React.FC = () => {
                           <Download className="w-3 h-3 text-[#0284C7]" />
                           <span>Download</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Delete</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -865,18 +899,7 @@ export const AssignedTicketDetails: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Status Note / Reason (Optional)
-                </label>
-                <textarea
-                  rows={3}
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  placeholder="Explain why status was updated..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7]"
-                />
-              </div>
+
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <Button
@@ -919,9 +942,11 @@ export const AssignedTicketDetails: React.FC = () => {
                   value={escalateReason}
                   onChange={(e) => setEscalateReason(e.target.value)}
                   options={[
-                    { value: 'Unable to Resolve', label: 'Unable to Resolve' },
-                    { value: 'Requires Team Lead Support', label: 'Requires Team Lead Support' },
-                    { value: 'Technical Issue', label: 'Technical Issue' },
+                    { value: 'Lack of Knowledge', label: 'Lack of Knowledge' },
+                    { value: 'Insufficient Authority', label: 'Insufficient Authority' },
+                    { value: 'Active SLA Breach', label: 'Active SLA Breach' },
+                    { value: 'Third-Party Dependencies', label: 'Third-Party Dependencies' },
+                    { value: 'Recurring/Repeating Issues', label: 'Recurring/Repeating Issues' },
                     { value: 'Other', label: 'Other' },
                   ]}
                 />

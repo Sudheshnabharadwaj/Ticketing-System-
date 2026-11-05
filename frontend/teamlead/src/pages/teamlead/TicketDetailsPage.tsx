@@ -31,6 +31,7 @@ import {
   RefreshCw,
   ChevronDown,
   Download,
+  Trash2,
   Eye,
   X
 } from 'lucide-react';
@@ -180,6 +181,20 @@ export const TicketDetailsPage: React.FC = () => {
       showToast(`Downloading attachment: ${cleanName}`);
     } catch {
       showToast(`Failed to download ${cleanName}. The file may not exist on the server.`);
+    }
+  };
+
+  const handleDeleteAttachment = async (att: AttachmentRecord) => {
+    if (!ticket) return;
+    if (!window.confirm(`Are you sure you want to delete attachment "${att.name}"? This action cannot be undone.`)) {
+      return;
+    }
+    const success = await ticketService.deleteAttachment(ticket.id, att.id || att.name);
+    if (success) {
+      showToast(`Attachment "${att.name}" deleted successfully.`);
+      await loadAttachments();
+    } else {
+      showToast(`Failed to delete attachment "${att.name}". Please try again.`);
     }
   };
 
@@ -650,6 +665,14 @@ export const TicketDetailsPage: React.FC = () => {
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(att)}
+                        className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Delete Attachment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -848,6 +871,14 @@ export const TicketDetailsPage: React.FC = () => {
                       <Download className="w-3 h-3 text-sky-600" />
                       <span>Download</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAttachment(att)}
+                      className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-600" />
+                      <span>Delete</span>
+                    </button>
                   </div>
                 </div>
               ))
@@ -904,13 +935,11 @@ export const TicketDetailsPage: React.FC = () => {
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
                 >
                   <option value="">Select an escalation reason...</option>
-                  <option value="SLA Breach Risk">SLA Breach Risk</option>
-                  <option value="Technical Complexity">Technical Complexity</option>
-                  <option value="Management Urgency">Management Urgency</option>
-                  <option value="Dependency on Third Party / Vendor">Dependency on Third Party / Vendor</option>
-                  <option value="Requires Higher Privileges / Permissions">Requires Higher Privileges / Permissions</option>
-                  <option value="Unresponsive Requester">Unresponsive Requester</option>
-                  <option value="Hardware Replacement Required">Hardware Replacement Required</option>
+                  <option value="Lack of Knowledge">Lack of Knowledge</option>
+                  <option value="Insufficient Authority">Insufficient Authority</option>
+                  <option value="Active SLA Breach">Active SLA Breach</option>
+                  <option value="Third-Party Dependencies">Third-Party Dependencies</option>
+                  <option value="Recurring/Repeating Issues">Recurring/Repeating Issues</option>
                   <option value="Other">Other</option>
                 </select>
               </div>

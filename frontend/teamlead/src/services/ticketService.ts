@@ -305,6 +305,20 @@ export const ticketService = {
     }
   },
 
+    deleteAttachment: async (ticketId: string, attId: string): Promise<boolean> => {
+    try {
+      const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+      const res = await authenticatedFetch(
+        `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
+        { method: 'DELETE' },
+      );
+      return res.ok;
+    } catch (e) {
+      console.warn('Error deleting attachment:', e);
+      return false;
+    }
+  },
+
   createTicket: async (newTicketData: Partial<Ticket>, rawFiles?: File[]): Promise<Ticket> => {
     const departments =
       newTicketData.departments && newTicketData.departments.length > 0

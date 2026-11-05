@@ -18,6 +18,7 @@ import {
   FileText,
   Download,
   Eye,
+  Trash2,
   Plus
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -139,6 +140,21 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
       viewUrl,
       downloadUrl: att.url,
     });
+  };
+
+  const handleDeleteAttachment = async (att: any) => {
+    if (!currentTicket) return;
+    const attName = att.name || att.filename || att.id;
+    if (!window.confirm(`Are you sure you want to delete attachment "${attName}"? This action cannot be undone.`)) {
+      return;
+    }
+    const success = await ticketService.deleteAttachment(currentTicket.id, att.id || attName);
+    if (success) {
+      showToast(`Attachment "${attName}" deleted successfully.`);
+      await loadLiveAttachments(currentTicket.id);
+    } else {
+      showToast(`Failed to delete attachment "${attName}". Please try again.`);
+    }
   };
 
   const handleDownloadAttachment = async (attName: string, attUrl?: string) => {
@@ -442,6 +458,14 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                             <Download className="w-3 h-3 text-sky-600" />
                             <span>Download</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(att)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
                         </div>
                       </div>
                     ))
@@ -719,13 +743,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
                 >
                   <option value="">Select an escalation reason...</option>
-                  <option value="SLA Breach Risk">SLA Breach Risk</option>
-                  <option value="Technical Complexity">Technical Complexity</option>
-                  <option value="Management Urgency">Management Urgency</option>
-                  <option value="Dependency on Third Party / Vendor">Dependency on Third Party / Vendor</option>
-                  <option value="Requires Higher Privileges / Permissions">Requires Higher Privileges / Permissions</option>
-                  <option value="Unresponsive Requester">Unresponsive Requester</option>
-                  <option value="Hardware Replacement Required">Hardware Replacement Required</option>
+                  <option value="Lack of Knowledge">Lack of Knowledge</option>
+                  <option value="Insufficient Authority">Insufficient Authority</option>
+                  <option value="Active SLA Breach">Active SLA Breach</option>
+                  <option value="Third-Party Dependencies">Third-Party Dependencies</option>
+                  <option value="Recurring/Repeating Issues">Recurring/Repeating Issues</option>
                   <option value="Other">Other</option>
                 </select>
               </div>

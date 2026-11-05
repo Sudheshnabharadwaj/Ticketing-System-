@@ -155,14 +155,6 @@ export const EmployeeDashboard: React.FC = () => {
 
         <div className="flex items-center gap-2 shrink-0">
           <Button
-            variant="outline"
-            size="md"
-            onClick={() => navigate('/knowledge-base')}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs"
-          >
-            Search Knowledge Base
-          </Button>
-          <Button
             variant="primary"
             size="md"
             onClick={() => navigate('/create-ticket')}

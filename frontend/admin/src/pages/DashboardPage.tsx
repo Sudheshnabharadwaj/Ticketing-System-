@@ -265,13 +265,16 @@ export const DashboardPage: React.FC = () => {
     (t) => (t.status || '').toLowerCase() === 'escalated' && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
   ).length;
 
-  const slaRiskCount = stats?.slaRiskCount ?? tickets.filter(
-    (t) => (t.slaStatus || '').toLowerCase().includes('risk') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
-  ).length;
+  const isTicketActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());
+  const isSlaBreached = (t: Ticket) =>
+    isTicketActive(t) &&
+    (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach'));
+  const isSlaRisk = (t: Ticket) =>
+    isTicketActive(t) &&
+    (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk'));
 
-  const slaBreachedCount = stats?.slaBreachedCount ?? tickets.filter(
-    (t) => (t.slaStatus || '').toLowerCase().includes('breach') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
-  ).length;
+  const slaRiskCount = stats?.slaRiskCount ?? tickets.filter(isSlaRisk).length;
+  const slaBreachedCount = stats?.slaBreachedCount ?? tickets.filter(isSlaBreached).length;
 
   const filteredTickets = tickets.filter((t) => {
     const q = filterQuery.toLowerCase().trim();
@@ -292,8 +295,8 @@ export const DashboardPage: React.FC = () => {
       statusFilter === 'all' ||
       (statusFilter === 'unassigned' && isUnassigned(t) && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
       (statusFilter === 'escalated' && (t.status || '').toLowerCase() === 'escalated' && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
-      (statusFilter === 'sla risk' && (t.slaStatus || '').toLowerCase().includes('risk') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
-      (statusFilter === 'sla breached' && (t.slaStatus || '').toLowerCase().includes('breach') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
+      (statusFilter === 'sla risk' && isSlaRisk(t)) ||
+      (statusFilter === 'sla breached' && isSlaBreached(t)) ||
       (t.status || '').toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;

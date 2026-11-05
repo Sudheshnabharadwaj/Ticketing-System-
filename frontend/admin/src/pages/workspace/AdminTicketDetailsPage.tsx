@@ -189,6 +189,31 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   };
 
+  const handleDeleteAttachment = async (file: string) => {
+    const rawName = file.includes(' (') ? file.split(' (')[0] : file;
+    const ticketId = ticket?.ticketNumber || id;
+    if (!ticketId) return;
+    if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await ensureBackendSession();
+      const res = await authenticatedFetch(
+        `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(rawName)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        setToastMessage(`Attachment "${rawName}" deleted successfully.`);
+        await reloadAttachments();
+      } else {
+        const errText = await res.text().catch(() => '');
+        setToastMessage(`Failed to delete attachment: ${errText || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      setToastMessage(`Failed to delete attachment: ${e.message || 'Please try again'}`);
+    }
+  };
+
   const handleViewAttachment = async (file: string) => {
     const rawName = file.includes(' (') ? file.split(' (')[0] : file;
     const ticketId = ticket?.ticketNumber || id;
@@ -558,6 +583,14 @@ export const AdminTicketDetailsPage: React.FC = () => {
                     >
                       <Download className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAttachment(file)}
+                      className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                      title="Delete Attachment"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -761,6 +794,14 @@ export const AdminTicketDetailsPage: React.FC = () => {
                         title="Download Attachment"
                       >
                         <Download className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(file)}
+                        className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Delete Attachment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

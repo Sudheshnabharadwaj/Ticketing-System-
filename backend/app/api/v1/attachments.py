@@ -707,3 +707,115 @@ def view_attachment(
                 )
 
     raise HTTPException(status_code=404, detail="Attachment not found.")
+
+@router.delete("/{att_id}", summary="Delete ticket attachment")
+def delete_attachment(
+    ticket_id: str,
+    att_id: str,
+    request: Request,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    _ticket: dict[str, Any] = Depends(require_ticket_access),
+) -> dict[str, Any]:
+    """Delete an attachment by ID or filename from file storage, metadata, and database."""
+    cands = _candidate_ids(ticket_id, _ticket)
+    sb = get_supabase_admin_client()
+
+    raw_clean = unquote(att_id or "").strip()
+    clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip().lower()
+    norm_clean = re.sub(r"[\s_]+", "_", clean_id)
+
+    deleted_names: list[str] = []
+
+    # 1. Delete on disk from all candidate folders and update _metadata.json
+    match = _find_file(ticket_id, att_id, _ticket)
+    if match is not None and match.is_file():
+        _, original_name = _split_stored_name(match.name)
+        deleted_names.append(original_name)
+        try:
+            match.unlink(missing_ok=True)
+        except Exception as e:
+            print(f"[attachments] Error deleting file {match}: {e}")
+
+    for cid in cands:
+        folder = _ticket_folder(cid)
+        index = _load_metadata(cid)
+        to_del = []
+        for aid, rec in index.items():
+            r_name = str(rec.get("name") or "").lower()
+            r_stored = str(rec.get("stored_name") or "")
+            if (
+                aid == att_id
+                or aid.lower() == clean_id
+                or r_name == clean_id
+                or re.sub(r"[\s_]+", "_", r_name) == norm_clean
+                or aid in clean_id
+            ):
+                to_del.append(aid)
+                if r_name and r_name not in deleted_names:
+                    deleted_names.append(rec.get("name") or r_name)
+                if r_stored:
+                    target_file = folder / r_stored
+                    if target_file.is_file():
+                        target_file.unlink(missing_ok=True)
+
+        for aid in to_del:
+            index.pop(aid, None)
+        if to_del:
+            _save_metadata(cid, index)
+
+        if folder.is_dir():
+            for f in folder.iterdir():
+                if f.is_file() and f.name != METADATA_FILE:
+                    stored_id, orig = _split_stored_name(f.name)
+                    if (
+                        f.name == raw_clean
+                        or stored_id.lower() == clean_id
+                        or orig.lower() == clean_id
+                        or re.sub(r"[\s_]+", "_", orig.lower()) == norm_clean
+                    ):
+                        f.unlink(missing_ok=True)
+
+    # 2. Delete from database (Supabase)
+    for cid in cands:
+        try:
+            sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("id", att_id).execute()
+            for name in deleted_names:
+                sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("name", name).execute()
+        except Exception as e:
+            print(f"[attachments] DB delete error ticket_attachments: {e}")
+
+    try:
+        sb.table("ticket_comments").delete().eq("id", f"attmeta-{att_id}").execute()
+    except Exception as e:
+        print(f"[attachments] DB delete error ticket_comments attmeta: {e}")
+
+    for cid in cands:
+        try:
+            res = sb.table("ticket_comments").select("id, message").eq("ticket_id", cid).eq("author_name", "__attachment__").execute()
+            rows = res.data or []
+            for r in rows:
+                msg = str(r.get("message") or "")
+                if (
+                    att_id in msg
+                    or clean_id in msg.lower()
+                    or any(name.lower() in msg.lower() for name in deleted_names if len(name) >= 3)
+                ):
+                    sb.table("ticket_comments").delete().eq("id", r["id"]).execute()
+        except Exception as e:
+            print(f"[attachments] DB delete error searching ticket_comments: {e}")
+
+    # 3. Log activity
+    uploader_name = (current_user.get("name") or current_user.get("email") or "User").strip()
+    del_name = deleted_names[0] if deleted_names else raw_clean
+    try:
+        from app.api.v1.tickets import _log_activity
+        _log_activity(ticket_id, uploader_name, f"Deleted attachment: {del_name}")
+    except Exception as log_exc:
+        print(f"[attachments] log activity note on delete: {log_exc}")
+
+    return {
+        "success": True,
+        "message": f"Attachment '{del_name}' deleted successfully",
+        "attachment_id": att_id,
+    }
+
