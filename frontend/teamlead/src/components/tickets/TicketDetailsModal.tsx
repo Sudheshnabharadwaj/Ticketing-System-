@@ -90,7 +90,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const [selectedTeamLead, setSelectedTeamLead] = useState('');
-  const [escalationReasonInput, setEscalationReasonInput] = useState('');
+  const [escalationReasonInput, setEscalationReasonInput] = useState('Lack of Knowledge');
   const [escalationCommentInput, setEscalationCommentInput] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState<{
     name: string;
@@ -202,7 +202,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     const fullReason = `${escalationReasonInput}: ${escalationCommentInput.trim()}`;
     escalateTicket(ticket.id, fullReason, targetLead);
     setEscalationModalOpen(false);
-    setEscalationReasonInput('');
+    setEscalationReasonInput('Lack of Knowledge');
     setEscalationCommentInput('');
     showToast(`Ticket ${ticket.id} escalated successfully to ${targetLead}`);
   };
@@ -742,7 +742,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                   onChange={(e) => setEscalationReasonInput(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
                 >
-                  <option value="">Select an escalation reason...</option>
                   <option value="Lack of Knowledge">Lack of Knowledge</option>
                   <option value="Insufficient Authority">Insufficient Authority</option>
                   <option value="Active SLA Breach">Active SLA Breach</option>

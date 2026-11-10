@@ -69,7 +69,7 @@ export const TicketDetailsPage: React.FC = () => {
 
   // Form Inputs
   const [selectedTeamLead, setSelectedTeamLead] = useState('');
-  const [escalationReason, setEscalationReason] = useState('');
+  const [escalationReason, setEscalationReason] = useState('Lack of Knowledge');
   const [escalationComment, setEscalationComment] = useState('');
   const [escalateTo, setEscalateTo] = useState('Tier 3 Operations');
   const [escalatePriority, setEscalatePriority] = useState<TicketPriority>('High');
@@ -274,7 +274,7 @@ export const TicketDetailsPage: React.FC = () => {
       changePriority(ticket.id, escalatePriority);
     }
     setIsEscalateModalOpen(false);
-    setEscalationReason('');
+    setEscalationReason('Lack of Knowledge');
     setEscalationComment('');
     showToast(`Ticket ${ticket.id} escalated successfully to ${targetLead}`);
   };
@@ -928,7 +928,6 @@ export const TicketDetailsPage: React.FC = () => {
                   onChange={(e) => setEscalationReason(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
                 >
-                  <option value="">Select an escalation reason...</option>
                   <option value="Lack of Knowledge">Lack of Knowledge</option>
                   <option value="Insufficient Authority">Insufficient Authority</option>
                   <option value="Active SLA Breach">Active SLA Breach</option>
