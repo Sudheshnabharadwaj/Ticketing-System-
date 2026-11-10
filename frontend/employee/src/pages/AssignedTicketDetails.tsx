@@ -28,6 +28,7 @@ import {
   getEmployeeSessionUser,
 } from '../services/employeeService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../services/backendAuth';
+import { supabase } from '../services/supabaseClient';
 import type { EmployeeTicket, TicketStatus } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -68,6 +69,27 @@ export const AssignedTicketDetails: React.FC = () => {
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolutionText, setResolutionText] = useState('');
 
+  const currentUser = getEmployeeSessionUser();
+  const isAssignedToMe = Boolean(
+    ticket && (
+      (ticket as any).is_assigned_to_me === true ||
+      (currentUser?.id && ((ticket as any).assignedAgentId === currentUser.id || (ticket as any).assignee_id === currentUser.id)) ||
+      (currentUser?.email && ((ticket as any).assignedToEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+      (currentUser?.name && (ticket.assignedTo?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).assignedAgent?.toLowerCase() === currentUser.name?.toLowerCase()))
+    )
+  );
+  const isCreatedByMe = Boolean(
+    ticket && (
+      (ticket as any).is_created_by_me === true ||
+      (currentUser?.id && ((ticket as any).requester_id === currentUser.id || (ticket as any).employee_id === currentUser.id)) ||
+      (currentUser?.email && ((ticket as any).requesterEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).employeeEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+      (currentUser?.name && ((ticket as any).requesterName?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).employee?.toLowerCase() === currentUser.name?.toLowerCase()))
+    )
+  );
+  const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any)?.can_reply === true);
+  const canDeleteAttachment = Boolean(currentUser?.role === 'admin' || isAssignedToMe || isCreatedByMe || canReply);
+  const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
+
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [modalAttachedFiles, setModalAttachedFiles] = useState<AttachedFile[]>([]);
   const [previewAttachment, setPreviewAttachment] = useState<{ name: string; size?: string; viewUrl?: string } | null>(null);
@@ -107,15 +129,32 @@ export const AssignedTicketDetails: React.FC = () => {
     const rawName = fileName.includes(' (') ? fileName.split(' (')[0] : fileName;
     const ticketId = (ticket as any)?.ticketNumber || (ticket as any)?.id || id;
     if (!ticketId) return;
+    if (!canDeleteAttachment) {
+      setToastMessage('You are not authorized to delete attachments on this ticket.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
       return;
     }
+    // Optimistic UI removal
+    setTicket((prev) =>
+      prev
+        ? {
+            ...prev,
+            attachments: (prev.attachments || []).filter(
+              (f) => !(f === fileName || f.startsWith(rawName) || f.includes(rawName))
+            ),
+          }
+        : prev
+    );
+
     const success = await deleteBackendAttachment(ticketId, rawName);
     if (success) {
       setToastMessage(`Attachment "${rawName}" deleted successfully.`);
       await reloadAttachments();
     } else {
       setToastMessage(`Failed to delete attachment "${rawName}". Please try again.`);
+      await reloadAttachments();
     }
   };
 
@@ -221,22 +260,6 @@ export const AssignedTicketDetails: React.FC = () => {
     );
   }
 
-  const currentUser = getEmployeeSessionUser();
-  const isAssignedToMe = Boolean(
-    (ticket as any).is_assigned_to_me === true ||
-    (currentUser?.id && ((ticket as any).assignedAgentId === currentUser.id || (ticket as any).assignee_id === currentUser.id)) ||
-    (currentUser?.email && ((ticket as any).assignedToEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
-    (currentUser?.name && (ticket.assignedTo?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).assignedAgent?.toLowerCase() === currentUser.name?.toLowerCase()))
-  );
-  const isCreatedByMe = Boolean(
-    (ticket as any).is_created_by_me === true ||
-    (currentUser?.id && ((ticket as any).requester_id === currentUser.id || (ticket as any).employee_id === currentUser.id)) ||
-    (currentUser?.email && ((ticket as any).requesterEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).employeeEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
-    (currentUser?.name && ((ticket as any).requesterName?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).employee?.toLowerCase() === currentUser.name?.toLowerCase()))
-  );
-  const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any).can_reply === true);
-  const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
-
   const calculateSLADeadline = (createdAtStr?: string, priority?: string, explicitDueDate?: string): string => {
     if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
       const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
@@ -325,20 +348,135 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
+  // Live automatic background comments sync without page refresh
+  useEffect(() => {
+    const tid = ticket?.id || (ticket as any)?.ticketNumber || id;
+    if (!tid) return;
+
+    let isMounted = true;
+    const fetchLatestComments = async () => {
+      try {
+        const { data: dbComments } = await supabase
+          .from('ticket_comments')
+          .select('*')
+          .eq('ticket_id', tid)
+          .order('created_at', { ascending: true });
+
+        if (dbComments && isMounted) {
+          const mapped = dbComments
+            .filter((c: any) => c.author_name !== '__attachment__')
+            .map((c: any) => ({
+              id: c.id,
+              ticketId: c.ticket_id,
+              authorName: c.author_name || 'User',
+              authorRole: (c.author_role || 'EMPLOYEE').toUpperCase(),
+              message: c.message || '',
+              createdAt: c.created_at,
+              isInternal: !!c.is_internal,
+            }));
+
+          setTicket((prev) => {
+            if (!prev) return prev;
+            const currentComments = prev.comments || [];
+            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => c.id).join(',');
+            if (prevIds !== newIds) {
+              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent sync
+      }
+    };
+
+    const channel = supabase
+      .channel(`employee-live-comments-${tid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
+        () => {
+          void fetchLatestComments();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchLatestComments, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [ticket?.id, id]);
+
   const handleAddCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !newComment.trim()) return;
+    const commentText = newComment.trim();
+    if (!id || !commentText) return;
+
     const attachmentStr = commentAttachedFiles.map((f) => `${f.name} (${f.size})`).join(', ');
-    const updated = await EmployeeService.addComment(id, newComment, attachmentStr || undefined);
-    if (updated) {
-      setTicket({ ...updated });
-    } else {
-      const fresh = await EmployeeService.getTicketByIdAsync(id);
-      if (fresh) setTicket({ ...fresh });
-    }
+    const fullMessage = commentText + (attachmentStr ? ` (Attachment: ${attachmentStr})` : '');
+    const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    // 1. Optimistic Update: display sent message immediately & clear input
+    const optimisticComment: any = {
+      id: tempId,
+      ticketId: id,
+      authorName: currentUser?.name || 'Employee',
+      authorRole: 'EMPLOYEE',
+      message: fullMessage,
+      createdAt: nowIso,
+      isInternal: false,
+    };
+
+    setTicket((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: [...(prev.comments || []), optimisticComment],
+      };
+    });
     setNewComment('');
     setCommentAttachedFiles([]);
     setToastMessage('Reply posted successfully.');
+
+    // 2. Persist in database asynchronously
+    try {
+      const updated = await EmployeeService.addComment(id, commentText, attachmentStr || undefined);
+      if (!updated) {
+        // Direct Supabase fallback for guaranteed permanent storage
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: currentUser?.id || null,
+          author_name: currentUser?.name || 'Employee',
+          author_role: 'employee',
+          message: fullMessage,
+          is_internal: false,
+          created_at: nowIso,
+        });
+      }
+    } catch (err) {
+      console.warn('Error saving comment in background:', err);
+      try {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: currentUser?.id || null,
+          author_name: currentUser?.name || 'Employee',
+          author_role: 'employee',
+          message: fullMessage,
+          is_internal: false,
+          created_at: nowIso,
+        });
+      } catch {}
+    }
   };
 
   const handleAddAttachmentSubmit = async (e: React.FormEvent) => {
@@ -670,14 +808,16 @@ export const AssignedTicketDetails: React.FC = () => {
                         <Download className="w-3 h-3 text-[#0284C7]" />
                         <span>Download</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAttachment(file)}
-                        className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3 text-rose-600" />
-                        <span>Delete</span>
-                      </button>
+                      {canDeleteAttachment && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -897,14 +1037,16 @@ export const AssignedTicketDetails: React.FC = () => {
                           <Download className="w-3 h-3 text-[#0284C7]" />
                           <span>Download</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAttachment(file)}
-                          className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3 text-rose-600" />
-                          <span>Delete</span>
-                        </button>
+                        {canDeleteAttachment && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(file)}
+                            className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

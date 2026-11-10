@@ -12,9 +12,13 @@ import { AlertTriangle, ArrowUpRight, CheckCircle2, UserCheck, Bell, Eye } from 
 
 export const EscalatedTicketsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    return cached.filter((t) => t.status === 'Escalated' || (t as any).isEscalated);
+  });
+  const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
   // Modal & Action states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -27,12 +31,14 @@ export const EscalatedTicketsPage: React.FC = () => {
   // Toast notification state
   const [toast, setToast] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const [ticketData, userData] = await Promise.all([
-        AdminApiService.getTickets('escalated', true),
-        AdminApiService.getUsers()
+        AdminApiService.getTickets('escalated', force),
+        AdminApiService.getUsers(force)
       ]);
       const uniqueTickets = Array.from(new Map(ticketData.map(t => [t.id, t])).values());
       setTickets(uniqueTickets);
@@ -45,12 +51,15 @@ export const EscalatedTicketsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-    window.addEventListener('ticket-updated', loadData);
-    window.addEventListener('storage', loadData);
+    void loadData();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
-      window.removeEventListener('ticket-updated', loadData);
-      window.removeEventListener('storage', loadData);
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 

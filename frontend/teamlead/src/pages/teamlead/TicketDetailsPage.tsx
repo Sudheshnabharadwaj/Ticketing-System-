@@ -4,6 +4,7 @@ import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
 import { ticketService, type AttachmentRecord } from '../../services/ticketService';
+import { supabase } from '../../services/supabaseClient';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import { API_BASE_URL } from '../../utils/constants';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -58,8 +59,8 @@ export const TicketDetailsPage: React.FC = () => {
   const { tickets, updateStatus, changePriority, addComment, escalateTicket, resolveTicket } = useTickets();
   const { user, role } = useAuth();
 
-  const [ticketData, setTicketData] = useState<Ticket | null>(() => tickets.find((t) => t.id === ticketId) || null);
-  const [ticketLoading, setTicketLoading] = useState(() => !tickets.find((t) => t.id === ticketId));
+  const [ticketData, setTicketData] = useState<Ticket | null>(() => tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId || (t as any).id === ticketId) || null);
+  const [ticketLoading, setTicketLoading] = useState(() => !tickets.find((t) => t.id === ticketId || t.ticketNumber === ticketId || (t as any).id === ticketId));
 
   // Modal States
   const [isUpdateStatusOpen, setIsUpdateStatusOpen] = useState(false);
@@ -137,6 +138,27 @@ export const TicketDetailsPage: React.FC = () => {
 
   const ticket = ticketData || tickets.find((t) => t.id === ticketId);
 
+  const isCreatedByMe = Boolean(
+    ticket && (
+      (ticket as any).is_created_by_me === true ||
+      (user?.id && (ticket.employeeId === user.id || (ticket as any).employee_id === user.id || (ticket as any).requester_id === user.id)) ||
+      (user?.email && (ticket.employeeEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).employee_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).requesterEmail?.toLowerCase() === user.email?.toLowerCase())) ||
+      (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase()) ||
+      (user?.name && (ticket as any).requesterName && (ticket as any).requesterName.toLowerCase() === user.name.toLowerCase())
+    )
+  );
+  const isAssignedToMe = Boolean(
+    ticket && (
+      (ticket as any).is_assigned_to_me === true ||
+      (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id || (ticket as any).assignee_id === user.id)) ||
+      (user?.email && ((ticket as any).assigned_agent_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedToEmail?.toLowerCase() === user.email?.toLowerCase())) ||
+      (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
+      (user?.name && (ticket as any).assignedTo && (ticket as any).assignedTo.toLowerCase() === user.name.toLowerCase())
+    )
+  );
+  const canReply = Boolean(isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true);
+  const canDeleteAttachment = Boolean(user?.role === 'admin' || isCreatedByMe || isAssignedToMe || canReply);
+
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -186,15 +208,30 @@ export const TicketDetailsPage: React.FC = () => {
 
   const handleDeleteAttachment = async (att: AttachmentRecord) => {
     if (!ticket) return;
+    if (!canDeleteAttachment) {
+      showToast('You are not authorized to delete attachments on this ticket.');
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete attachment "${att.name}"? This action cannot be undone.`)) {
       return;
     }
+    // Optimistic removal from UI state
+    setAttachments((prev) => prev.filter((a) => a.id !== att.id && a.name !== att.name));
+    setTicketData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        attachments: (prev.attachments || []).filter((a: any) => a.id !== att.id && a.name !== att.name),
+      };
+    });
+
     const success = await ticketService.deleteAttachment(ticket.id, att.id || att.name);
     if (success) {
       showToast(`Attachment "${att.name}" deleted successfully.`);
       await loadAttachments();
     } else {
       showToast(`Failed to delete attachment "${att.name}". Please try again.`);
+      await loadAttachments();
     }
   };
 
@@ -303,14 +340,128 @@ export const TicketDetailsPage: React.FC = () => {
     showToast(`Ticket ${ticket.id} marked as Resolved.`);
   };
 
+  // Real-time automatic background synchronization of comments without page refresh
+  useEffect(() => {
+    const tid = ticketId || ticket?.id;
+    if (!tid) return;
+
+    let isMounted = true;
+    const fetchLatestComments = async () => {
+      try {
+        const { data: dbComments } = await supabase
+          .from('ticket_comments')
+          .select('*')
+          .eq('ticket_id', tid)
+          .order('created_at', { ascending: true });
+
+        if (dbComments && isMounted) {
+          const mapped = dbComments
+            .filter((c: any) => c.author_name !== '__attachment__')
+            .map((c: any) => ({
+              id: c.id,
+              ticketId: c.ticket_id,
+              authorName: c.author_name || 'User',
+              authorRole: (c.author_role || 'teamlead') as any,
+              message: c.message || '',
+              createdAt: c.created_at,
+              isInternal: !!c.is_internal,
+            }));
+
+          setTicketData((prev) => {
+            if (!prev) return prev;
+            const currentComments = prev.comments || [];
+            const prevIds = currentComments.map((c: any) => c.id).filter((id: string) => !id.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => c.id).join(',');
+            if (prevIds !== newIds) {
+              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent background sync
+      }
+    };
+
+    const channel = supabase
+      .channel(`teamlead-live-comments-${tid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
+        () => {
+          void fetchLatestComments();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchLatestComments, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [ticketId, ticket?.id]);
+
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newComment.trim()) return;
-    await addComment(ticket.id, user.name, role, newComment.trim(), isInternalNote);
+    const commentText = newComment.trim();
+    if (!commentText || !ticket) return;
+
+    // 1. Optimistic Update: append message immediately & clear input
+    const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const optimisticComment: any = {
+      id: tempId,
+      ticketId: ticket.id,
+      authorName: user.name || 'Team Lead',
+      authorRole: (role || 'teamlead').toUpperCase(),
+      message: commentText,
+      createdAt: nowIso,
+      isInternal: isInternalNote,
+    };
+
+    setTicketData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: [...(prev.comments || []), optimisticComment],
+      };
+    });
     setNewComment('');
-    const fresh = await ticketService.getTicketById(ticket.id);
-    if (fresh) {
-      setTicketData(fresh);
+
+    // 2. Persist in database in background
+    try {
+      const ok = await ticketService.addComment(ticket.id, user.name, role, commentText, isInternalNote);
+      if (!ok) {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: ticket.id,
+          author_user_id: user.id || null,
+          author_name: user.name || 'Team Lead',
+          author_role: role || 'teamlead',
+          message: commentText,
+          is_internal: isInternalNote,
+          created_at: nowIso,
+        });
+      }
+    } catch (err) {
+      console.warn('Error saving comment in background:', err);
+      try {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: ticket.id,
+          author_user_id: user.id || null,
+          author_name: user.name || 'Team Lead',
+          author_role: role || 'teamlead',
+          message: commentText,
+          is_internal: isInternalNote,
+          created_at: nowIso,
+        });
+      } catch {}
     }
   };
 
@@ -326,25 +477,6 @@ export const TicketDetailsPage: React.FC = () => {
   };
 
   const slaBadge = getSlaBadge(ticket.slaStatus);
-
-    // Calculate chat access and permissions:
-  // Tickets under My Tickets and Assigned Tickets have chat/reply access for the ticket creator
-  // and assigned users who are working on the ticket. All other users have view-only access without chat or reply options.
-  const isCreatedByMe = Boolean(
-    (ticket as any).is_created_by_me === true ||
-    (user?.id && (ticket.employeeId === user.id || (ticket as any).employee_id === user.id || (ticket as any).requester_id === user.id)) ||
-    (user?.email && (ticket.employeeEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).employee_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).requesterEmail?.toLowerCase() === user.email?.toLowerCase())) ||
-    (user?.name && ticket.employee && ticket.employee.toLowerCase() === user.name.toLowerCase()) ||
-    (user?.name && (ticket as any).requesterName && (ticket as any).requesterName.toLowerCase() === user.name.toLowerCase())
-  );
-  const isAssignedToMe = Boolean(
-    (ticket as any).is_assigned_to_me === true ||
-    (user?.id && ((ticket as any).assignedAgentId === user.id || (ticket as any).assigned_agent_id === user.id || (ticket as any).assignee_id === user.id)) ||
-    (user?.email && ((ticket as any).assigned_agent_email?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === user.email?.toLowerCase() || (ticket as any).assignedToEmail?.toLowerCase() === user.email?.toLowerCase())) ||
-    (user?.name && ticket.assignedAgent && ticket.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
-    (user?.name && (ticket as any).assignedTo && (ticket as any).assignedTo.toLowerCase() === user.name.toLowerCase())
-  );
-  const canReply = Boolean(isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true);
 
   // Exact SLA Deadline & Status matching Admin view
   const deadlineDisplay = calculateSLADeadline(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).sla_due_at || (ticket as any).slaDeadline);
@@ -659,14 +791,16 @@ export const TicketDetailsPage: React.FC = () => {
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAttachment(att)}
-                        className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Delete Attachment"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canDeleteAttachment && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(att)}
+                          className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                          title="Delete Attachment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -865,14 +999,16 @@ export const TicketDetailsPage: React.FC = () => {
                       <Download className="w-3 h-3 text-sky-600" />
                       <span>Download</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteAttachment(att)}
-                      className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                    >
-                      <Trash2 className="w-3 h-3 text-rose-600" />
-                      <span>Delete</span>
-                    </button>
+                    {canDeleteAttachment && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(att)}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-600" />
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))

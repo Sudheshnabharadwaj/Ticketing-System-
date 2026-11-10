@@ -24,8 +24,8 @@ import {
 
 export const TicketManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
   const [activeQueueTab, setActiveQueueTab] = useState<'all' | 'unassigned' | 'in_progress' | 'pending' | 'escalated'>('all');
 
   // Filters
@@ -50,9 +50,11 @@ export const TicketManagementPage: React.FC = () => {
   const [modalNote, setModalNote] = useState('');
   const [newComment, setNewComment] = useState('');
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const data = await AdminApiService.getTickets('all');
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    const data = await AdminApiService.getTickets('all', force);
     setTickets(data);
     setIsLoading(false);
   };
@@ -81,13 +83,16 @@ export const TicketManagementPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-    loadAssignees();
-    window.addEventListener('ticket-updated', loadData);
-    window.addEventListener('storage', loadData);
+    void loadData();
+    void loadAssignees();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
-      window.removeEventListener('ticket-updated', loadData);
-      window.removeEventListener('storage', loadData);
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -284,7 +289,7 @@ export const TicketManagementPage: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={loadData}
+          onClick={() => loadData(true)}
           icon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
           className="text-xs"
         >

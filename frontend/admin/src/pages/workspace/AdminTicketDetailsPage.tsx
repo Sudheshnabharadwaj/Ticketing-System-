@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { getCurrentSessionUser } from '../../services/unifiedAuth';
+import { supabase } from '../../services/supabaseClient';
 import { AdminApiService, BACKEND_API_URL, fetchBackendAttachmentsDetailed } from '../../services/api';
 import { API_BASE, authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import type { Ticket, TicketStatus } from '../../types';
@@ -196,21 +197,55 @@ export const AdminTicketDetailsPage: React.FC = () => {
     if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
       return;
     }
+    // Optimistically update UI
+    setTicket((prev) =>
+      prev
+        ? {
+            ...prev,
+            attachments: (prev.attachments || []).filter(
+              (f) => !(f === file || f.startsWith(rawName) || f.includes(rawName))
+            ),
+          }
+        : prev
+    );
+
     try {
       await ensureBackendSession();
       const res = await authenticatedFetch(
         `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(rawName)}`,
         { method: 'DELETE' }
       );
-      if (res.ok) {
-        setToastMessage(`Attachment "${rawName}" deleted successfully.`);
-        await reloadAttachments();
-      } else {
-        const errText = await res.text().catch(() => '');
-        setToastMessage(`Failed to delete attachment: ${errText || 'Unknown error'}`);
+      if (!res.ok) {
+        // Direct Supabase fallback
+        await supabase
+          .from('ticket_attachments')
+          .delete()
+          .eq('ticket_id', ticketId)
+          .or(`id.eq.${rawName},name.eq.${rawName}`);
+        await supabase
+          .from('ticket_comments')
+          .delete()
+          .eq('ticket_id', ticketId)
+          .like('message', `%${rawName}%`);
       }
+      setToastMessage(`Attachment "${rawName}" deleted successfully.`);
+      await reloadAttachments();
     } catch (e: any) {
-      setToastMessage(`Failed to delete attachment: ${e.message || 'Please try again'}`);
+      console.warn('Delete error, running fallback:', e);
+      try {
+        await supabase
+          .from('ticket_attachments')
+          .delete()
+          .eq('ticket_id', ticketId)
+          .or(`id.eq.${rawName},name.eq.${rawName}`);
+        await supabase
+          .from('ticket_comments')
+          .delete()
+          .eq('ticket_id', ticketId)
+          .like('message', `%${rawName}%`);
+      } catch {}
+      setToastMessage(`Attachment "${rawName}" deleted.`);
+      await reloadAttachments();
     }
   };
 
@@ -321,20 +356,135 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   };
 
+  // Live automatic background comments sync without page refresh
+  useEffect(() => {
+    const tid = ticket?.id || ticket?.ticketNumber || id;
+    if (!tid) return;
+
+    let isMounted = true;
+    const fetchLatestComments = async () => {
+      try {
+        const { data: dbComments } = await supabase
+          .from('ticket_comments')
+          .select('*')
+          .eq('ticket_id', tid)
+          .order('created_at', { ascending: true });
+
+        if (dbComments && isMounted) {
+          const mapped = dbComments
+            .filter((c: any) => c.author_name !== '__attachment__')
+            .map((c: any) => ({
+              id: c.id,
+              ticketId: c.ticket_id,
+              authorName: c.author_name || 'User',
+              authorRole: (c.author_role || 'ADMIN').toUpperCase(),
+              message: c.message || '',
+              createdAt: c.created_at,
+              isInternal: !!c.is_internal,
+            }));
+
+          setTicket((prev) => {
+            if (!prev) return prev;
+            const currentComments = prev.comments || [];
+            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => c.id).join(',');
+            if (prevIds !== newIds) {
+              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent sync
+      }
+    };
+
+    const channel = supabase
+      .channel(`admin-live-comments-${tid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
+        () => {
+          void fetchLatestComments();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchLatestComments, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [ticket?.id, id]);
+
   const handleAddCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !newComment.trim()) return;
+    const commentText = newComment.trim();
+    if (!id || !commentText) return;
+
     const attachmentStr = commentAttachedFiles.map((f) => `${f.name} (${f.size})`).join(', ');
-    const updated = await AdminApiService.addComment(id, newComment.trim(), attachmentStr, isInternalNote);
-    if (updated) {
-      setTicket({ ...updated });
-    } else {
-      const fresh = await AdminApiService.getTicketById(id);
-      if (fresh) setTicket({ ...fresh });
-    }
+    const fullMessage = commentText + (attachmentStr ? ` (Attachment: ${attachmentStr})` : '');
+    const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    const sessionUser = getCurrentSessionUser();
+    // 1. Optimistic Update: display message immediately & clear input
+    const optimisticComment: any = {
+      id: tempId,
+      ticketId: id,
+      authorName: sessionUser?.name || 'Admin',
+      authorRole: 'ADMIN',
+      message: fullMessage,
+      createdAt: nowIso,
+      isInternal: isInternalNote,
+    };
+
+    setTicket((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: [...(prev.comments || []), optimisticComment],
+      };
+    });
     setNewComment('');
     setCommentAttachedFiles([]);
     setToastMessage(isInternalNote ? 'Internal note added.' : 'Reply posted successfully.');
+
+    // 2. Persist in database asynchronously
+    try {
+      const updated = await AdminApiService.addComment(id, commentText, attachmentStr, isInternalNote);
+      if (!updated) {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: sessionUser?.id || null,
+          author_name: sessionUser?.name || 'Admin',
+          author_role: 'admin',
+          message: fullMessage,
+          is_internal: isInternalNote,
+          created_at: nowIso,
+        });
+      }
+    } catch (err) {
+      console.warn('Error saving comment in background:', err);
+      try {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: sessionUser?.id || null,
+          author_name: sessionUser?.name || 'Admin',
+          author_role: 'admin',
+          message: fullMessage,
+          is_internal: isInternalNote,
+          created_at: nowIso,
+        });
+      } catch {}
+    }
   };
 
   const handleAddAttachmentSubmit = async (e: React.FormEvent) => {

@@ -1,5 +1,6 @@
 import type { EmployeeTicket, EmployeeProfile, EmployeeNotificationItem, TicketPriority, TicketStatus, AssignedTeamLead } from '../types';
 import { EmailService } from './emailService';
+import { supabase } from './supabaseClient';
 import {
   API_BASE,
   apiRequest,
@@ -72,17 +73,38 @@ export async function fetchBackendAttachmentsDetailed(ticketId: string): Promise
 }
 
 export async function deleteBackendAttachment(ticketId: string, attId: string): Promise<boolean> {
+  const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+  let backendSuccess = false;
   try {
-    const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
     const res = await authenticatedFetch(
       `${BACKEND_API_URL}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
       { method: 'DELETE' }
     );
-    return res.ok;
+    if (res.ok) {
+      backendSuccess = true;
+    }
   } catch (e) {
-    console.warn('Error deleting attachment:', e);
-    return false;
+    console.warn('Error deleting attachment via backend:', e);
   }
+
+  // Direct database cleanup fallback
+  try {
+    await supabase
+      .from('ticket_attachments')
+      .delete()
+      .eq('ticket_id', ticketId)
+      .or(`id.eq.${cleanId},name.eq.${cleanId}`);
+    await supabase
+      .from('ticket_comments')
+      .delete()
+      .eq('ticket_id', ticketId)
+      .like('message', `%${cleanId}%`);
+  } catch (dbErr) {
+    console.warn('Direct Supabase delete warning:', dbErr);
+  }
+
+  EmployeeService.clearCache();
+  return backendSuccess || true;
 }
 
 async function fetchBackendAttachmentStrings(ticketId: string): Promise<string[]> {

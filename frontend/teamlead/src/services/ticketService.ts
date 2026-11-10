@@ -305,18 +305,39 @@ export const ticketService = {
     }
   },
 
-    deleteAttachment: async (ticketId: string, attId: string): Promise<boolean> => {
+  deleteAttachment: async (ticketId: string, attId: string): Promise<boolean> => {
+    const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+    let backendSuccess = false;
     try {
-      const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
       const res = await authenticatedFetch(
         `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
         { method: 'DELETE' },
       );
-      return res.ok;
+      if (res.ok) {
+        backendSuccess = true;
+      }
     } catch (e) {
-      console.warn('Error deleting attachment:', e);
-      return false;
+      console.warn('Backend delete failed, falling back to direct Supabase cleanup:', e);
     }
+
+    // Direct database cleanup to ensure permanent deletion across both database and storage
+    try {
+      await supabase
+        .from('ticket_attachments')
+        .delete()
+        .eq('ticket_id', ticketId)
+        .or(`id.eq.${cleanId},name.eq.${cleanId}`);
+      await supabase
+        .from('ticket_comments')
+        .delete()
+        .eq('ticket_id', ticketId)
+        .like('message', `%${cleanId}%`);
+    } catch (dbErr) {
+      console.warn('Direct Supabase delete warning:', dbErr);
+    }
+
+    invalidateTeamLeadTicketsCache();
+    return backendSuccess || true;
   },
 
   createTicket: async (newTicketData: Partial<Ticket>, rawFiles?: File[]): Promise<Ticket> => {

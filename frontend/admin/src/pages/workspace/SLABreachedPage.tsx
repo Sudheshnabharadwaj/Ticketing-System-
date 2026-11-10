@@ -12,9 +12,13 @@ import { ShieldAlert, CheckCircle2, UserCheck, Bell, AlertOctagon, Eye } from 'l
 
 export const SLABreachedPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    return cached.filter((t) => t.slaStatus === 'SLA Breached' || (t as any).is_breached);
+  });
+  const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
   // Modal states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -25,12 +29,14 @@ export const SLABreachedPage: React.FC = () => {
   // Toast state
   const [toast, setToast] = useState<{ type: 'success'; message: string } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const [ticketData, userData] = await Promise.all([
-        AdminApiService.getTickets('sla-breached', true),
-        AdminApiService.getUsers()
+        AdminApiService.getTickets('sla-breached', force),
+        AdminApiService.getUsers(force)
       ]);
       setTickets(ticketData);
       setUsers(userData);
@@ -42,12 +48,15 @@ export const SLABreachedPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-    window.addEventListener('ticket-updated', loadData);
-    window.addEventListener('storage', loadData);
+    void loadData();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
-      window.removeEventListener('ticket-updated', loadData);
-      window.removeEventListener('storage', loadData);
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 

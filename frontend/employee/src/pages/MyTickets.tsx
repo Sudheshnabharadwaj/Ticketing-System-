@@ -17,7 +17,7 @@ export const MyTickets: React.FC = () => {
   const paramScope = searchParams.get('scope');
   const paramSearch = searchParams.get('search') || searchParams.get('q') || '';
 
-  const [tickets, setTickets] = useState<EmployeeTicket[]>([]);
+  const [tickets, setTickets] = useState<EmployeeTicket[]>(() => EmployeeService.getMyTickets());
   const [searchTerm, setSearchTerm] = useState(paramSearch);
   const [statusFilter, setStatusFilter] = useState<string>(paramStatus || 'ALL');
 

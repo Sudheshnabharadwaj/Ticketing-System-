@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Search,
   UserPlus,
   Bell,
   ChevronDown,
@@ -34,13 +33,12 @@ interface TopNavigationProps {
 const defaultNotifications: NotificationItem[] = [];
 
 export const TopNavigation: React.FC<TopNavigationProps> = ({
-  onSearch,
+  onSearch: _onSearch,
   notifications: initialNotificationsProp,
   onMarkAllAsRead,
   onToggleMobileSidebar,
 }) => {
   const navigate = useNavigate();
-  const [searchValue, setSearchValue] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const location = useLocation();
@@ -214,30 +212,9 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const q = params.get('search');
-    if (q !== null) {
-      setSearchValue(q);
-    }
-  }, [location.search]);
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchValue(query);
-    if (onSearch) onSearch(query);
-  };
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      navigate(`/admin/workspace/all?search=${encodeURIComponent(searchValue)}`);
-    }
-  };
-
   return (
     <header className="h-16 border-b border-slate-200/80 bg-white sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-3 shadow-2xs shrink-0">
-      {/* Left: Mobile Hamburger Button & Search */}
+      {/* Left: Mobile Hamburger Button */}
       <div className="flex items-center gap-3">
         {onToggleMobileSidebar && (
           <button
@@ -249,21 +226,6 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
             <Menu className="w-5 h-5" />
           </button>
         )}
-      </div>
-
-      {/* Global Search */}
-      <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchValue}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search tickets by ID, title, requester, assignee..."
-            className="w-full bg-slate-100/70 border border-slate-200/80 rounded-full pl-9 pr-4 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20 transition-all"
-          />
-        </div>
       </div>
 
       {/* Action Controls */}

@@ -13,14 +13,30 @@ import { getCurrentSessionUser } from '../../services/unifiedAuth';
 
 export const MyTicketsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    const sessionUser = getCurrentSessionUser();
+    const userEmail = (sessionUser?.email || '').toLowerCase();
+    const userName = (sessionUser?.name || '').toLowerCase();
+    return cached.filter((t) => {
+      const reqEmail = (t.requesterEmail || '').toLowerCase();
+      const reqName = (t.requesterName || '').toLowerCase();
+      const assigned = (t.assignedTo || '').toLowerCase();
+      if (userEmail && reqEmail === userEmail) return true;
+      if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+      return false;
+    });
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
-  const loadTickets = async () => {
-    setIsLoading(true);
-    const all = await AdminApiService.getTickets('all');
+  const loadTickets = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    const all = await AdminApiService.getTickets('all', force);
     const sessionUser = getCurrentSessionUser();
     const userEmail = (sessionUser?.email || '').toLowerCase();
     const userName = (sessionUser?.name || '').toLowerCase();
@@ -137,7 +153,7 @@ export const MyTicketsPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadTickets}
+            onClick={() => loadTickets(true)}
             className="border-slate-200 text-slate-600 hover:bg-slate-50"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />

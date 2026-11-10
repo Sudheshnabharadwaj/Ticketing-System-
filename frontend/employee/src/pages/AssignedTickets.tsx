@@ -15,7 +15,7 @@ export const AssignedTickets: React.FC = () => {
   const searchParams = new URLSearchParams(location.search);
   const paramStatus = searchParams.get('status');
 
-  const [tickets, setTickets] = useState<EmployeeTicket[]>([]);
+  const [tickets, setTickets] = useState<EmployeeTicket[]>(() => EmployeeService.getAssignedTickets());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(paramStatus || 'ALL');
 

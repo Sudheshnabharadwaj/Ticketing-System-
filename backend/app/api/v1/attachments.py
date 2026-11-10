@@ -717,6 +717,31 @@ def delete_attachment(
     _ticket: dict[str, Any] = Depends(require_ticket_access),
 ) -> dict[str, Any]:
     """Delete an attachment by ID or filename from file storage, metadata, and database."""
+    from app.services.access import (
+        load_current_user,
+        is_admin,
+        is_ticket_creator,
+        is_teamlead_involved_in_ticket,
+        _same_person,
+    )
+    try:
+        user = load_current_user(current_user)
+    except Exception:
+        user = current_user
+
+    is_authorized = (
+        is_admin(current_user)
+        or is_ticket_creator(user, current_user, _ticket)
+        or is_teamlead_involved_in_ticket(user, current_user, _ticket)
+        or _same_person(user, current_user, _ticket, "employee")
+        or _same_person(user, current_user, _ticket, "assigned_agent")
+    )
+    if not is_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to delete attachments on this ticket.",
+        )
+
     cands = _candidate_ids(ticket_id, _ticket)
     sb = get_supabase_admin_client()
 
