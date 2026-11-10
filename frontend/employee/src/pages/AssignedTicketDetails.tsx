@@ -911,13 +911,6 @@ export const AssignedTicketDetails: React.FC = () => {
                   placeholder="Type your reply or progress update here..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
                 />
-                <AttachmentFilePicker
-                  files={commentAttachedFiles}
-                  onFilesChange={setCommentAttachedFiles}
-                  label=""
-                  buttonText="Attach Local File to Reply"
-                  compact
-                />
                 <div className="flex justify-end pt-1">
                   <Button
                     type="submit"
