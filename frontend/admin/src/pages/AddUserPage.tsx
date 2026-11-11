@@ -477,6 +477,8 @@ export const AddUserPage: React.FC = () => {
                 <Input
                   label="Password *"
                   type="password"
+                  name="password"
+                  id="password"
                   placeholder="Set initial account password"
                   value={formData.password}
                   onChange={(e) => {
@@ -494,6 +496,8 @@ export const AddUserPage: React.FC = () => {
                 <Input
                   label="Confirm Password *"
                   type="password"
+                  name="confirmPassword"
+                  id="confirmPassword"
                   placeholder="Re-enter password"
                   value={formData.confirmPassword}
                   onChange={(e) => {
