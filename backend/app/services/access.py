@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
 from app.db.supabase import get_supabase_admin_client
+from app.services.user_store import find_user_by_email, find_user_by_id, get_all_users
 
 # ── Roles ────────────────────────────────────────────────────────────────────
 
@@ -88,19 +89,9 @@ def fetch_all_users_cached() -> list[dict[str, Any]]:
     now = time.time()
     if _ALL_USERS_CACHE and (now - _ALL_USERS_CACHE[0]) < _ALL_USERS_TTL:
         return _ALL_USERS_CACHE[1]
-    sb = get_supabase_admin_client()
-    try:
-        res = (
-            sb.table("users")
-            .select("id, name, email, phone, role, department, designation, team, avatar, location, status, created_at")
-            .execute()
-        )
-        data = res.data or []
-        _ALL_USERS_CACHE = (now, data)
-        return data
-    except Exception as exc:
-        print(f"[access] could not fetch all users: {exc}")
-        return _ALL_USERS_CACHE[1] if _ALL_USERS_CACHE else []
+    data = get_all_users()
+    _ALL_USERS_CACHE = (now, data)
+    return data
 
 
 def invalidate_team_cache(tl_id: str | None = None) -> None:
@@ -154,24 +145,25 @@ def load_current_user(payload: dict[str, Any]) -> dict[str, Any]:
                 _USER_CACHE[uemail] = (now, u)
             return u
 
-    sb = get_supabase_admin_client()
     row: dict[str, Any] | None = None
     if sub:
-        try:
-            res = sb.table("users").select("*").eq("id", sub).limit(1).execute()
-            rows = res.data or []
-            row = rows[0] if rows else None
-        except Exception:
-            row = None
+        row = find_user_by_id(sub)
     if row is None and email:
-        try:
-            res = sb.table("users").select("*").eq("email", email).limit(1).execute()
-            rows = res.data or []
-            row = rows[0] if rows else None
-        except Exception:
-            row = None
+        row = find_user_by_email(email)
+
     if row is None:
-        raise LookupError("Authenticated user no longer exists")
+        if sub or email:
+            row = {
+                "id": sub or f"usr-{int(time.time() * 1000)}",
+                "email": email,
+                "name": payload.get("name") or (email.split("@")[0] if email else "User"),
+                "role": normalize_role(payload.get("role")),
+                "department": payload.get("department") or "IT Support",
+                "team": payload.get("team") or "",
+                "status": "Active",
+            }
+        else:
+            raise LookupError("Authenticated user no longer exists")
 
     if sub:
         _USER_CACHE[sub] = (now, row)

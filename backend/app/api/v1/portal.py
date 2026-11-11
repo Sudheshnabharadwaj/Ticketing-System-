@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user, require_role
 from app.auth.passwords import hash_password
 from app.db.supabase import get_supabase_admin_client
+from app.services.user_store import find_user_by_email, save_user
 from app.services.access import (
     ROLE_ADMIN,
     ROLE_TEAMLEAD,
@@ -445,9 +446,8 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
     if "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email is required")
 
-    sb = get_supabase_admin_client()
-    existing = sb.table("users").select("id").eq("email", email).limit(1).execute()
-    if existing.data:
+    existing = find_user_by_email(email)
+    if existing:
         raise HTTPException(status_code=409, detail="A user with this email already exists")
 
     user_id = (body.employee_id or "").strip() or f"usr-{int(time.time() * 1000)}"
@@ -468,12 +468,9 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
-    try:
-        res = sb.table("users").insert(row).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not create user: {exc}") from exc
-    created = (res.data or [row])[0]
-    return _safe_user(created)
+    saved = save_user(row)
+    invalidate_all_users_cache()
+    return _safe_user(saved)
 
 
 class UserAdminUpdate(BaseModel):

@@ -18,7 +18,88 @@ export interface AppUser {
 const STORAGE_KEY_USERS = 'platform_all_users';
 const STORAGE_KEY_SESSION = 'platform_current_user';
 
-export const INITIAL_PLATFORM_USERS: AppUser[] = [];
+export const INITIAL_PLATFORM_USERS: AppUser[] = [
+  {
+    id: 'usr-admin-1791538577749',
+    name: 'shruthi',
+    email: 's.ronda@oklut.com',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'usr-admin-1791222872974',
+    name: 'Sudheshna Bharadwaj',
+    email: 'sudheshna@gmail.com',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'ADM001',
+    name: 'System Admin',
+    email: 'admin@platform.local',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL003',
+    name: 'Kotesh',
+    email: 'k.ananthu@oklut.com',
+    role: 'teamlead',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL015',
+    name: 'Manikanta',
+    email: 'm.nisankam@oklut.com',
+    role: 'teamlead',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL013',
+    name: 'soniya',
+    email: 'soni@gmail.com',
+    role: 'teamlead',
+    department: 'HR',
+    status: 'Active',
+  },
+  {
+    id: 'OKL002',
+    name: 'uday',
+    email: 'u.vadlamudi@oklut.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL001',
+    name: 'aditya',
+    email: 'a.reddy@oklut.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL016',
+    name: 'sudha',
+    email: 'sudha@gmail.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL014',
+    name: 'Ramya',
+    email: 'ramya@gmail.com',
+    role: 'employee',
+    department: 'HR',
+    status: 'Active',
+  },
+];
 
 // Legacy dummy accounts to clean out from browser localStorage
 const DUMMY_EMAILS = [

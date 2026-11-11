@@ -21,8 +21,14 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user
 from app.auth.jwt import create_app_token, create_refresh_token, decode_refresh_token
 from app.auth.passwords import hash_password, is_hashed, verify_password
-from app.db.supabase import get_supabase_admin_client
+from app.db.supabase import get_supabase_admin_client, has_service_role_key
 from app.services.access import load_current_user, normalize_role
+from app.services.user_store import (
+    find_user_by_email,
+    find_user_by_id,
+    save_user,
+    verify_user_credentials,
+)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -89,10 +95,7 @@ def _issue(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find_by_email(email: str) -> dict[str, Any] | None:
-    sb = get_supabase_admin_client()
-    res = sb.table("users").select("*").eq("email", email).limit(1).execute()
-    rows = res.data or []
-    return rows[0] if rows else None
+    return find_user_by_email(email)
 
 
 @router.post("/login", summary="Exchange credentials for backend API tokens")
@@ -107,13 +110,10 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     if str(row.get("status") or "").strip().lower() == "inactive":
         raise HTTPException(status_code=403, detail="This account has been deactivated.")
-    valid = verify_password(row.get("password"), password)
-    if not valid and email == "u.vadlamudi@oklut.com" and password in ("Password123", "Uday@123"):
-        valid = True
+    valid = verify_user_credentials(row, password)
     if not valid:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    sb = get_supabase_admin_client()
     now = datetime.now(timezone.utc).isoformat()
     updates: dict[str, Any] = {"last_login_at": now, "updated_at": now}
     # Upgrade legacy plaintext passwords and activate invited accounts.
@@ -121,12 +121,20 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         updates["password"] = hash_password(password)
     if str(row.get("status") or "").strip() not in ("Active", "Inactive"):
         updates["status"] = "Active"
-    try:
-        res = sb.table("users").update(updates).eq("id", str(row.get("id"))).execute()
-        if res.data:
-            row = res.data[0]
-    except Exception as exc:  # the login itself must still succeed
-        print(f"[auth] post-login update skipped: {exc}")
+
+    if has_service_role_key():
+        try:
+            sb = get_supabase_admin_client()
+            res = sb.table("users").update(updates).eq("id", str(row.get("id"))).execute()
+            if res.data:
+                row = res.data[0]
+            else:
+                save_user({**row, **updates})
+        except Exception as exc:  # the login itself must still succeed
+            print(f"[auth] post-login update skipped: {exc}")
+            save_user({**row, **updates})
+    else:
+        save_user({**row, **updates})
 
     return _issue(row)
 
@@ -209,12 +217,9 @@ def refresh(payload: RefreshRequest) -> dict[str, Any]:
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token.")
 
-    sb = get_supabase_admin_client()
-    res = sb.table("users").select("*").eq("id", user_id).limit(1).execute()
-    rows = res.data or []
-    if not rows:
+    row = find_user_by_id(user_id) or _find_by_email(str(claims.get("email") or ""))
+    if not row:
         raise HTTPException(status_code=401, detail="User no longer exists.")
-    row = rows[0]
     if str(row.get("status") or "").strip().lower() == "inactive":
         raise HTTPException(status_code=403, detail="User account is inactive.")
     return _issue(row)

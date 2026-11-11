@@ -85,7 +85,13 @@ export const EmployeeSignIn: React.FC = () => {
       sessionStorage.removeItem('platform_explicitly_logged_out');
       localStorage.removeItem('platform_explicitly_logged_out');
       EmployeeService.clearCache();
-      navigate('/dashboard', { replace: true });
+      if (dbUser.role === 'admin') {
+        navigate('/admin/dashboard', { replace: true });
+      } else if (dbUser.role === 'teamlead') {
+        navigate('/teamlead/dashboard', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err) {
       console.error('Sign in exception:', err);
       setErrors({ auth: 'Unable to connect to authentication service. Please try again.' });
