@@ -88,10 +88,8 @@ class Settings(BaseSettings):
     # ── Supabase ──────────────────────────────────────────────────────────────
     supabase_url: str = "https://fidilgpihfwfnwiugoxm.supabase.co"
     supabase_project_id: str = "fidilgpihfwfnwiugoxm"
-    supabase_anon_key: str = (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZGlsZ3BpaGZ3Zm53aXVnb3htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4MzI0NDQsImV4cCI6MjEwNjQwODQ0NH0.LaQXHb314_mznb7ld3Abafou1HkbvjCAY8LU7GzH7b0"
-    )
-    supabase_publishable_key: str = "sb_publishable_lD7DIwNLPX251RYYtXdkZw_l54ozMws"
+    supabase_anon_key: str = ""
+    supabase_publishable_key: str = ""
     supabase_service_role_key: str = ""
     supabase_access_token: str = ""
 
