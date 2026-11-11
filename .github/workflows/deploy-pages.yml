@@ -38,7 +38,8 @@ jobs:
       - name: Build production bundle
         working-directory: frontend/admin
         env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || 'https://ticketing-api-0dht.onrender.com' }}
+          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL || 'https://ticketing-api-1zjd.onrender.com' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || secrets.VITE_API_BASE_URL || 'https://ticketing-api-1zjd.onrender.com/api/v1' }}
         run: npx vite build
 
       - name: Configure SPA routing and disable Jekyll

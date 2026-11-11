@@ -158,6 +158,72 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   }, [toastMessage]);
 
+  // Live automatic background comments sync without page refresh
+  useEffect(() => {
+    const tid = ticket?.id || ticket?.ticketNumber || id;
+    if (!tid) return;
+
+    let isMounted = true;
+    const fetchLatestComments = async () => {
+      try {
+        const { data: dbComments } = await supabase
+          .from('ticket_comments')
+          .select('*')
+          .eq('ticket_id', tid)
+          .order('created_at', { ascending: true });
+
+        if (dbComments && isMounted) {
+          const mapped = dbComments
+            .filter((c: any) => c.author_name !== '__attachment__')
+            .map((c: any) => ({
+              id: c.id,
+              ticketId: c.ticket_id,
+              authorName: c.author_name || 'User',
+              authorRole: (c.author_role || 'ADMIN').toUpperCase(),
+              message: c.message || '',
+              createdAt: c.created_at,
+              isInternal: !!c.is_internal,
+            }));
+
+          setTicket((prev) => {
+            if (!prev) return prev;
+            const currentComments = prev.comments || [];
+            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => c.id).join(',');
+            if (prevIds !== newIds) {
+              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent sync
+      }
+    };
+
+    const channel = supabase
+      .channel(`admin-live-comments-${tid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
+        () => {
+          void fetchLatestComments();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchLatestComments, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [ticket?.id, id]);
+
   const handleBack = () => {
     if (fromSource === 'my-tickets') {
       navigate('/admin/workspace/my-tickets');
@@ -355,72 +421,6 @@ export const AdminTicketDetailsPage: React.FC = () => {
       setToastMessage(`Ticket priority updated to ${selectedPriority}.`);
     }
   };
-
-  // Live automatic background comments sync without page refresh
-  useEffect(() => {
-    const tid = ticket?.id || ticket?.ticketNumber || id;
-    if (!tid) return;
-
-    let isMounted = true;
-    const fetchLatestComments = async () => {
-      try {
-        const { data: dbComments } = await supabase
-          .from('ticket_comments')
-          .select('*')
-          .eq('ticket_id', tid)
-          .order('created_at', { ascending: true });
-
-        if (dbComments && isMounted) {
-          const mapped = dbComments
-            .filter((c: any) => c.author_name !== '__attachment__')
-            .map((c: any) => ({
-              id: c.id,
-              ticketId: c.ticket_id,
-              authorName: c.author_name || 'User',
-              authorRole: (c.author_role || 'ADMIN').toUpperCase(),
-              message: c.message || '',
-              createdAt: c.created_at,
-              isInternal: !!c.is_internal,
-            }));
-
-          setTicket((prev) => {
-            if (!prev) return prev;
-            const currentComments = prev.comments || [];
-            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
-            const newIds = mapped.map((c: any) => c.id).join(',');
-            if (prevIds !== newIds) {
-              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
-              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
-            }
-            return prev;
-          });
-        }
-      } catch (err) {
-        // silent sync
-      }
-    };
-
-    const channel = supabase
-      .channel(`admin-live-comments-${tid}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
-        () => {
-          void fetchLatestComments();
-        }
-      )
-      .subscribe();
-
-    const interval = setInterval(fetchLatestComments, 3000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-      try {
-        supabase.removeChannel(channel);
-      } catch {}
-    };
-  }, [ticket?.id, id]);
 
   const handleAddCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
