@@ -177,7 +177,7 @@ export const TicketManagementPage: React.FC = () => {
   const handleOpenActionModal = (ticket: Ticket, type: 'assign' | 'reassign' | 'status' | 'priority' | 'escalate' | 'deadline') => {
     setSelectedTicket(ticket);
     setActionModalType(type);
-    setModalAssignee(ticket.assignedTo || 'Kotesh Goud');
+    setModalAssignee(ticket.assignedTo || (assigneeOptions[0]?.name || ''));
     setModalStatus(ticket.status);
     setModalPriority(ticket.priority);
     setModalDeadline(ticket.dueDate ? ticket.dueDate.replace(' ', 'T').slice(0, 16) : '');

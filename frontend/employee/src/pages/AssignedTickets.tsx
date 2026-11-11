@@ -60,7 +60,7 @@ export const AssignedTickets: React.FC = () => {
     const matchesStatus =
       statusFilter === 'ALL' ||
       ticket.status === statusFilter ||
-      (statusFilter === 'Pending' && ticket.status === 'Escalated') ||
+      (statusFilter === 'Pending' && (ticket.status === 'Pending' || ticket.status === 'Escalated')) ||
       (statusFilter === 'Resolved' && ticket.status === 'Closed');
 
     return matchesSearch && matchesStatus;
