@@ -156,7 +156,7 @@ export const TicketDetailsPage: React.FC = () => {
       (user?.name && (ticket as any).assignedTo && (ticket as any).assignedTo.toLowerCase() === user.name.toLowerCase())
     )
   );
-  const canReply = Boolean(isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true);
+  const canReply = Boolean(user?.role === 'admin' || user?.role === 'teamlead' || isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true);
   const canDeleteAttachment = Boolean(user?.role === 'admin' || isCreatedByMe || isAssignedToMe || canReply);
 
 

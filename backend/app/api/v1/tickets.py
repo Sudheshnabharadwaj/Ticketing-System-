@@ -685,8 +685,6 @@ def create_ticket(
         employee_name = _actor_name(user)
         employee_id = str(user.get("id") or "")
         employee_email = str(user.get("email") or "").lower() or None
-        if body.assigned_agent_id:
-            raise HTTPException(status_code=403, detail="Employees cannot assign tickets directly")
     else:
         if employee_id:
             target = _find_user(user_id=employee_id)
@@ -750,12 +748,33 @@ def create_ticket(
             raw_emp_ids.add(agent_id)
 
     # Ticket Assignment:
-    # 1. When a ticket is created with a Team Lead selected, assign it to that Team Lead.
-    # 2. When created without selecting a Team Lead or assignee, leave it Unassigned.
+    # 1. When an employee is tagged/selected, assign directly to the employee.
+    # 2. When only a Team Lead is selected, assign to that Team Lead.
+    # 3. When neither is selected or explicitly unassigned, leave as Unassigned.
     from app.services.access import find_user_team_lead
 
-    if raw_tl_ids:
-        # Team Lead selected
+    assigned_emp_id = None
+    if raw_emp_ids:
+        if agent_id and agent_id in raw_emp_ids and agent_id not in raw_tl_ids:
+            assigned_emp_id = agent_id
+        else:
+            for eid in raw_emp_ids:
+                if eid not in raw_tl_ids:
+                    assigned_emp_id = eid
+                    break
+            if not assigned_emp_id:
+                assigned_emp_id = next(iter(raw_emp_ids))
+
+    if assigned_emp_id:
+        emp_target = _find_user(user_id=assigned_emp_id)
+        if emp_target:
+            agent_id = str(emp_target.get("id") or "")
+            agent = str(emp_target.get("name") or agent or "Employee")
+            agent_email = str(emp_target.get("email") or "").lower() or None
+            assigned_to_type = "employee"
+            handled_by = "employee"
+    elif raw_tl_ids:
+        # Team Lead selected without tagged employee
         first_tl_id = next(iter(raw_tl_ids))
         tl_target = _find_user(user_id=first_tl_id)
         if tl_target:
@@ -804,10 +823,13 @@ def create_ticket(
             if not emp_row:
                 raise HTTPException(status_code=400, detail=f"Employee {empid} not found")
             if empid not in permitted_employee_ids:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Employee {emp_row.get('name') or empid} does not belong to the selected Team Lead(s)",
-                )
+                tl_depts = [tl.get("department") for tl in (_find_user(user_id=t) for t in raw_tl_ids) if tl]
+                emp_dept = emp_row.get("department")
+                if not any(_scopes_overlap(emp_dept, td) for td in tl_depts):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Employee {emp_row.get('name') or empid} does not belong to the selected Team Lead(s)",
+                    )
             if departments:
                 emp_dept = emp_row.get("department")
                 has_custom = any(d.strip().lower() not in {"it support", "it", "finance", "hr", "facilities", "general administration"} for d in departments)
@@ -818,7 +840,8 @@ def create_ticket(
                     )
 
     # Determine assigned_to_type and handled_by
-    assigned_to_type = body.assigned_to_type
+    if not assigned_to_type:
+        assigned_to_type = body.assigned_to_type
     if agent_id:
         target_user = _find_user(user_id=agent_id)
         if target_user:
@@ -1162,10 +1185,19 @@ def assign_ticket(
         managed = teamlead_managed_employees(user)
         managed_ids = {str(m.get("id")) for m in managed if m.get("id")}
         if agent_id != tl_id and agent_id not in managed_ids:
-            raise HTTPException(
-                status_code=403,
-                detail="Team Leads can only assign tickets to members of their own team",
-            )
+            tl_dept = user.get("department")
+            target_dept = target.get("department") if target else None
+            ticket_dept = ticket.get("department")
+            can_assign = False
+            if target_dept and _scopes_overlap(tl_dept, target_dept):
+                can_assign = True
+            elif ticket_dept and _scopes_overlap(tl_dept, ticket_dept):
+                can_assign = True
+            if not can_assign:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Team Leads can only assign tickets to members of their own team or department",
+                )
 
     now = datetime.now(timezone.utc).isoformat()
     target_role = normalize_role(target.get("role")) if target else None
@@ -1484,12 +1516,28 @@ def add_comment(
         ticket=ticket,
     )
     if not is_internal:
-        target = ticket.get("employee_id") if str(user.get("id")) == str(ticket.get("assigned_agent_id")) else ticket.get("assigned_agent_id")
-        if target:
+        notif_targets: set[str] = set()
+        creator_uid = str(ticket.get("employee_id") or ticket.get("requester_id") or "").strip()
+        assigned_uid = str(ticket.get("assigned_agent_id") or "").strip()
+        cur_uid = str(user.get("id") or payload.get("sub") or "").strip()
+
+        if creator_uid and creator_uid != cur_uid:
+            notif_targets.add(creator_uid)
+        if assigned_uid and assigned_uid != cur_uid:
+            notif_targets.add(assigned_uid)
+
+        for tid in (ticket.get("team_lead_ids") or []):
+            if tid and str(tid).strip() != cur_uid:
+                notif_targets.add(str(tid).strip())
+        for eid in (ticket.get("tagged_employee_ids") or []):
+            if eid and str(eid).strip() != cur_uid:
+                notif_targets.add(str(eid).strip())
+
+        for target_uid in notif_targets:
             _notify(
                 title=f"New Reply: {ticket_id}",
                 message=f"{_actor_name(user)} commented on \"{ticket.get('subject')}\".",
-                for_role=f"user:{target}",
+                for_role=f"user:{target_uid}",
                 ticket_id=ticket_id,
                 kind="info",
             )

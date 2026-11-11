@@ -86,7 +86,13 @@ export const AssignedTicketDetails: React.FC = () => {
       (currentUser?.name && ((ticket as any).requesterName?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).employee?.toLowerCase() === currentUser.name?.toLowerCase()))
     )
   );
-  const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any)?.can_reply === true);
+  const isTagged = Boolean(
+    currentUser?.id && (
+      ((ticket as any)?.tagged_employee_ids || []).includes(currentUser.id) ||
+      ((ticket as any)?.employees || []).some((e: any) => (typeof e === 'object' && e?.id === currentUser.id) || e === currentUser.id)
+    )
+  );
+  const canReply = Boolean(isAssignedToMe || isCreatedByMe || isTagged || (ticket as any)?.can_reply === true);
   const canDeleteAttachment = Boolean(currentUser?.role === 'admin' || isAssignedToMe || isCreatedByMe || canReply);
   const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
 

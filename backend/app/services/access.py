@@ -327,9 +327,9 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
         if not is_member and u.get("team_lead_id"):
             if str(u.get("team_lead_id") or "").strip() == tl_id:
                 is_member = True
-        if not is_member and not tl_team and not uteam:
-            # If lead and employee both have no specific sub-team, match by department
-            if _scopes_overlap(tl_user.get("department"), u.get("department")):
+        if not is_member and _scopes_overlap(tl_user.get("department"), u.get("department")):
+            # If lead and employee belong to the same department, match them unless their teams explicitly conflict
+            if not tl_team or not uteam or _teams_overlap(tl_team, uteam):
                 is_member = True
 
         if is_member:
@@ -645,10 +645,18 @@ def can_view_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: 
 
 
 def can_reply_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
-    """Tickets under My Tickets and Assigned Tickets have chat/reply access for the ticket creator
-    and assigned users who are working on the ticket. All other users have view-only access without chat/reply.
+    """Check if user has permission to post replies/comments on this ticket.
+    - Admins can reply to any ticket.
+    - Team Leads can reply to tickets visible in their team/scope or tickets they are involved in.
+    - Creators, assigned agents, and tagged members can reply.
     """
+    if is_admin(payload):
+        return True
+
     if is_ticket_creator(user, payload, ticket):
+        return True
+
+    if is_teamlead(payload) and ticket_visible(payload, user, ticket):
         return True
 
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
@@ -667,6 +675,37 @@ def can_reply_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket:
         return True
     if _same_person(user, payload, ticket, "assigned_agent"):
         return True
+
+    # Check tagged employees and tagged team leads
+    tagged_emp_ids = [str(x).strip().lower() for x in (ticket.get("tagged_employee_ids") or []) if x]
+    if user_id and user_id in tagged_emp_ids:
+        return True
+
+    for emp in (ticket.get("tagged_employees") or ticket.get("employees") or []):
+        if isinstance(emp, dict):
+            eid = str(emp.get("id") or emp.get("employeeId") or "").strip().lower()
+            em = str(emp.get("email") or "").strip().lower()
+            en = str(emp.get("name") or "").strip().lower()
+            if (user_id and eid == user_id) or (user_email and em == user_email) or (user_name and en == user_name):
+                return True
+        elif isinstance(emp, str):
+            if user_id and emp.strip().lower() == user_id:
+                return True
+
+    tl_ids = [str(x).strip().lower() for x in (ticket.get("team_lead_ids") or []) if x]
+    if user_id and user_id in tl_ids:
+        return True
+
+    for tl in (ticket.get("team_leads") or []):
+        if isinstance(tl, dict):
+            tl_id = str(tl.get("id") or tl.get("employeeId") or "").strip().lower()
+            tl_em = str(tl.get("email") or "").strip().lower()
+            tl_en = str(tl.get("name") or "").strip().lower()
+            if (user_id and tl_id == user_id) or (user_email and tl_em == user_email) or (user_name and tl_en == user_name):
+                return True
+        elif isinstance(tl, str):
+            if user_id and tl.strip().lower() == user_id:
+                return True
 
     return False
 
@@ -843,6 +882,8 @@ def serialize_ticket(
             _same_person(user, payload, result, "employee")
             or str(result.get("requester_id") or "") == str(user.get("id") or "")
         )
+        result["can_reply"] = can_reply_ticket_chat(payload, user, result)
+        result["can_chat"] = can_view_ticket_chat(payload, user, result)
 
     tid = str(ticket.get("id") or "")
     if load_attachments and tid:

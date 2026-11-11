@@ -417,7 +417,22 @@ export const ticketService = {
       );
       apiSuccess = true;
     } catch (e) {
-      console.warn('API assign endpoint error:', e);
+      console.warn('API assign endpoint error, trying PATCH fallback:', e);
+      try {
+        await apiRequest(
+          `/tickets/${encodeURIComponent(id)}`,
+          jsonInit('PATCH', {
+            assigned_agent: agentName,
+            assigned_agent_id: agentId || undefined,
+            assigned_to_type: assignedToType || undefined,
+            handled_by: handledBy || undefined,
+            ...(priority ? { priority } : {}),
+          }),
+        );
+        apiSuccess = true;
+      } catch (patchErr) {
+        console.warn('API PATCH assignment fallback error:', patchErr);
+      }
     }
 
     // Ensure priority is persisted if provided

@@ -370,6 +370,9 @@ export const EmployeeService = {
     const creatorName = user?.name || 'Employee';
     const creatorEmail = user?.email || 'employee@platform.local';
 
+    const primaryEmployee = data.employees && data.employees.length > 0 ? data.employees[0] : null;
+    const primaryLead = data.teamLeads && data.teamLeads.length > 0 ? data.teamLeads[0] : null;
+
     let createdTicketRow: any = null;
     try {
       createdTicketRow = await apiRequest<any>(
@@ -387,6 +390,9 @@ export const EmployeeService = {
           team_leads: data.teamLeads || [],
           tagged_employee_ids: (data.employees || []).map((e) => e.id),
           employees: data.employees || [],
+          assigned_agent: primaryEmployee?.name || primaryLead?.name || undefined,
+          assigned_agent_id: primaryEmployee?.id || primaryLead?.id || undefined,
+          assigned_to_type: primaryEmployee ? 'employee' : (primaryLead ? 'teamlead' : 'unassigned'),
         }),
       );
     } catch (err) {

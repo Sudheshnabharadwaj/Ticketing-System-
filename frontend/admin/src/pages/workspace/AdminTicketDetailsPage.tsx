@@ -394,7 +394,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
     (currentUser?.email && (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
     (currentUser?.name && ticket.assignedTo && ticket.assignedTo.toLowerCase() === currentUser.name.toLowerCase())
   );
-  const canReply = isCreatedByMe || isAssignedToMe || (ticket as any).can_reply === true;
+  const canReply = true; // Admin has full conversation and internal note permissions
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
