@@ -299,9 +299,20 @@ def _log_activity(
             "is_internal": True,
             "created_at": now,
         }
-        sb.table("ticket_comments").upsert(comm_row).execute()
-    except Exception as exc:
-        print(f"[tickets] activity persistence note for {ticket_id}: {exc}")
+        try:
+            sb.table("ticket_comments").upsert(comm_row).execute()
+        except Exception as exc:
+            if "author_user_id" in str(exc):
+                comm_row_alt = dict(comm_row)
+                comm_row_alt["author_id"] = comm_row_alt.pop("author_user_id", None)
+                try:
+                    sb.table("ticket_comments").upsert(comm_row_alt).execute()
+                except Exception:
+                    pass
+            else:
+                print(f"[tickets] activity persistence note for {ticket_id}: {exc}")
+    except Exception as outer_exc:
+        print(f"[tickets] activity persistence note for {ticket_id}: {outer_exc}")
 
 
 def _fetch_all_activities(ticket_ids: list[str]) -> list[dict[str, Any]]:
@@ -1213,6 +1224,7 @@ def assign_ticket(
     return ret
 
 
+@router.patch("/{ticket_id}/status", include_in_schema=False)
 @router.post("/{ticket_id}/status", summary="Change ticket status")
 def change_status(
     ticket_id: str,
@@ -1437,7 +1449,32 @@ def add_comment(
         res = sb.table("ticket_comments").insert(row).execute()
         created = (res.data or [row])[0]
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not save comment: {exc}") from exc
+        err_str = str(exc)
+        if "author_user_id" in err_str:
+            row_alt = dict(row)
+            row_alt["author_id"] = row_alt.pop("author_user_id", None)
+            try:
+                res = sb.table("ticket_comments").insert(row_alt).execute()
+                created = (res.data or [row_alt])[0]
+            except Exception as exc2:
+                # Fallback omitting author column if schema has different constraint
+                row_min = dict(row_alt)
+                row_min.pop("author_id", None)
+                try:
+                    res = sb.table("ticket_comments").insert(row_min).execute()
+                    created = (res.data or [row_min])[0]
+                except Exception as exc3:
+                    raise HTTPException(status_code=502, detail=f"Could not save comment: {exc3}") from exc3
+        elif "author_id" in err_str:
+            row_alt = dict(row)
+            row_alt["author_user_id"] = row_alt.pop("author_id", None)
+            try:
+                res = sb.table("ticket_comments").insert(row_alt).execute()
+                created = (res.data or [row_alt])[0]
+            except Exception as exc2:
+                raise HTTPException(status_code=502, detail=f"Could not save comment: {exc2}") from exc2
+        else:
+            raise HTTPException(status_code=502, detail=f"Could not save comment: {exc}") from exc
 
     _log_activity(
         ticket_id,

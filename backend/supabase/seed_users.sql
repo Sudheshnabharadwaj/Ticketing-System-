@@ -54,3 +54,4 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- Confirm
 SELECT id, name, email, role, status FROM public.users ORDER BY role, name;
+
