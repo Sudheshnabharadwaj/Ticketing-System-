@@ -160,15 +160,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await restoreSession();
       if (cancelled) return;
       if (!result.sessionReady) {
-        clearBackendSession();
-        cacheUser(null);
-        setCurrentUser(EMPTY_USER);
-        setIsAuthenticated(false);
+        if (!cached?.email) {
+          clearBackendSession();
+          cacheUser(null);
+          setCurrentUser(EMPTY_USER);
+          setIsAuthenticated(false);
+        } else {
+          setCurrentUser(cached);
+          setIsAuthenticated(true);
+        }
         setIsLoading(false);
         return;
       }
       if (result.error || !result.profile) {
-        if (result.status === 401 || result.status === 403) {
+        if (cached?.email) {
+          setCurrentUser(cached);
+          setIsAuthenticated(true);
+        } else if (result.status === 401 || result.status === 403) {
           clearBackendSession();
           cacheUser(null);
           setCurrentUser(EMPTY_USER);

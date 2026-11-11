@@ -148,7 +148,7 @@ export function getBackendToken(): string | null {
   const token = memoryToken || readStorage(TOKEN_KEY);
   if (!token) return null;
   const expiry = memoryExpiry ?? readStoredExpiry() ?? tokenExpiryMs(token);
-  if (expiry && expiry <= Date.now() + 5_000) return null;
+  if (expiry && expiry <= Date.now()) return null;
   return token;
 }
 
@@ -414,6 +414,17 @@ export async function registerBackend(payload: {
 
 /** Trigger clean session expiration: wipe storage, dispatch events, and redirect to login if on protected route. */
 export function handleSessionExpiration(): void {
+  // If the user has an active, valid session, keep session intact (prevent unexpected auto-logout)
+  try {
+    const raw = sessionStorage.getItem('platform_current_user') || localStorage.getItem('platform_current_user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.email) {
+        return;
+      }
+    }
+  } catch {}
+
   clearBackendSession();
   try {
     sessionStorage.removeItem('platform_current_user');
@@ -465,9 +476,6 @@ export async function refreshBackendSession(): Promise<boolean> {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          handleSessionExpiration();
-        }
         return false;
       }
       const data = await res.json();
@@ -510,8 +518,6 @@ export async function authenticatedFetch(input: RequestInfo | URL, init?: Reques
     const renewed = await refreshBackendSession();
     if (renewed) {
       res = await doFetch();
-    } else if (!readStorage(REFRESH_KEY) && !memoryRefresh) {
-      handleSessionExpiration();
     }
   }
   return res;

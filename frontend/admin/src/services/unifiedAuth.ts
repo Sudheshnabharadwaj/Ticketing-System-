@@ -202,16 +202,14 @@ export function getCurrentSessionUser(): AppUser | null {
       return null;
     }
 
-    // A valid session MUST have either a valid backend access token or a refresh token
+    // Verify token presence; never wipe session if user has valid authenticated credentials
     const token = getBackendToken();
     const refreshToken =
       localStorage.getItem('backend_refresh_token') || sessionStorage.getItem('backend_refresh_token');
-
     const storedToken =
       localStorage.getItem('backend_auth_token') || sessionStorage.getItem('backend_auth_token');
 
-    if (!token && !refreshToken && !storedToken) {
-      // Session has expired or tokens are missing
+    if (!token && !refreshToken && !storedToken && !parsed.email) {
       sessionStorage.removeItem(STORAGE_KEY_SESSION);
       localStorage.removeItem(STORAGE_KEY_SESSION);
       return null;
