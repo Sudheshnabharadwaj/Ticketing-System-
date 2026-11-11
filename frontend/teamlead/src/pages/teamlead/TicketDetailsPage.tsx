@@ -156,7 +156,12 @@ export const TicketDetailsPage: React.FC = () => {
       (user?.name && (ticket as any).assignedTo && (ticket as any).assignedTo.toLowerCase() === user.name.toLowerCase())
     )
   );
-  const canReply = Boolean(user?.role === 'admin' || user?.role === 'teamlead' || isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true);
+  const isWorkMode = searchParams.get('mode') === 'work';
+  const isFromMyTickets = searchParams.get('source') === 'my-tickets' || location.pathname.includes('/my-tickets') || isCreatedByMe;
+  const canReply = Boolean(
+    (isFromMyTickets || isWorkMode || (isAssignedToMe && !isReadOnly)) &&
+    (user?.role === 'admin' || user?.role === 'teamlead' || isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true)
+  );
   const canDeleteAttachment = Boolean(user?.role === 'admin' || isCreatedByMe || isAssignedToMe || canReply);
 
 
@@ -704,6 +709,17 @@ export const TicketDetailsPage: React.FC = () => {
             </div>
             <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
+
+          {((ticket as any).escalationReason || (ticket as any).escalation_reason || ticket.status === 'Escalated') && (
+            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl">
+              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-1">
+                Escalation Reason
+              </span>
+              <span className="text-xs font-semibold text-red-950">
+                {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Description Section */}

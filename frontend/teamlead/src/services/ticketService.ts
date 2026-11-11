@@ -127,23 +127,35 @@ export function invalidateTeamLeadTicketsCache(): void {
   }
 }
 
+const VALID_TICKET_DB_COLUMNS = new Set([
+  'id', 'ticket_number', 'subject', 'description', 'employee', 'employee_id',
+  'employee_email', 'requester_id', 'department', 'departments', 'category',
+  'sub_category', 'priority', 'status', 'assigned_agent', 'assigned_agent_id',
+  'assigned_to_type', 'handled_by', 'assigned_by', 'assigned_by_user_id',
+  'assigned_team_id', 'sla_due_at', 'created_at', 'updated_at',
+]);
+
 async function persistTicketDirect(
   ticketId: string,
-  updates: {
-    priority?: string;
-    assigned_agent?: string;
-    assigned_agent_id?: string;
-    handled_by?: string;
-    assigned_to_type?: string;
-    assigned_date?: string;
-  }
+  updates: Record<string, any>
 ): Promise<boolean> {
   const canonicalId = ticketId.trim();
+  const cleanUpdates: Record<string, any> = {};
+  for (const [k, v] of Object.entries(updates)) {
+    if (VALID_TICKET_DB_COLUMNS.has(k) && v !== undefined) {
+      cleanUpdates[k] = v;
+    }
+  }
+  if (cleanUpdates.priority) {
+    cleanUpdates.priority = String(cleanUpdates.priority).replace(' Priority', '').trim();
+  }
+  cleanUpdates.updated_at = new Date().toISOString();
+
   // 1. Try standard Supabase update first
   try {
-    const { data, error } = await supabase.from('tickets').update(updates).eq('id', canonicalId).select();
+    const { data, error } = await supabase.from('tickets').update(cleanUpdates).eq('id', canonicalId).select();
     if (!error && data && data.length > 0) return true;
-    const resNum = await supabase.from('tickets').update(updates).eq('ticket_number', canonicalId).select();
+    const resNum = await supabase.from('tickets').update(cleanUpdates).eq('ticket_number', canonicalId).select();
     if (!resNum.error && resNum.data && resNum.data.length > 0) return true;
   } catch {}
 
@@ -176,11 +188,17 @@ async function persistTicketDirect(
     // Delete ticket
     await supabase.from('tickets').delete().eq('id', actualId);
 
-    // Merge updates and reinsert
-    Object.assign(existing, updates);
+    // Merge updates and reinsert with only valid columns
+    Object.assign(existing, cleanUpdates);
     existing.id = actualId;
     existing.updated_at = new Date().toISOString();
-    const { data: ins, error: insErr } = await supabase.from('tickets').insert(existing).select();
+    const cleanInsert: Record<string, any> = {};
+    for (const [k, v] of Object.entries(existing)) {
+      if (VALID_TICKET_DB_COLUMNS.has(k)) {
+        cleanInsert[k] = v;
+      }
+    }
+    const { data: ins, error: insErr } = await supabase.from('tickets').insert(cleanInsert).select();
     if (insErr || !ins || ins.length === 0) {
       console.warn('Direct ticket replacement insert failed:', insErr);
       return false;
@@ -454,7 +472,6 @@ export const ticketService = {
         assigned_agent_id: agentId || undefined,
         assigned_to_type: assignedToType,
         handled_by: handledBy,
-        assigned_date: new Date().toISOString(),
         ...(priority ? { priority } : {}),
       });
       if (!ok) return false;

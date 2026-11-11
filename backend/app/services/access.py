@@ -438,6 +438,7 @@ def _same_person(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str
             return False
 
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    emp_id = str(user.get("employee_id") or "").strip().lower()
     email = _norm(user.get("email") or payload.get("email"))
     name = _norm(user.get("name") or payload.get("name"))
 
@@ -446,6 +447,8 @@ def _same_person(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str
     agent_name = _norm(ticket.get(prefix))
 
     if user_id and agent_id and user_id == agent_id:
+        return True
+    if emp_id and agent_id and emp_id == agent_id:
         return True
     if email and agent_email and email == agent_email:
         return True
@@ -886,6 +889,15 @@ def serialize_ticket(
         result["can_chat"] = can_view_ticket_chat(payload, user, result)
 
     tid = str(ticket.get("id") or "")
+    if tid and not result.get("escalation_reason"):
+        try:
+            sb = get_supabase_admin_client()
+            esc_rows = sb.table("escalations").select("escalation_reason").eq("ticket_id", tid).order("created_at", desc=True).limit(1).execute().data
+            if esc_rows and esc_rows[0].get("escalation_reason"):
+                result["escalation_reason"] = esc_rows[0]["escalation_reason"]
+        except Exception:
+            pass
+
     if load_attachments and tid:
         try:
             from app.api.v1.attachments import _disk_records

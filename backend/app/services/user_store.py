@@ -313,7 +313,7 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
         return False
 
     # 1. Direct password attribute (hashed or plaintext)
-    stored = user_row.get("password")
+    stored = user_row.get("password") or user_row.get("password_hash")
     if stored and verify_password(stored, candidate_password):
         return True
 
@@ -399,7 +399,30 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
     if has_service_role_key():
         try:
             sb = get_supabase_admin_client()
-            sb.table("users").upsert(user_data).execute()
+            db_row: dict[str, Any] = {
+                "id": str(user_data.get("id") or ""),
+                "name": str(user_data.get("name") or ""),
+                "email": clean_email,
+                "role": str(user_data.get("role") or "employee"),
+                "department": str(user_data.get("department") or "IT Support"),
+                "status": str(user_data.get("status") or "Active"),
+            }
+            if user_data.get("employee_id"):
+                db_row["employee_id"] = str(user_data.get("employee_id"))
+            elif user_id:
+                db_row["employee_id"] = user_id
+            if user_data.get("phone"):
+                db_row["phone"] = str(user_data.get("phone"))
+            if user_data.get("designation"):
+                db_row["designation"] = str(user_data.get("designation"))
+            if user_data.get("team"):
+                db_row["team"] = str(user_data.get("team"))
+            if user_data.get("location"):
+                db_row["location"] = str(user_data.get("location"))
+            pwd = user_data.get("password_hash") or user_data.get("password")
+            if pwd:
+                db_row["password_hash"] = hash_password(pwd) if not is_hashed(pwd) else pwd
+            sb.table("users").upsert(db_row).execute()
         except Exception as exc:
             print(f"[user_store] Supabase upsert note: {exc}")
 

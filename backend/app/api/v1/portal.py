@@ -346,6 +346,7 @@ def mark_read(
         raise HTTPException(status_code=404, detail="Notification not found")
     sb = get_supabase_admin_client()
     res = sb.table("portal_notifications").update({"read": True}).eq("id", notification_id).execute()
+    invalidate_notifications_cache()
     return {"success": True, "notification": (res.data or [visible[notification_id]])[0]}
 
 
@@ -363,6 +364,7 @@ def mark_all_read(
             updated += 1
         except Exception as exc:
             print(f"[notifications] could not mark {notif_id} read: {exc}")
+    invalidate_notifications_cache()
     return {"success": True, "updated": updated}
 
 
@@ -454,6 +456,7 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     row = {
         "id": user_id,
+        "employee_id": (body.employee_id or "").strip() or user_id,
         "name": body.name.strip(),
         "email": email,
         "phone": (body.phone or "").strip(),
@@ -463,6 +466,7 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
         "team": body.team,
         "status": body.status or "Active",
         "password": hash_password(body.password or "Password123"),
+        "password_hash": hash_password(body.password or "Password123"),
         "invite_token": body.invite_token,
         "invite_sent_at": now if body.send_email_invite else None,
         "created_at": now,
@@ -503,7 +507,7 @@ def admin_update_user(user_id: str, body: UserAdminUpdate) -> dict[str, Any]:
     if data.get("role"):
         updates["role"] = normalize_role(data["role"])
     if data.get("password"):
-        updates["password"] = hash_password(data["password"])
+        updates["password_hash"] = hash_password(data["password"])
     if data.get("invite_token") is not None:
         updates["invite_token"] = data["invite_token"].strip() or None
         updates["invite_sent_at"] = datetime.now(timezone.utc).isoformat()
@@ -511,9 +515,18 @@ def admin_update_user(user_id: str, body: UserAdminUpdate) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="No fields provided")
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    valid_cols = {
+        "id", "employee_id", "name", "email", "role", "department",
+        "designation", "team", "phone", "location", "status",
+        "password_hash", "auth_user_id", "created_at", "updated_at",
+    }
+    clean_user_updates = {k: v for k, v in updates.items() if k in valid_cols}
+
     sb = get_supabase_admin_client()
     try:
-        res = sb.table("users").update(updates).eq("id", user_id).execute()
+        res = sb.table("users").update(clean_user_updates).eq("id", user_id).execute()
+        if not (res.data or []):
+            res = sb.table("users").update(clean_user_updates).eq("employee_id", user_id).execute()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not update user: {exc}") from exc
     if not (res.data or []):
@@ -662,6 +675,7 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
     # Force role to employee and bind to this team lead's team
     row = {
         "id": user_id,
+        "employee_id": (body.employee_id or "").strip() or user_id,
         "name": (body.name or "").strip(),
         "email": email,
         "phone": (body.phone or "").strip(),
@@ -671,6 +685,7 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
         "team": assigned_team,
         "status": body.status or "Active",
         "password": hash_password(body.password or "Password123"),
+        "password_hash": hash_password(body.password or "Password123"),
         "invite_token": body.invite_token,
         "invite_sent_at": now if body.send_email_invite else None,
         "created_at": now,

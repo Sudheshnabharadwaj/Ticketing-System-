@@ -313,6 +313,7 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     category: t.category || 'General Support',
     priority: (t.priority || 'Medium') as Ticket['priority'],
     status: (t.status || 'Open') as Ticket['status'],
+    escalationReason: (t as any).escalation_reason || (t as any).escalationReason || undefined,
     slaStatus: mapSlaStatus(t.sla_status),
     createdAt: formatDateTime(t.created_at),
     updatedAt: formatDateTime(t.updated_at || t.created_at),

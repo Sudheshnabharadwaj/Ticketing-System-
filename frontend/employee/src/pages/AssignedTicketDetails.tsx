@@ -92,7 +92,11 @@ export const AssignedTicketDetails: React.FC = () => {
       ((ticket as any)?.employees || []).some((e: any) => (typeof e === 'object' && e?.id === currentUser.id) || e === currentUser.id)
     )
   );
-  const canReply = Boolean(isAssignedToMe || isCreatedByMe || isTagged || (ticket as any)?.can_reply === true);
+  const isWorkMode = searchParams.get('mode') === 'work';
+  const canReply = Boolean(
+    (isCreatedByMe || isWorkMode || (isAssignedToMe && !isReadOnly)) &&
+    (isAssignedToMe || isCreatedByMe || isTagged || (ticket as any)?.can_reply === true)
+  );
   const canDeleteAttachment = Boolean(currentUser?.role === 'admin' || isAssignedToMe || isCreatedByMe || canReply);
   const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
 
@@ -714,6 +718,17 @@ export const AssignedTicketDetails: React.FC = () => {
             </div>
             <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
+
+          {((ticket as any).escalationReason || (ticket as any).escalation_reason || ticket.status === 'Escalated') && (
+            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl">
+              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-1">
+                Escalation Reason
+              </span>
+              <span className="text-xs font-semibold text-red-950">
+                {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Description */}

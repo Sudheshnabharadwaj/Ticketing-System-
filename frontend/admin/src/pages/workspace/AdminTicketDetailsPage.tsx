@@ -394,7 +394,9 @@ export const AdminTicketDetailsPage: React.FC = () => {
     (currentUser?.email && (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email.toLowerCase()) ||
     (currentUser?.name && ticket.assignedTo && ticket.assignedTo.toLowerCase() === currentUser.name.toLowerCase())
   );
-  const canReply = true; // Admin has full conversation and internal note permissions
+  const isWorkMode = searchParams.get('mode') === 'work';
+  const isMyTickets = fromSource === 'my-tickets' || isCreatedByMe;
+  const canReply = Boolean(isMyTickets || isWorkMode || isAssignedToMe);
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -666,6 +668,17 @@ export const AdminTicketDetailsPage: React.FC = () => {
             </div>
             <span className="text-xs font-semibold text-slate-800">{ticket.dueDate || ticket.createdAt}</span>
           </div>
+
+          {(ticket.escalationReason || ticket.status === 'Escalated') && (
+            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl">
+              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-1">
+                Escalation Reason
+              </span>
+              <span className="text-xs font-semibold text-red-950">
+                {ticket.escalationReason || 'Ticket escalated for management review'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Description Section */}

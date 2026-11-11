@@ -115,10 +115,10 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     now = datetime.now(timezone.utc).isoformat()
-    updates: dict[str, Any] = {"last_login_at": now, "updated_at": now}
+    updates: dict[str, Any] = {"updated_at": now}
     # Upgrade legacy plaintext passwords and activate invited accounts.
-    if not is_hashed(row.get("password")):
-        updates["password"] = hash_password(password)
+    if not is_hashed(row.get("password_hash") or row.get("password")):
+        updates["password_hash"] = hash_password(password)
     if str(row.get("status") or "").strip() not in ("Active", "Inactive"):
         updates["status"] = "Active"
 
