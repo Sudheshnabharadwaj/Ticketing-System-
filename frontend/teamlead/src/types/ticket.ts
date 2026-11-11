@@ -61,6 +61,7 @@ export interface Ticket {
   }[];
   activities?: TicketActivity[];
   escalationReason?: string;
+  escalationNotes?: string;
   assignedBy?: string;
   assignedDate?: string;
   resolutionSummary?: string;

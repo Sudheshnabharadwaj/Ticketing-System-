@@ -69,6 +69,7 @@ export interface Ticket {
   comments?: TicketComment[];
   activities?: any[];
   escalationReason?: string;
+  escalationNotes?: string;
 }
 
 export interface DashboardStats {

@@ -720,13 +720,25 @@ export const AssignedTicketDetails: React.FC = () => {
           </div>
 
           {((ticket as any).escalationReason || (ticket as any).escalation_reason || ticket.status === 'Escalated') && (
-            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl">
-              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-1">
-                Escalation Reason
-              </span>
-              <span className="text-xs font-semibold text-red-950">
-                {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
-              </span>
+            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl space-y-2">
+              <div>
+                <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-0.5">
+                  Escalation Reason
+                </span>
+                <span className="text-xs font-semibold text-red-950">
+                  {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
+                </span>
+              </div>
+              {((ticket as any).escalationNotes || (ticket as any).escalation_notes) && (
+                <div className="pt-2 border-t border-red-200/60">
+                  <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-0.5">
+                    Escalation Note
+                  </span>
+                  <span className="text-xs text-red-900 whitespace-pre-wrap">
+                    {(ticket as any).escalationNotes || (ticket as any).escalation_notes}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

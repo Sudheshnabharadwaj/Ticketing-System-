@@ -293,10 +293,18 @@ def _notification_rows() -> list[dict[str, Any]]:
             get_supabase_admin_client()
             .table("portal_notifications")
             .select("*")
-            .order("timestamp", desc=True)
+            .order("created_at", desc=True)
+            .limit(200)
             .execute()
         )
-        rows = res.data or []
+        raw_rows = res.data or []
+        rows = []
+        for r in raw_rows:
+            item = dict(r)
+            # Ensure backwards compatibility for fields expected by frontend
+            item["timestamp"] = item.get("created_at") or datetime.now(timezone.utc).isoformat()
+            item["for_role"] = item.get("user_id") or "all"
+            rows.append(item)
         _NOTIF_CACHE = (now, rows)
         return rows
     except Exception as exc:
@@ -391,22 +399,35 @@ def create_notification(
     if role == "teamlead" and target_lower == "admin":
         raise HTTPException(status_code=403, detail="Team leads cannot broadcast to admins")
 
-    row = {
+    now_str = datetime.now(timezone.utc).isoformat()
+    clean_target = target
+    user_email: str | None = None
+    if clean_target.startswith("user:"):
+        val = clean_target.split(":", 1)[1].strip()
+        if "@" in val:
+            user_email = val
+
+    db_row = {
         "id": f"notif-{int(time.time() * 1000)}-{random.randint(100, 999)}",
         "ticket_id": body.ticket_id,
         "title": body.title,
         "message": body.message,
         "type": body.type or "info",
-        "for_role": target,
+        "user_id": clean_target,
+        "user_email": user_email,
         "read": False,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_str,
     }
     sb = get_supabase_admin_client()
     try:
-        res = sb.table("portal_notifications").insert(row).execute()
+        res = sb.table("portal_notifications").insert(db_row).execute()
+        invalidate_notifications_cache()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not create notification: {exc}") from exc
-    return (res.data or [row])[0]
+    ret = (res.data or [db_row])[0]
+    ret["timestamp"] = ret.get("created_at")
+    ret["for_role"] = ret.get("user_id") or "all"
+    return ret
 
 
 # ── Admin user management ────────────────────────────────────────────────────

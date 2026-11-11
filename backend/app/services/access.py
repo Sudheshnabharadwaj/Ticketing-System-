@@ -892,11 +892,16 @@ def serialize_ticket(
     if tid and not result.get("escalation_reason"):
         try:
             sb = get_supabase_admin_client()
-            esc_rows = sb.table("escalations").select("escalation_reason").eq("ticket_id", tid).order("created_at", desc=True).limit(1).execute().data
-            if esc_rows and esc_rows[0].get("escalation_reason"):
-                result["escalation_reason"] = esc_rows[0]["escalation_reason"]
-        except Exception:
-            pass
+            esc_rows = sb.table("escalations").select("reason, notes, escalated_by, escalated_to, created_at").eq("ticket_id", tid).order("created_at", desc=True).limit(1).execute().data
+            if esc_rows:
+                esc = esc_rows[0]
+                result["escalation_reason"] = esc.get("reason") or result.get("escalation_reason") or "Ticket escalated for senior review"
+                result["escalation_notes"] = esc.get("notes") or ""
+                result["escalated_by"] = esc.get("escalated_by") or ""
+                result["escalated_to"] = esc.get("escalated_to") or ""
+                result["escalated_at"] = esc.get("created_at") or ""
+        except Exception as esc_err:
+            print(f"[serialize_ticket] escalation load note: {esc_err}")
 
     if load_attachments and tid:
         try:
@@ -1082,19 +1087,28 @@ def notification_visible(
     Unrecognised values are compared to the user's email/name so legacy
     rows can never leak to an unrelated account.
     """
-    raw = str(notification.get("for_role") or "").strip()
+    raw = str(notification.get("for_role") or notification.get("user_id") or "").strip()
     target = raw.lower()
     role = role_of(payload)
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    emp_id = str(user.get("employee_id") or "").strip().lower()
     email = _norm(user.get("email") or payload.get("email"))
     name = _norm(user.get("name") or payload.get("name"))
+
+    if notification.get("user_email") and str(notification.get("user_email")).strip().lower() == email:
+        return True
 
     if target in ("", "all", "*"):
         return True
 
+    if is_admin(payload):
+        # Admins can see all system and role-level notifications
+        if target in ("admin", "all", "*", "system") or target.startswith("dept:"):
+            return True
+
     if target.startswith("user:"):
         value = target.split(":", 1)[1].strip()
-        return bool(value) and value in {user_id, email}
+        return bool(value) and value in {user_id, emp_id, email}
 
     if target.startswith("dept:"):
         value = target.split(":", 1)[1].strip()

@@ -110,6 +110,8 @@ class StatusRequest(BaseModel):
 class EscalateRequest(BaseModel):
     reason: str = Field(min_length=1)
     comment: str | None = None
+    note: str | None = None
+    notes: str | None = None
     escalated_to: str | None = None
 
 
@@ -148,7 +150,7 @@ VALID_TICKET_COLUMNS = {
 
 
 def _save_ticket_atomic(ticket_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-    """Atomically update a ticket, sanitizing fields to prevent column errors."""
+    """Safely update a ticket row in Supabase, sanitizing fields to prevent column errors."""
     canonical_id = ticket_id.strip()
     sb = get_supabase_admin_client()
 
@@ -156,7 +158,7 @@ def _save_ticket_atomic(ticket_id: str, updates: dict[str, Any]) -> dict[str, An
     if "updated_at" not in clean_updates:
         clean_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    # Try standard update first
+    # 1. Try standard update by id or ticket_number
     try:
         res = sb.table("tickets").update(clean_updates).eq("id", canonical_id).execute()
         if res.data:
@@ -165,76 +167,43 @@ def _save_ticket_atomic(ticket_id: str, updates: dict[str, Any]) -> dict[str, An
         if res.data:
             return res.data[0]
     except Exception as exc:
-        if "Employees may only change status" not in str(exc) and "42501" not in str(exc):
-            raise HTTPException(status_code=502, detail=f"Database update failed: {exc}") from exc
+        print(f"[_save_ticket_atomic] standard update error: {exc}")
+        # If some specific column failed (e.g. assigned_team_id), fall through to minimal update
+        pass
 
-    # Postgres trigger blocked the update (e.g. priority or assignment restriction).
-    # Perform atomic replacement while preserving all child records.
+    # 2. Look up the ticket to find its actual DB id
     existing_res = sb.table("tickets").select("*").eq("id", canonical_id).execute()
     existing_rows = existing_res.data or []
     if not existing_rows:
         existing_res = sb.table("tickets").select("*").eq("ticket_number", canonical_id).execute()
         existing_rows = existing_res.data or []
     if not existing_rows:
-        raise HTTPException(status_code=404, detail="Ticket not found for atomic update")
+        raise HTTPException(status_code=404, detail="Ticket not found for update")
 
-    existing = dict(existing_rows[0])
-    actual_id = str(existing.get("id") or canonical_id)
+    actual_id = str(existing_rows[0].get("id") or canonical_id)
 
-    # 1. Save child rows
-    comments = sb.table("ticket_comments").select("*").eq("ticket_id", actual_id).execute().data or []
-    activities = sb.table("ticket_activities").select("*").eq("ticket_id", actual_id).execute().data or []
-    escalations = sb.table("escalations").select("*").eq("ticket_id", actual_id).execute().data or []
-    attachments = sb.table("ticket_attachments").select("*").eq("ticket_id", actual_id).execute().data or []
-    tagged = sb.table("ticket_tagged_members").select("*").eq("ticket_id", actual_id).execute().data or []
-
-    # 2. Delete child rows
-    for tbl in ("ticket_comments", "ticket_activities", "ticket_attachments", "escalations", "ticket_tagged_members"):
+    # 3. Retry update with actual ID
+    try:
+        res = sb.table("tickets").update(clean_updates).eq("id", actual_id).execute()
+        if res.data:
+            return res.data[0]
+    except Exception as exc:
+        # 4. Retry with core columns only in case of custom column errors
+        core_columns = {"status", "priority", "assigned_agent", "assigned_agent_id", "assigned_to_type", "handled_by", "assigned_by", "updated_at", "sla_due_at"}
+        minimal_updates = {k: v for k, v in clean_updates.items() if k in core_columns}
         try:
-            sb.table(tbl).delete().eq("ticket_id", actual_id).execute()
-        except Exception:
-            pass
+            res = sb.table("tickets").update(minimal_updates).eq("id", actual_id).execute()
+            if res.data:
+                return res.data[0]
+        except Exception as retry_exc:
+            raise HTTPException(status_code=502, detail=f"Database update failed: {retry_exc}") from retry_exc
 
-    # 3. Delete ticket
-    sb.table("tickets").delete().eq("id", actual_id).execute()
+    # Final check: re-fetch updated row
+    final_res = sb.table("tickets").select("*").eq("id", actual_id).execute()
+    if final_res.data:
+        return final_res.data[0]
 
-    # 4. Merge updates and reinsert (use clean_updates to avoid invalid column errors)
-    existing.update(clean_updates)
-    existing["id"] = actual_id
-    # Strip any extra keys not in schema before reinserting
-    insert_row = {k: v for k, v in existing.items() if k in VALID_TICKET_COLUMNS}
-    ins = sb.table("tickets").insert(insert_row).execute()
-    if not ins.data:
-        raise HTTPException(status_code=502, detail="Failed to save ticket update")
-
-    # 5. Restore child rows
-    if comments:
-        try:
-            sb.table("ticket_comments").insert(comments).execute()
-        except Exception as e:
-            print(f"[atomic_update] failed restoring comments: {e}")
-    if activities:
-        try:
-            sb.table("ticket_activities").insert(activities).execute()
-        except Exception as e:
-            print(f"[atomic_update] failed restoring activities: {e}")
-    if escalations:
-        try:
-            sb.table("escalations").insert(escalations).execute()
-        except Exception as e:
-            print(f"[atomic_update] failed restoring escalations: {e}")
-    if attachments:
-        try:
-            sb.table("ticket_attachments").insert(attachments).execute()
-        except Exception as e:
-            print(f"[atomic_update] failed restoring attachments: {e}")
-    if tagged:
-        try:
-            sb.table("ticket_tagged_members").insert(tagged).execute()
-        except Exception as e:
-            print(f"[atomic_update] failed restoring tagged members: {e}")
-
-    return ins.data[0]
+    raise HTTPException(status_code=502, detail="Failed to save ticket update")
 
 
 def _fetch_ticket(ticket_id: str) -> dict[str, Any]:
@@ -389,7 +358,14 @@ def _notify(
     ticket_id: str | None = None,
     kind: str = "info",
 ) -> None:
-    """Best-effort persisted in-app notification."""
+    """Best-effort persisted in-app notification saved directly in portal_notifications."""
+    now_str = datetime.now(timezone.utc).isoformat()
+    clean_target = str(for_role or "all").strip()
+    user_email: str | None = None
+    if clean_target.startswith("user:"):
+        val = clean_target.split(":", 1)[1].strip()
+        if "@" in val:
+            user_email = val
     try:
         get_supabase_admin_client().table("portal_notifications").insert(
             {
@@ -398,13 +374,16 @@ def _notify(
                 "title": title,
                 "message": message,
                 "type": kind,
-                "for_role": for_role,
+                "user_id": clean_target,
+                "user_email": user_email,
                 "read": False,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "created_at": now_str,
             }
         ).execute()
-    except Exception as exc:  # pragma: no cover - depends on RLS configuration
-        print(f"[tickets] notification skipped ({for_role}): {exc}")
+        from app.api.v1.portal import invalidate_notifications_cache
+        invalidate_notifications_cache()
+    except Exception as exc:
+        print(f"[tickets] notification error ({for_role}): {exc}")
 
 
 def _notify_batch(items: list[dict[str, Any]]) -> None:
@@ -412,23 +391,33 @@ def _notify_batch(items: list[dict[str, Any]]) -> None:
     if not items:
         return
     now_str = datetime.now(timezone.utc).isoformat()
-    rows = [
-        {
-            "id": f"notif-{int(time.time() * 1000)}-{random.randint(100, 999)}",
-            "ticket_id": item.get("ticket_id"),
-            "title": item.get("title"),
-            "message": item.get("message"),
-            "type": item.get("kind", "info"),
-            "for_role": item.get("for_role"),
-            "read": False,
-            "timestamp": now_str,
-        }
-        for item in items
-    ]
+    rows = []
+    for item in items:
+        clean_target = str(item.get("for_role") or "all").strip()
+        user_email: str | None = None
+        if clean_target.startswith("user:"):
+            val = clean_target.split(":", 1)[1].strip()
+            if "@" in val:
+                user_email = val
+        rows.append(
+            {
+                "id": f"notif-{int(time.time() * 1000)}-{random.randint(100, 999)}",
+                "ticket_id": item.get("ticket_id"),
+                "title": item.get("title"),
+                "message": item.get("message"),
+                "type": item.get("kind", "info"),
+                "user_id": clean_target,
+                "user_email": user_email,
+                "read": False,
+                "created_at": now_str,
+            }
+        )
     try:
         get_supabase_admin_client().table("portal_notifications").insert(rows).execute()
-    except Exception as exc:  # pragma: no cover - depends on RLS configuration
-        print(f"[tickets] batch notification skipped: {exc}")
+        from app.api.v1.portal import invalidate_notifications_cache
+        invalidate_notifications_cache()
+    except Exception as exc:
+        print(f"[tickets] batch notification error: {exc}")
 
 
 def _find_user(user_id: str | None = None, email: str | None = None) -> dict[str, Any] | None:
@@ -1321,24 +1310,28 @@ def escalate_ticket(
     updated_row = _save_ticket_atomic(canonical_id, {"status": "Escalated", "updated_at": now})
 
     # Escalation history
+    note_val = (body.notes or body.note or body.comment or "").strip()
+    reason_val = body.reason.strip()
+    if not note_val and ": " in reason_val:
+        parts = reason_val.split(": ", 1)
+        reason_val = parts[0].strip()
+        note_val = parts[1].strip()
+
     sb = get_supabase_admin_client()
     try:
         sb.table("escalations").insert(
             {
-                "id": f"ESC-{int(time.time() * 1000)}",
+                "id": f"ESC-{int(time.time() * 1000)}-{random.randint(100, 999)}",
                 "ticket_id": canonical_id,
-                "subject": ticket.get("subject") or f"Escalated Ticket {canonical_id}",
-                "priority": ticket.get("priority") or "High",
+                "reason": reason_val,
                 "escalated_by": _actor_name(user),
-                "escalated_to": body.escalated_to or "Tier 3 Operations",
-                "escalation_reason": body.reason,
-                "sla_status": "Escalated",
-                "escalated_date": now.replace("T", " ")[:16],
-                "status": "Pending Review",
+                "escalated_to": body.escalated_to or "Team Lead",
+                "notes": note_val or reason_val,
+                "created_at": now,
             }
         ).execute()
     except Exception as exc:
-        print(f"[tickets] escalation row skipped for {ticket_id}: {exc}")
+        print(f"[tickets] escalation row error for {ticket_id}: {exc}")
 
     invalidate_tickets_cache()
     actor = _actor_name(user)

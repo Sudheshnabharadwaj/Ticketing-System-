@@ -76,7 +76,7 @@ export const teamLeadService = {
       id: String(n.id),
       title: n.title || 'Notification',
       message: n.message || '',
-      timestamp: formatNotificationTime(n.timestamp),
+      timestamp: formatNotificationTime(n.timestamp || n.created_at),
       read: !!n.read,
       ticketId: n.ticket_id || undefined,
       type: (n.type || 'info') as NotificationItem['type'],

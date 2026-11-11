@@ -121,8 +121,8 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
         title: n.title || 'System Notification',
         message: n.message,
         ticketId: n.ticket_id || undefined,
-        time: n.timestamp
-          ? new Date(n.timestamp).toLocaleString([], {
+        time: (n.timestamp || n.created_at)
+          ? new Date(n.timestamp || n.created_at).toLocaleString([], {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',

@@ -79,25 +79,26 @@ export function mapTicket(row: any): Ticket {
     attachments: Array.isArray(row.attachments) ? row.attachments.map(mapAttachment) : [],
     comments: Array.isArray(row.comments)
       ? row.comments.map((c: any) => ({
-          id: c.id,
-          ticketId: c.ticket_id,
-          authorName: c.author_name || c.author || 'User',
-          authorRole: (c.author_role || 'teamlead') as any,
-          message: c.message || '',
-          createdAt: c.created_at,
-          isInternal: !!c.is_internal,
-        }))
+        id: c.id,
+        ticketId: c.ticket_id,
+        authorName: c.author_name || c.author || 'User',
+        authorRole: (c.author_role || 'teamlead') as any,
+        message: c.message || '',
+        createdAt: c.created_at,
+        isInternal: !!c.is_internal,
+      }))
       : [],
     activities: Array.isArray(row.activities)
       ? row.activities.map((a: any) => ({
-          id: a.id,
-          ticketId: a.ticket_id,
-          user: a.user,
-          action: a.action,
-          timestamp: a.timestamp,
-        }))
+        id: a.id,
+        ticketId: a.ticket_id,
+        user: a.user,
+        action: a.action,
+        timestamp: a.timestamp,
+      }))
       : [],
     escalationReason: row.escalation_reason || undefined,
+    escalationNotes: row.escalation_notes || undefined,
     assignedBy: row.assigned_by || '',
     assignedDate: row.assigned_date || undefined,
     resolutionSummary: row.resolution_summary || undefined,
@@ -151,81 +152,17 @@ async function persistTicketDirect(
   }
   cleanUpdates.updated_at = new Date().toISOString();
 
-  // 1. Try standard Supabase update first
+  // 1. Try standard Supabase update
   try {
     const { data, error } = await supabase.from('tickets').update(cleanUpdates).eq('id', canonicalId).select();
     if (!error && data && data.length > 0) return true;
     const resNum = await supabase.from('tickets').update(cleanUpdates).eq('ticket_number', canonicalId).select();
     if (!resNum.error && resNum.data && resNum.data.length > 0) return true;
-  } catch {}
-
-  // 2. If Postgres trigger restricts update (code 42501), perform atomic replacement
-  try {
-    let { data: existingRows } = await supabase.from('tickets').select('*').eq('id', canonicalId);
-    if (!existingRows || existingRows.length === 0) {
-      const resNum = await supabase.from('tickets').select('*').eq('ticket_number', canonicalId);
-      existingRows = resNum.data || [];
-    }
-    if (!existingRows || existingRows.length === 0) return false;
-
-    const existing = { ...existingRows[0] };
-    const actualId = String(existing.id || canonicalId);
-
-    // Save children
-    const { data: comments } = await supabase.from('ticket_comments').select('*').eq('ticket_id', actualId);
-    const { data: activities } = await supabase.from('ticket_activities').select('*').eq('ticket_id', actualId);
-    const { data: escalations } = await supabase.from('escalations').select('*').eq('ticket_id', actualId);
-    const { data: attachments } = await supabase.from('ticket_attachments').select('*').eq('ticket_id', actualId);
-    const { data: tagged } = await supabase.from('ticket_tagged_members').select('*').eq('ticket_id', actualId);
-
-    // Delete children
-    for (const tbl of ['ticket_comments', 'ticket_activities', 'ticket_attachments', 'escalations', 'ticket_tagged_members']) {
-      try {
-        await supabase.from(tbl).delete().eq('ticket_id', actualId);
-      } catch {}
-    }
-
-    // Delete ticket
-    await supabase.from('tickets').delete().eq('id', actualId);
-
-    // Merge updates and reinsert with only valid columns
-    Object.assign(existing, cleanUpdates);
-    existing.id = actualId;
-    existing.updated_at = new Date().toISOString();
-    const cleanInsert: Record<string, any> = {};
-    for (const [k, v] of Object.entries(existing)) {
-      if (VALID_TICKET_DB_COLUMNS.has(k)) {
-        cleanInsert[k] = v;
-      }
-    }
-    const { data: ins, error: insErr } = await supabase.from('tickets').insert(cleanInsert).select();
-    if (insErr || !ins || ins.length === 0) {
-      console.warn('Direct ticket replacement insert failed:', insErr);
-      return false;
-    }
-
-    // Restore children
-    if (comments && comments.length > 0) {
-      try { await supabase.from('ticket_comments').insert(comments); } catch {}
-    }
-    if (activities && activities.length > 0) {
-      try { await supabase.from('ticket_activities').insert(activities); } catch {}
-    }
-    if (escalations && escalations.length > 0) {
-      try { await supabase.from('escalations').insert(escalations); } catch {}
-    }
-    if (attachments && attachments.length > 0) {
-      try { await supabase.from('ticket_attachments').insert(attachments); } catch {}
-    }
-    if (tagged && tagged.length > 0) {
-      try { await supabase.from('ticket_tagged_members').insert(tagged); } catch {}
-    }
-
-    return true;
-  } catch (e) {
-    console.error('persistTicketDirect error:', e);
-    return false;
+  } catch (err) {
+    console.warn('Direct Supabase update error:', err);
   }
+
+  return false;
 }
 
 export const ticketService = {
@@ -481,7 +418,7 @@ export const ticketService = {
     try {
       localStorage.setItem('ticket_refresh_event', String(Date.now()));
       localStorage.setItem('itsm_tickets_version', String(Date.now()));
-    } catch {}
+    } catch { }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id } }));
       window.dispatchEvent(new Event('storage'));
@@ -505,7 +442,7 @@ export const ticketService = {
     try {
       localStorage.setItem('ticket_refresh_event', String(Date.now()));
       localStorage.setItem('itsm_tickets_version', String(Date.now()));
-    } catch {}
+    } catch { }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id } }));
       window.dispatchEvent(new Event('storage'));

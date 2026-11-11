@@ -189,6 +189,8 @@ function mapDbTicket(row: any): EmployeeTicket {
   (t as any).isAssignedToMe = row.is_assigned_to_me;
   (t as any).isCreatedByMe = row.is_created_by_me;
   (t as any).requester_id = row.requester_id;
+  (t as any).escalationReason = row.escalation_reason || row.escalationReason;
+  (t as any).escalationNotes = row.escalation_notes || row.escalationNotes;
   return t;
 }
 
@@ -510,7 +512,10 @@ export const EmployeeService = {
       await apiRequest<any>(
         `/tickets/${encodeURIComponent(ticketId)}/escalate`,
         jsonInit('POST', {
-          reason: `${reason}. ${comment}`,
+          reason: reason,
+          comment: comment,
+          note: comment,
+          notes: comment,
           escalated_to: 'Team Lead',
         }),
       );
@@ -577,8 +582,8 @@ export const EmployeeService = {
           ticketNumber: n.ticket_id || '',
           title: n.title || 'Notification',
           category: (n.type === 'error' ? 'SLA notification' : n.type === 'success' ? 'Ticket resolved' : n.type === 'warning' ? 'New ticket assigned' : 'Ticket status changed') as any,
-          time: n.timestamp ? new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
-          date: n.timestamp ? new Date(n.timestamp).toLocaleDateString() : 'Today',
+          time: (n.timestamp || n.created_at) ? new Date(n.timestamp || n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          date: (n.timestamp || n.created_at) ? new Date(n.timestamp || n.created_at).toLocaleDateString() : 'Today',
           isRead: !!n.read,
           message: n.message || '',
         }));

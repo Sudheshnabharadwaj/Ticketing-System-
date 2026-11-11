@@ -250,7 +250,7 @@ export const TicketDetailsPage: React.FC = () => {
       clearInterval(interval);
       try {
         supabase.removeChannel(channel);
-      } catch {}
+      } catch { }
     };
   }, [ticketId, ticket?.id]);
 
@@ -466,7 +466,7 @@ export const TicketDetailsPage: React.FC = () => {
           is_internal: isInternalNote,
           created_at: nowIso,
         });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -541,9 +541,8 @@ export const TicketDetailsPage: React.FC = () => {
                         <button
                           key={s}
                           onClick={() => handleUpdateStatus(s)}
-                          className={`w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
-                            ticket.status === s ? 'font-bold text-sky-600 bg-sky-50/50' : 'text-slate-700'
-                          }`}
+                          className={`w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between cursor-pointer ${ticket.status === s ? 'font-bold text-sky-600 bg-sky-50/50' : 'text-slate-700'
+                            }`}
                         >
                           <span>{s}</span>
                           {ticket.status === s && <CheckCircle2 className="w-3.5 h-3.5 text-sky-600" />}
@@ -711,13 +710,25 @@ export const TicketDetailsPage: React.FC = () => {
           </div>
 
           {((ticket as any).escalationReason || (ticket as any).escalation_reason || ticket.status === 'Escalated') && (
-            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl">
-              <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-1">
-                Escalation Reason
-              </span>
-              <span className="text-xs font-semibold text-red-950">
-                {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
-              </span>
+            <div className="col-span-2 sm:col-span-3 lg:col-span-4 p-3.5 bg-red-50 border border-red-200 rounded-xl space-y-2">
+              <div>
+                <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-0.5">
+                  Escalation Reason
+                </span>
+                <span className="text-xs font-semibold text-red-950">
+                  {(ticket as any).escalationReason || (ticket as any).escalation_reason || 'Ticket escalated for senior review'}
+                </span>
+              </div>
+              {((ticket as any).escalationNotes || (ticket as any).escalation_notes) && (
+                <div className="pt-2 border-t border-red-200/60">
+                  <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider block mb-0.5">
+                    Escalation Note
+                  </span>
+                  <span className="text-xs text-red-900 whitespace-pre-wrap">
+                    {(ticket as any).escalationNotes || (ticket as any).escalation_notes}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -835,11 +846,10 @@ export const TicketDetailsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('conversation')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'conversation'
-                ? 'bg-[#0284C7] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'conversation'
+              ? 'bg-[#0284C7] text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             <MessageSquare className="w-4 h-4" />
             Conversation & Notes ({ticket.comments?.length || 0})
@@ -847,11 +857,10 @@ export const TicketDetailsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-[#0284C7] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'history'
+              ? 'bg-[#0284C7] text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             <Activity className="w-4 h-4" />
             Audit History ({ticket.activities?.length || (ticket as any).history?.length || 0})
@@ -859,11 +868,10 @@ export const TicketDetailsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('attachments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'attachments'
-                ? 'bg-[#0284C7] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'attachments'
+              ? 'bg-[#0284C7] text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             <Paperclip className="w-4 h-4" />
             Attachments ({attachments.length})
@@ -882,11 +890,10 @@ export const TicketDetailsPage: React.FC = () => {
                 ticket.comments.map((comment: TicketComment) => (
                   <div
                     key={comment.id}
-                    className={`p-3.5 rounded-xl border text-xs mb-3 ${
-                      comment.isInternal
-                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                        : 'bg-white border-slate-200/80 text-slate-800'
-                    }`}
+                    className={`p-3.5 rounded-xl border text-xs mb-3 ${comment.isInternal
+                      ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                      : 'bg-white border-slate-200/80 text-slate-800'
+                      }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">

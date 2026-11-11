@@ -323,38 +323,54 @@ def _fetch_persisted_db_attachments(ticket_ids: str | list[str]) -> list[dict[st
 
 def _db_attachments(ticket_ids: str | list[str]) -> list[dict[str, Any]]:
     ids = [ticket_ids] if isinstance(ticket_ids, str) else list(ticket_ids)
-    if not ids:
+    clean_ids = [str(x).strip() for x in ids if str(x).strip()]
+    if not clean_ids:
         return []
     res_list: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
-    # 1. Query persistent attachments stored in Supabase
-    for r in _fetch_persisted_db_attachments(ids):
+    # 1. Query ticket_attachments schema table in Supabase (the primary permanent store)
+    try:
+        sb = get_supabase_admin_client()
+        res = (
+            sb.table("ticket_attachments")
+            .select("*")
+            .in_("ticket_id", clean_ids)
+            .order("uploaded_at", desc=False)
+            .execute()
+        )
+        for row in (res.data or []):
+            att_id = str(row.get("id") or "")
+            if att_id and att_id not in seen_ids:
+                seen_ids.add(att_id)
+                orig_name = row.get("original_name") or row.get("filename") or att_id
+                size_b = row.get("size_bytes") or 0
+                tid = str(row.get("ticket_id") or clean_ids[0])
+                res_list.append({
+                    "id": att_id,
+                    "ticket_id": tid,
+                    "name": orig_name,
+                    "stored_name": row.get("filename") or f"{att_id}_{orig_name}",
+                    "size": format_size(size_b),
+                    "size_bytes": size_b,
+                    "mime_type": row.get("mime_type") or "application/octet-stream",
+                    "type": row.get("mime_type") or "application/octet-stream",
+                    "storage_path": row.get("storage_path"),
+                    "url": row.get("url") or "",
+                    "download_url": f"/api/v1/tickets/{tid}/attachments/{att_id}/download",
+                    "view_url": f"/api/v1/tickets/{tid}/attachments/{att_id}/view",
+                    "uploaded_by": row.get("uploaded_by") or "",
+                    "created_at": row.get("uploaded_at") or "",
+                })
+    except Exception as exc:
+        print(f"[attachments] ticket_attachments table lookup note: {exc}")
+
+    # 2. Query persistent attachments stored in Supabase comments fallback
+    for r in _fetch_persisted_db_attachments(clean_ids):
         att_id = str(r.get("id") or "")
         if att_id and att_id not in seen_ids:
             seen_ids.add(att_id)
             res_list.append(r)
-
-    # 2. Query ticket_attachments schema table in Supabase
-    try:
-        sb = get_supabase_admin_client()
-        for tid in ids:
-            if not tid:
-                continue
-            res = (
-                sb.table("ticket_attachments")
-                .select("*")
-                .eq("ticket_id", tid)
-                .order("created_at", desc=False)
-                .execute()
-            )
-            for row in (res.data or []):
-                att_id = str(row.get("id") or row.get("name") or "")
-                if att_id and att_id not in seen_ids:
-                    seen_ids.add(att_id)
-                    res_list.append(row)
-    except Exception as exc:
-        print(f"[attachments] ticket_attachments table lookup failed for {ticket_ids}: {exc}")
 
     return res_list
 
@@ -507,7 +523,7 @@ async def upload_attachments(
             "url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
             "download_url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download",
             "view_url": f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/view",
-            "uploaded_by": uploader_name or uploader_email,
+            "uploaded_by": uploader_name or uploader_email or "User",
             "uploaded_by_id": str(current_user.get("sub") or ""),
             "created_at": created_at,
         }
@@ -516,7 +532,45 @@ async def upload_attachments(
         index[att_id] = record
         _save_metadata(ticket_id, index)
 
-        # 1. Persist attachment file data & metadata to database for permanence across restarts
+        # 1. Upload file itself to Supabase Storage bucket ticket-attachments
+        storage_path = f"{ticket_id}/{stored_name}"
+        public_url = ""
+        try:
+            sb.storage.from_("ticket-attachments").upload(
+                path=storage_path,
+                file=content,
+                file_options={"content-type": mime_type, "upsert": "true"},
+            )
+            public_url = sb.storage.from_("ticket-attachments").get_public_url(storage_path)
+            record["storage_path"] = storage_path
+            record["url"] = public_url or record["url"]
+        except Exception as storage_exc:
+            print(f"[attachments] Supabase storage upload note for {storage_path}: {storage_exc}")
+            public_url = f"{base}/api/v1/tickets/{ticket_id}/attachments/{att_id}/download"
+            record["storage_path"] = storage_path
+            record["url"] = public_url
+
+        # 2. Store full metadata in ticket_attachments database table
+        try:
+            sb.table("ticket_attachments").upsert(
+                {
+                    "id": att_id,
+                    "ticket_id": ticket_id,
+                    "filename": stored_name,
+                    "original_name": original_name,
+                    "mime_type": mime_type,
+                    "size_bytes": len(content),
+                    "storage_path": storage_path,
+                    "url": public_url or record["url"],
+                    "uploaded_by": uploader_name or uploader_email or "User",
+                    "uploaded_at": created_at,
+                }
+            ).execute()
+            record["metadata_persisted"] = True
+        except Exception as db_exc:
+            print(f"[attachments] ticket_attachments DB upsert note: {db_exc}")
+
+        # 3. Fallback backup into ticket_comments
         try:
             b64_content = base64.b64encode(content).decode("ascii")
             db_payload = {
@@ -535,30 +589,7 @@ async def upload_attachments(
                 "message": msg,
                 "is_internal": True,
             }).execute()
-            record["metadata_persisted"] = True
-        except Exception as db_exc:
-            print(f"[attachments] DB persistence error for {att_id}: {db_exc}")
-            record["metadata_persisted"] = False
-
-        # 2. Also attempt insertion into ticket_attachments schema table
-        try:
-            insert_res = (
-                sb.table("ticket_attachments")
-                .insert(
-                    {
-                        "id": att_id,
-                        "ticket_id": ticket_id,
-                        "name": original_name,
-                        "size": record["size"],
-                        "url": record["url"],
-                        "created_at": created_at,
-                    }
-                )
-                .execute()
-            )
-            if insert_res.data:
-                record["metadata_persisted"] = True
-        except Exception:
+        except Exception as comm_exc:
             pass
 
         results.append(record)
@@ -610,7 +641,41 @@ def _find_file(ticket_id: str, att_id: str, ticket: dict[str, Any] | None = None
                 ):
                     return f
 
-    # If file was not on disk (e.g. after restart), search persistent DB and restore it
+    # If file was not on disk (e.g. after restart), search Supabase ticket_attachments table and restore from Supabase Storage
+    try:
+        sb = get_supabase_admin_client()
+        res = (
+            sb.table("ticket_attachments")
+            .select("*")
+            .in_("ticket_id", cands)
+            .execute()
+        )
+        for row in (res.data or []):
+            row_id = str(row.get("id") or "").lower()
+            orig_name = str(row.get("original_name") or row.get("filename") or "").lower()
+            fname = str(row.get("filename") or "").lower()
+            if (
+                clean_id in (row_id, orig_name, fname)
+                or norm_clean in (row_id, orig_name, fname)
+                or clean_id == orig_name.replace(" ", "_")
+            ):
+                storage_path = row.get("storage_path") or f"{row.get('ticket_id')}/{row.get('filename')}"
+                try:
+                    file_bytes = sb.storage.from_("ticket-attachments").download(storage_path)
+                    if file_bytes:
+                        tid = str(row.get("ticket_id") or cands[0])
+                        target_folder = UPLOAD_BASE_DIR / _validate_ticket_id(tid)
+                        target_folder.mkdir(parents=True, exist_ok=True)
+                        stored_name = row.get("filename") or f"{row.get('id')}_{row.get('original_name', 'file')}"
+                        restored_path = target_folder / _safe_stored_filename(stored_name)
+                        restored_path.write_bytes(file_bytes)
+                        return restored_path
+                except Exception as dl_exc:
+                    print(f"[attachments] storage download attempt note for {storage_path}: {dl_exc}")
+    except Exception as query_exc:
+        print(f"[attachments] ticket_attachments search note: {query_exc}")
+
+    # Fallback: search legacy persistent comments and restore if present
     db_recs = _fetch_persisted_db_attachments(cands)
     for rec in db_recs:
         r_id = str(rec.get("id") or "").lower()
@@ -800,14 +865,19 @@ def delete_attachment(
                     ):
                         f.unlink(missing_ok=True)
 
-    # 2. Delete from database (Supabase)
+    # 2. Delete from database (Supabase) and Supabase Storage
     for cid in cands:
         try:
             sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("id", att_id).execute()
             for name in deleted_names:
-                sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("name", name).execute()
+                sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("original_name", name).execute()
+                sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("filename", name).execute()
         except Exception as e:
             print(f"[attachments] DB delete error ticket_attachments: {e}")
+        try:
+            sb.storage.from_("ticket-attachments").remove([f"{cid}/{att_id}"])
+        except Exception:
+            pass
 
     try:
         sb.table("ticket_comments").delete().eq("id", f"attmeta-{att_id}").execute()
