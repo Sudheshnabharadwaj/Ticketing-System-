@@ -189,11 +189,12 @@ export const AddUserPage: React.FC = () => {
         sendEmailInvite: false // Direct addition, no invitation step
       });
 
+      const BASE_URL = 'https://sudheshnabharadwaj.github.io/Ticketing-System-';
       const targetLoginUrl = formData.role === 'Team Lead' 
-        ? 'http://localhost:4174/login' 
+        ? `${BASE_URL}/teamlead/index.html#/login` 
         : formData.role === 'Admin'
-        ? 'http://localhost:3000/login'
-        : 'http://localhost:4173/signin';
+        ? `${BASE_URL}/admin/index.html#/login`
+        : `${BASE_URL}/employee/index.html#/signin`;
 
       setCreatedUserSummary({
         employeeId: cleanEmpId,

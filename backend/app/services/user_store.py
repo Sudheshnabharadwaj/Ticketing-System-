@@ -404,3 +404,26 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
             print(f"[user_store] Supabase upsert note: {exc}")
 
     return user_data
+
+
+def delete_user_from_store(user_id_or_email: str) -> None:
+    """Remove user from memory/disk store and Supabase."""
+    _load_persisted()
+    clean = str(user_id_or_email or "").strip().lower()
+    if not clean:
+        return
+    with _STORE_LOCK:
+        matched_email = None
+        for k, v in list(_LOCAL_USERS_MAP.items()):
+            if k == clean or k == f"id:{clean}" or str(v.get("id") or "").lower() == clean or str(v.get("email") or "").lower() == clean:
+                matched_email = str(v.get("email") or "").lower()
+                break
+        if matched_email:
+            _LOCAL_USERS_MAP.pop(matched_email, None)
+            for k in list(_LOCAL_USERS_MAP.keys()):
+                if k.startswith("id:") and str(_LOCAL_USERS_MAP[k].get("email") or "").lower() == matched_email:
+                    _LOCAL_USERS_MAP.pop(k, None)
+        _LOCAL_USERS_MAP.pop(clean, None)
+        _LOCAL_USERS_MAP.pop(f"id:{clean}", None)
+        _save_persisted()
+

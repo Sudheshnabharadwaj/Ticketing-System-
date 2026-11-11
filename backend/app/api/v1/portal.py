@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user, require_role
 from app.auth.passwords import hash_password
 from app.db.supabase import get_supabase_admin_client
-from app.services.user_store import find_user_by_email, save_user
+from app.services.user_store import find_user_by_email, save_user, delete_user_from_store
 from app.services.access import (
     ROLE_ADMIN,
     ROLE_TEAMLEAD,
@@ -530,11 +530,14 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
     user_res = sb.table("users").select("*").eq("id", clean_id).limit(1).execute()
     user_row = (user_res.data or [])[0] if user_res.data else None
     if not user_row:
-        res_alt = sb.table("users").select("*").or_(f"email.eq.{clean_id},employee_id.eq.{clean_id}").limit(1).execute()
-        user_row = (res_alt.data or [])[0] if res_alt.data else None
+        try:
+            res_alt = sb.table("users").select("*").eq("email", clean_id).limit(1).execute()
+            user_row = (res_alt.data or [])[0] if res_alt.data else None
+        except Exception:
+            pass
 
-    user_email = (user_row.get("email") if user_row else "").strip().lower()
-    canonical_id = str(user_row.get("id") or clean_id).strip()
+    user_email = (user_row.get("email") if isinstance(user_row, dict) else "").strip().lower()
+    canonical_id = str((user_row.get("id") if isinstance(user_row, dict) else None) or clean_id).strip()
 
     # 2. Safely handle ticket_comments to satisfy FK constraints without losing audit history/messages
     fallback_uid = actor_id if (actor_id and actor_id != canonical_id) else "usr-admin-1791538577749"
@@ -589,6 +592,9 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
             raise exc
 
     # 8. Invalidate all caches so user disappears immediately from every dashboard
+    delete_user_from_store(canonical_id)
+    if user_email:
+        delete_user_from_store(user_email)
     invalidate_user_cache(canonical_id, user_email)
     invalidate_all_users_cache()
     invalidate_team_cache()
