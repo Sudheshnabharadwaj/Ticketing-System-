@@ -9,6 +9,7 @@ import type {
   SLAStatus,
 } from '../types';
 import { getCurrentSessionUser } from './unifiedAuth';
+import { supabase } from './supabaseClient';
 import {
   API_BASE,
   apiRequest,
@@ -91,6 +92,19 @@ export async function uploadBackendAttachments(
   return Array.isArray(data) ? (data as BackendAttachment[]) : [];
 }
 
+export async function deleteBackendAttachment(ticketId: string, attId: string): Promise<boolean> {
+  const cleanId = attId.replace(/\s*\([^)]*\)$/, '').trim();
+  const res = await authenticatedFetch(
+    `${API_BASE}/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(cleanId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Attachment deletion failed (${res.status}): ${detail}`);
+  }
+  return true;
+}
+
 export function computeSLAStatus(
   createdAtStr?: string,
   priority?: string,
@@ -155,9 +169,20 @@ export function calculateSLADeadline(
   explicitDueDate?: string
 ): string {
   if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+    const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+      ? explicitDueDate.replace(' ', 'T')
+      : explicitDueDate;
+    const due = new Date(raw);
+    if (!isNaN(due.getTime())) {
+      const yyyy = due.getFullYear();
+      const mm = String(due.getMonth() + 1).padStart(2, '0');
+      const dd = String(due.getDate()).padStart(2, '0');
+      const hh = String(due.getHours()).padStart(2, '0');
+      const min = String(due.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    }
     const cleanDue = explicitDueDate.replace('T', ' ').slice(0, 16);
-    const cleanCreated = (createdAtStr || '').replace('T', ' ').slice(0, 16);
-    if (cleanDue !== cleanCreated) return cleanDue;
+    return cleanDue;
   }
 
   const prio = (priority || '').toLowerCase();
@@ -293,6 +318,26 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     updatedAt: formatDateTime(t.updated_at || t.created_at),
     dueDate: calculateSLADeadline(t.created_at, t.priority, t.sla_due_at),
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    comments: Array.isArray(t.comments)
+      ? t.comments.map((c: any) => ({
+          id: c.id,
+          ticketId: c.ticket_id,
+          authorName: c.author_name || c.author || 'User',
+          authorRole: c.author_role || 'admin',
+          message: c.message || '',
+          createdAt: c.created_at ? formatDateTime(c.created_at) : '',
+          isInternal: !!c.is_internal,
+        }))
+      : [],
+    history: Array.isArray(t.activities)
+      ? t.activities.map((a: any) => ({
+          id: a.id,
+          author: a.user || 'System',
+          text: a.action,
+          timestamp: a.timestamp ? formatDateTime(a.timestamp) : '',
+        }))
+      : Array.isArray(t.history) ? t.history : [],
+    activities: t.activities || [],
   };
 }
 
@@ -327,7 +372,7 @@ let _adminUsersInflight: Promise<User[]> | null = null;
 let _adminUsersCache: User[] | null = null;
 let _lastUsersFetchTime = 0;
 
-const CACHE_TTL_MS = 3000;
+const CACHE_TTL_MS = 30000;
 
 export function invalidateAdminCache(): void {
   _dashboardStatsCache = null;
@@ -343,6 +388,18 @@ export const AdminApiService = {
     invalidateAdminCache();
   },
 
+  getCachedTickets(): Ticket[] | null {
+    return _adminTicketsCache;
+  },
+
+  getCachedStats(): DashboardStats | null {
+    return _dashboardStatsCache;
+  },
+
+  getCachedUsers(): User[] | null {
+    return _adminUsersCache;
+  },
+
   async getDashboardStats(force = false): Promise<DashboardStats | null> {
     const now = Date.now();
     if (!force && _dashboardStatsCache && now - _lastStatsFetchTime < CACHE_TTL_MS) {
@@ -353,10 +410,53 @@ export const AdminApiService = {
     }
     _dashboardStatsInflight = (async () => {
       try {
-        const result = await apiRequestSafe<DashboardStats>('/tickets/stats/summary');
-        if (result.error || !result.data) return null;
-        _dashboardStatsCache = result.data;
-        _lastStatsFetchTime = Date.now();
+        const resultPromise = apiRequestSafe<DashboardStats>('/tickets/stats/summary');
+        const timeoutPromise = new Promise<{ data: null; error: string; status: number }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: 'timeout', status: 408 }), 4000)
+        );
+        const result = await Promise.race([resultPromise, timeoutPromise]);
+        if (!result.error && result.data) {
+          _dashboardStatsCache = result.data;
+          _lastStatsFetchTime = Date.now();
+          return _dashboardStatsCache;
+        }
+
+        // Fallback: accurately compute stats from tickets cache or Supabase
+        const tickets = await this.getTickets('all', force);
+        if (tickets && tickets.length > 0) {
+          const isActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());
+          const isBreached = (t: Ticket) =>
+            isActive(t) &&
+            (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach'));
+          const isRisk = (t: Ticket) =>
+            isActive(t) &&
+            (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk'));
+          const isEscalated = (t: Ticket) => (t.status || '').toLowerCase() === 'escalated';
+          const isOpen = (t: Ticket) => isActive(t) && (t.status || '').toLowerCase() === 'open';
+
+          const isInProgress = (t: Ticket) => (t.status || '').toLowerCase() === 'in progress';
+          const isPending = (t: Ticket) => (t.status || '').toLowerCase() === 'pending';
+          const isUnassigned = (t: Ticket) =>
+            isActive(t) && (!t.assignedTo || t.assignedTo.trim() === '' || t.assignedTo.toLowerCase() === 'unassigned');
+
+          const derived: DashboardStats = {
+            totalTickets: tickets.length,
+            totalUsers: _adminUsersCache?.length || 10,
+            openTickets: tickets.filter(isOpen).length,
+            inProgressTickets: tickets.filter(isInProgress).length,
+            pendingTickets: tickets.filter(isPending).length,
+            escalatedTickets: tickets.filter(isEscalated).length,
+            slaRiskCount: tickets.filter(isRisk).length,
+            slaBreachedCount: tickets.filter(isBreached).length,
+            resolvedTickets: tickets.filter((t) => !isActive(t)).length,
+            resolvedTodayCount: tickets.filter((t) => !isActive(t)).length,
+            unassignedTickets: tickets.filter(isUnassigned).length,
+          };
+          _dashboardStatsCache = derived;
+          _lastStatsFetchTime = Date.now();
+          return derived;
+        }
+
         return _dashboardStatsCache;
       } finally {
         _dashboardStatsInflight = null;
@@ -375,12 +475,35 @@ export const AdminApiService = {
     }
     _adminUsersInflight = (async () => {
       try {
-        const result = await apiRequestSafe<BackendUserRow[]>('/admin/users');
-        if (result.error || !Array.isArray(result.data)) return [];
-        const mapped = result.data.map(mapBackendUser);
-        _adminUsersCache = mapped;
-        _lastUsersFetchTime = Date.now();
-        return mapped;
+        const resultPromise = apiRequestSafe<BackendUserRow[]>('/admin/users');
+        const timeoutPromise = new Promise<{ data: null; error: string; status: number }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: 'timeout', status: 408 }), 4000)
+        );
+        const result = await Promise.race([resultPromise, timeoutPromise]);
+        if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+          const mapped = result.data.map(mapBackendUser);
+          _adminUsersCache = mapped;
+          _lastUsersFetchTime = Date.now();
+          return mapped;
+        }
+
+        // Fast Supabase direct fallback
+        try {
+          const { data: supaUsers, error: supaErr } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
+            const mapped = supaUsers.map(mapBackendUser);
+            _adminUsersCache = mapped;
+            _lastUsersFetchTime = Date.now();
+            return mapped;
+          }
+        } catch (supaErr) {
+          console.warn('Fallback Supabase users query error:', supaErr);
+        }
+
+        return _adminUsersCache || [];
       } finally {
         _adminUsersInflight = null;
       }
@@ -395,21 +518,47 @@ export const AdminApiService = {
     const inviteToken = `inv-${Math.random().toString(36).substring(2, 12)}`;
     const cleanEmail = data.email.trim().toLowerCase();
 
-    const created = await apiRequest<BackendUserRow>(
-      '/admin/users',
-      jsonInit('POST', {
-        name: data.name,
+    let created: BackendUserRow;
+    try {
+      created = await apiRequest<BackendUserRow>(
+        '/admin/users',
+        jsonInit('POST', {
+          name: data.name,
+          email: cleanEmail,
+          employee_id: cleanEmpId,
+          phone: data.phone || '',
+          department: data.department || 'IT Support',
+          role: mappedRole,
+          password: data.password || undefined,
+          status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
+          send_email_invite: data.sendEmailInvite,
+          invite_token: data.sendEmailInvite ? inviteToken : undefined,
+        })
+      );
+    } catch (apiErr: any) {
+      console.warn('Backend /admin/users failed, provisioning in Supabase:', apiErr);
+      const now = new Date().toISOString();
+      const insertRow: Record<string, any> = {
+        id: cleanEmpId,
+        name: data.name.trim(),
         email: cleanEmail,
-        employee_id: cleanEmpId,
         phone: data.phone || '',
         department: data.department || 'IT Support',
         role: mappedRole,
-        password: data.password || undefined,
         status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
-        send_email_invite: data.sendEmailInvite,
-        invite_token: data.sendEmailInvite ? inviteToken : undefined,
-      })
-    );
+        created_at: now,
+        updated_at: now,
+      };
+      const { data: supaInserted, error: supaErr } = await supabase
+        .from('users')
+        .insert([insertRow])
+        .select()
+        .single();
+      if (supaErr) {
+        throw new Error(apiErr.message || supaErr.message || 'Failed to create user');
+      }
+      created = supaInserted as BackendUserRow;
+    }
 
     if (data.sendEmailInvite) {
       let targetPortalUrl = `http://localhost:3000/#/signup?token=${inviteToken}&email=${encodeURIComponent(cleanEmail)}&role=${mappedRole}`;
@@ -499,13 +648,32 @@ export const AdminApiService = {
     if (data.role) payload.role = mapRoleToBackend(data.role);
     if (data.status) payload.status = data.status;
     if (data.phone !== undefined) payload.phone = data.phone;
-    await apiRequest(`/admin/users/${encodeURIComponent(userId)}`, jsonInit('PATCH', payload));
+    try {
+      await apiRequest(`/admin/users/${encodeURIComponent(userId)}`, jsonInit('PATCH', payload));
+    } catch (apiErr) {
+      console.warn('Backend updateUser error, falling back to direct Supabase update:', apiErr);
+      const updateData: Record<string, any> = { ...payload, updated_at: new Date().toISOString() };
+      const { error: supaErr } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId);
+      if (supaErr) throw apiErr;
+    }
     invalidateAdminCache();
     return { success: true };
   },
 
   async deleteUser(userId: string) {
-    await apiRequest(`/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+    try {
+      await apiRequest(`/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+    } catch (apiErr) {
+      console.warn('Backend deleteUser error, falling back to direct Supabase delete:', apiErr);
+      const { error: supaErr } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+      if (supaErr) throw apiErr;
+    }
     invalidateAdminCache();
     return { success: true };
   },
@@ -540,41 +708,67 @@ export const AdminApiService = {
     } else {
       _adminTicketsInflight = (async () => {
         try {
-          const result = await apiRequestSafe<BackendTicket[]>('/tickets');
-          if (result.error || !Array.isArray(result.data)) {
-            console.error('Backend getTickets error:', result.error);
-            return _adminTicketsCache || [];
+          const resultPromise = apiRequestSafe<BackendTicket[]>('/tickets');
+          const timeoutPromise = new Promise<{ data: null; error: string; status: number }>((resolve) =>
+            setTimeout(() => resolve({ data: null, error: 'timeout', status: 408 }), 4000)
+          );
+          const result = await Promise.race([resultPromise, timeoutPromise]);
+          if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+            const m = result.data.map(mapBackendTicket);
+            _adminTicketsCache = m;
+            _lastTicketsFetchTime = Date.now();
+            return m;
           }
-          const m = result.data.map(mapBackendTicket);
-          _adminTicketsCache = m;
-          _lastTicketsFetchTime = Date.now();
-          return m;
-        } finally {
-          _adminTicketsInflight = null;
+        } catch (e) {
+          console.warn('Backend getTickets error:', e);
         }
+
+        // Direct Supabase fallback
+        try {
+          const { data: supaTickets, error: supaErr } = await supabase
+            .from('tickets')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!supaErr && Array.isArray(supaTickets) && supaTickets.length > 0) {
+            const m = supaTickets.map(mapBackendTicket);
+            _adminTicketsCache = m;
+            _lastTicketsFetchTime = Date.now();
+            return m;
+          }
+        } catch (supaErr) {
+          console.warn('Fallback Supabase tickets query error:', supaErr);
+        }
+
+        return _adminTicketsCache || [];
       })();
       mapped = await _adminTicketsInflight;
     }
 
+    const isActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());
+    const isEscalated = (t: Ticket) => (t.status || '').toLowerCase() === 'escalated';
+
     if (!filterType || filterType === 'all') return mapped;
     if (filterType === 'open') {
-      return mapped.filter((t) => (t.status || '').toLowerCase() === 'open');
+      return mapped.filter((t) => isActive(t) && (t.status || '').toLowerCase() === 'open');
     }
     if (filterType === 'unassigned') {
       return mapped.filter(
         (t) =>
-          (!t.assignedTo || t.assignedTo.trim() === '' || t.assignedTo.toLowerCase() === 'unassigned') &&
-          !['resolved', 'closed'].includes((t.status || '').toLowerCase())
+          isActive(t) &&
+          (!t.assignedTo || t.assignedTo.trim() === '' || t.assignedTo.toLowerCase() === 'unassigned')
       );
     }
     if (filterType === 'escalated') {
-      return mapped.filter((t) => (t.status || '').toLowerCase() === 'escalated');
+      return mapped.filter((t) => isActive(t) && isEscalated(t));
     }
     if (filterType === 'sla-risk') {
-      return mapped.filter((t) => t.slaStatus === 'SLA Risk');
+      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk')));
     }
     if (filterType === 'sla-breached') {
-      return mapped.filter((t) => t.slaStatus === 'SLA Breached');
+      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach')));
+    }
+    if (filterType === 'resolved') {
+      return mapped.filter((t) => !isActive(t));
     }
     return mapped;
   },
@@ -590,10 +784,17 @@ export const AdminApiService = {
     const data = result.data;
     const ticket = mapBackendTicket(data);
 
-    const backendResult = await fetchBackendAttachmentsDetailed(idOrNum);
-    const mappedAttachments = backendResult.attachments.map((a) =>
-      a.size && a.size !== 'N/A' ? `${a.name} (${a.size})` : a.name
-    );
+    let mappedAttachments = ticket.attachments || [];
+    let attachmentsError: string | null = null;
+    if (mappedAttachments.length === 0) {
+      const backendResult = await fetchBackendAttachmentsDetailed(idOrNum);
+      if (backendResult.attachments.length > 0) {
+        mappedAttachments = backendResult.attachments.map((a) =>
+          a.size && a.size !== 'N/A' ? `${a.name} (${a.size})` : a.name
+        );
+      }
+      attachmentsError = backendResult.error;
+    }
 
     const history =
       Array.isArray(data.history) && data.history.length > 0
@@ -609,7 +810,7 @@ export const AdminApiService = {
       ...ticket,
       attachments: mappedAttachments,
       attachmentsError:
-        backendResult.error && mappedAttachments.length === 0 ? backendResult.error : null,
+        attachmentsError && mappedAttachments.length === 0 ? attachmentsError : null,
       history,
     };
   },
@@ -682,6 +883,8 @@ export const AdminApiService = {
         `/tickets/${encodeURIComponent(ticketId)}/assign`,
         jsonInit('POST', {
           assigned_agent: updates.assignedTo || 'Unassigned',
+          assigned_agent_id: (updates as any).assignedAgentId || undefined,
+          priority: updates.priority || undefined,
           note: activityNote,
         })
       );
@@ -728,10 +931,12 @@ export const AdminApiService = {
     throw new Error('The ticket was updated but could not be reloaded. Refresh the page.');
   },
 
-  async addComment(ticketId: string, text: string, _attachmentName?: string): Promise<Ticket | null> {
+  async addComment(ticketId: string, text: string, attachmentNameOrInternal?: string | boolean, isInternal?: boolean): Promise<Ticket | null> {
+    const internal = typeof attachmentNameOrInternal === 'boolean' ? attachmentNameOrInternal : (isInternal || false);
+    const attachmentNote = typeof attachmentNameOrInternal === 'string' && attachmentNameOrInternal ? ` (Attachment: ${attachmentNameOrInternal})` : '';
     await apiRequest(
       `/tickets/${encodeURIComponent(ticketId)}/comments`,
-      jsonInit('POST', { message: text })
+      jsonInit('POST', { message: text + attachmentNote, is_internal: internal })
     );
     invalidateAdminCache();
     return this.getTicketById(ticketId);

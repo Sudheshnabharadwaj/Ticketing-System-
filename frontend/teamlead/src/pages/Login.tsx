@@ -41,7 +41,7 @@ export const Login: React.FC = () => {
       const res = await login(email, password);
       setIsLoading(false);
       if (res.success) {
-        navigate('/teamlead/dashboard');
+        navigate('/teamlead/dashboard', { replace: true });
       } else {
         setErrorMsg(res.error || 'Invalid email or password.');
       }

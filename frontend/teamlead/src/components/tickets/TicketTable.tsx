@@ -74,7 +74,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
               <th className="py-3 px-4 w-36 whitespace-nowrap">Assigned To</th>
               <th className="py-3 px-4 w-28 whitespace-nowrap">SLA</th>
               {showActionsColumn && (
-                <th className="py-3 px-4 w-32 text-right whitespace-nowrap">Actions</th>
+                <th className="py-3 px-4 w-44 text-left whitespace-nowrap">Actions</th>
               )}
             </tr>
           </thead>
@@ -86,14 +86,6 @@ export const TicketTable: React.FC<TicketTableProps> = ({
               const isResolvedOrClosed = ticket.status === 'Resolved' || ticket.status === 'Closed';
               const shortSla = formatSLAShort(ticket.slaRemaining);
 
-              const handleWorkOnTicketClick = (e: React.MouseEvent) => {
-                e.stopPropagation();
-                if (!isTeamLeadHandled) {
-                  workOnTicket(ticket.id);
-                  showToast('Ticket added to your Assigned Tickets.');
-                }
-                onSelectTicket(ticket);
-              };
 
               return (
                 <tr
@@ -149,66 +141,45 @@ export const TicketTable: React.FC<TicketTableProps> = ({
 
                   {/* Actions Column */}
                   {showActionsColumn && (
-                    <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                        {/* MY TICKETS TABLE ACTIONS: ONLY View */}
-                        {isMyTable ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectTicket(ticket);
-                            }}
-                            className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>View</span>
-                          </button>
-                        ) : isTeamTable ? (
-                          /* TEAM TICKETS TABLE ACTIONS */
-                          isResolvedOrClosed ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectTicket(ticket);
-                              }}
-                              className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span>View</span>
-                            </button>
-                          ) : isUnassigned ? (
+                    <td className="py-3 px-4 text-left whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-start gap-2 whitespace-nowrap">
+                        {/* Always provide View button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectTicket(ticket);
+                          }}
+                          className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-[#0284C7] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
+                          title="View Ticket Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View</span>
+                        </button>
+
+                        {/* Additional Action Buttons for Authorized Work */}
+                        {isTeamTable && (
+                          isUnassigned ? (
                             <button
                               type="button"
                               onClick={(e) => handleAssignClick(ticket, e)}
                               className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
                               title="Assign ticket to employee"
                             >
-                              <UserCheck className="w-3 h-3" />
+                              <UserCheck className="w-3.5 h-3.5" />
                               <span>Assign</span>
                             </button>
-                          ) : (
+                          ) : ticket.status === 'Resolved' ? null : (
                             <button
                               type="button"
                               onClick={(e) => handleAssignClick(ticket, e)}
                               className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap"
                               title="Reassign ticket to another employee"
                             >
-                              <UserCheck className="w-3 h-3" />
+                              <UserCheck className="w-3.5 h-3.5" />
                               <span>Reassign</span>
                             </button>
                           )
-                        ) : (
-                          /* FALLBACK / ASSIGNED TABLE ACTIONS */
-                          <button
-                            type="button"
-                            onClick={handleWorkOnTicketClick}
-                            className="px-2.5 py-1 text-xs font-semibold text-white bg-[#0284C7] hover:bg-[#0369a1] rounded transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs whitespace-nowrap"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>Work on Ticket</span>
-                          </button>
                         )}
                       </div>
                     </td>

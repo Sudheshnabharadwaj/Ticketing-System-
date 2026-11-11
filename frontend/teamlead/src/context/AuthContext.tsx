@@ -80,6 +80,7 @@ function cacheUser(user: User | null): void {
   try {
     if (user) {
       localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
+      sessionStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
     } else {
       localStorage.removeItem(STORAGE_USER_KEY);
       sessionStorage.removeItem(STORAGE_USER_KEY);
@@ -135,9 +136,13 @@ function restoreSession(): Promise<RestoreResult> {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const role: UserRole = 'teamlead';
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User>(() => readCachedUser() || EMPTY_USER);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!getBackendToken());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const cached = readCachedUser();
+  const hasToken = !!getBackendToken();
+  const hasRefreshToken = typeof window !== 'undefined' && !!(localStorage.getItem('backend_refresh_token') || sessionStorage.getItem('backend_refresh_token'));
+  const hasSession = hasToken || hasRefreshToken;
+  const [currentUser, setCurrentUser] = useState<User>(() => cached || EMPTY_USER);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => hasSession && !!cached?.email);
+  const [isLoading, setIsLoading] = useState<boolean>(() => hasSession && (!cached?.email || !hasToken));
 
   const loadUsers = useCallback(async () => {
     const result = await apiRequestSafe<any[]>('/team/users');
@@ -155,15 +160,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await restoreSession();
       if (cancelled) return;
       if (!result.sessionReady) {
-        clearBackendSession();
-        cacheUser(null);
-        setCurrentUser(EMPTY_USER);
-        setIsAuthenticated(false);
+        if (!cached?.email) {
+          clearBackendSession();
+          cacheUser(null);
+          setCurrentUser(EMPTY_USER);
+          setIsAuthenticated(false);
+        } else {
+          setCurrentUser(cached);
+          setIsAuthenticated(true);
+        }
         setIsLoading(false);
         return;
       }
       if (result.error || !result.profile) {
-        if (result.status === 401 || result.status === 403) {
+        if (cached?.email) {
+          setCurrentUser(cached);
+          setIsAuthenticated(true);
+        } else if (result.status === 401 || result.status === 403) {
           clearBackendSession();
           cacheUser(null);
           setCurrentUser(EMPTY_USER);
@@ -221,12 +234,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(EMPTY_USER);
     setUsers([]);
     localStorage.removeItem('itsm_teamlead_auth');
+    sessionStorage.removeItem('itsm_teamlead_auth');
     cacheUser(null);
     localStorage.setItem('platform_explicitly_logged_out', 'true');
+    sessionStorage.setItem('platform_explicitly_logged_out', 'true');
     clearBackendSession();
     if (typeof window !== 'undefined') {
-      // HashRouter: navigate with the hash, not a hash built from window.location.pathname.
-      window.location.hash = '#/login';
+      window.dispatchEvent(new CustomEvent('platform-logout'));
     }
   }, []);
 

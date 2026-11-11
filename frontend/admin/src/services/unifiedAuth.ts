@@ -1,4 +1,4 @@
-import { clearBackendSession, loginBackend, registerBackend } from './backendAuth';
+import { clearBackendSession, getBackendToken, loginBackend, registerBackend } from './backendAuth';
 
 export type UserRoleType = 'admin' | 'teamlead' | 'employee';
 
@@ -18,7 +18,88 @@ export interface AppUser {
 const STORAGE_KEY_USERS = 'platform_all_users';
 const STORAGE_KEY_SESSION = 'platform_current_user';
 
-export const INITIAL_PLATFORM_USERS: AppUser[] = [];
+export const INITIAL_PLATFORM_USERS: AppUser[] = [
+  {
+    id: 'usr-admin-1791538577749',
+    name: 'shruthi',
+    email: 's.ronda@oklut.com',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'usr-admin-1791222872974',
+    name: 'Sudheshna Bharadwaj',
+    email: 'sudheshna@gmail.com',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'ADM001',
+    name: 'System Admin',
+    email: 'admin@platform.local',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL003',
+    name: 'Kotesh',
+    email: 'k.ananthu@oklut.com',
+    role: 'teamlead',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL015',
+    name: 'Manikanta',
+    email: 'm.nisankam@oklut.com',
+    role: 'teamlead',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL013',
+    name: 'soniya',
+    email: 'soni@gmail.com',
+    role: 'teamlead',
+    department: 'HR',
+    status: 'Active',
+  },
+  {
+    id: 'OKL002',
+    name: 'uday',
+    email: 'u.vadlamudi@oklut.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL001',
+    name: 'aditya',
+    email: 'a.reddy@oklut.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL016',
+    name: 'sudha',
+    email: 'sudha@gmail.com',
+    role: 'employee',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
+    id: 'OKL014',
+    name: 'Ramya',
+    email: 'ramya@gmail.com',
+    role: 'employee',
+    department: 'HR',
+    status: 'Active',
+  },
+];
 
 // Legacy dummy accounts to clean out from browser localStorage
 const DUMMY_EMAILS = [
@@ -42,12 +123,21 @@ const DUMMY_IDS = [
   'usr-emp-3'
 ];
 
-// Automatically purge persistent session from localStorage on load
+// Automatically purge legacy dummy data from localStorage on load
 if (typeof window !== 'undefined') {
   try {
-    localStorage.removeItem(STORAGE_KEY_SESSION);
-    localStorage.removeItem('itsm_teamlead_auth');
-    localStorage.removeItem('auth_token');
+    const sessionRaw = sessionStorage.getItem(STORAGE_KEY_SESSION) || localStorage.getItem(STORAGE_KEY_SESSION);
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw);
+      if (parsed && (DUMMY_EMAILS.includes((parsed.email || '').toLowerCase()) || DUMMY_IDS.includes(parsed.id))) {
+        localStorage.removeItem(STORAGE_KEY_SESSION);
+        sessionStorage.removeItem(STORAGE_KEY_SESSION);
+        localStorage.removeItem('itsm_teamlead_auth');
+        sessionStorage.removeItem('itsm_teamlead_auth');
+        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
+      }
+    }
 
     const usersRaw = localStorage.getItem(STORAGE_KEY_USERS);
     if (usersRaw) {
@@ -90,19 +180,42 @@ export function savePlatformUser(user: AppUser): void {
 export function getCurrentSessionUser(): AppUser | null {
   if (typeof window === 'undefined') return null;
   try {
-    // Session is strictly tab/browser session-scoped
-    const raw = sessionStorage.getItem(STORAGE_KEY_SESSION);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && parsed.email && parsed.role) {
-        if (DUMMY_EMAILS.includes(parsed.email.toLowerCase()) || DUMMY_IDS.includes(parsed.id)) {
-          sessionStorage.removeItem(STORAGE_KEY_SESSION);
-          return null;
-        }
-        return parsed;
-      }
+    // If explicitly logged out, never synthesize or return a user
+    const explicitlyLoggedOut =
+      sessionStorage.getItem('platform_explicitly_logged_out') === 'true' ||
+      localStorage.getItem('platform_explicitly_logged_out') === 'true';
+    if (explicitlyLoggedOut) {
+      return null;
     }
-    return null;
+
+    const raw = sessionStorage.getItem(STORAGE_KEY_SESSION) || localStorage.getItem(STORAGE_KEY_SESSION);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.email || !parsed.role) {
+      return null;
+    }
+
+    if (DUMMY_EMAILS.includes(parsed.email.toLowerCase()) || DUMMY_IDS.includes(parsed.id)) {
+      sessionStorage.removeItem(STORAGE_KEY_SESSION);
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+      return null;
+    }
+
+    // Verify token presence; never wipe session if user has valid authenticated credentials
+    const token = getBackendToken();
+    const refreshToken =
+      localStorage.getItem('backend_refresh_token') || sessionStorage.getItem('backend_refresh_token');
+    const storedToken =
+      localStorage.getItem('backend_auth_token') || sessionStorage.getItem('backend_auth_token');
+
+    if (!token && !refreshToken && !storedToken && !parsed.email) {
+      sessionStorage.removeItem(STORAGE_KEY_SESSION);
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+      return null;
+    }
+
+    return parsed;
   } catch {
     return null;
   }
@@ -111,8 +224,9 @@ export function getCurrentSessionUser(): AppUser | null {
 export function setSessionUser(user: AppUser | null): void {
   if (user) {
     sessionStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(user));
-    localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(user));
     sessionStorage.removeItem('platform_explicitly_logged_out');
+    localStorage.removeItem('platform_explicitly_logged_out');
     // Clear stale cached admin profile so this user's name and role appear correctly
     sessionStorage.removeItem('admin_profile_data');
     sessionStorage.removeItem('admin_profile_avatar');
@@ -120,21 +234,36 @@ export function setSessionUser(user: AppUser | null): void {
     localStorage.removeItem('admin_profile_avatar');
     if (user.role === 'teamlead') {
       sessionStorage.setItem('itsm_teamlead_auth', 'true');
+      localStorage.setItem('itsm_teamlead_auth', 'true');
     } else {
       sessionStorage.removeItem('itsm_teamlead_auth');
+      localStorage.removeItem('itsm_teamlead_auth');
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('platform-auth-changed', { detail: { user } }));
     }
   } else {
     sessionStorage.removeItem(STORAGE_KEY_SESSION);
     sessionStorage.removeItem('itsm_teamlead_auth');
     sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('backend_auth_token');
+    sessionStorage.removeItem('backend_refresh_token');
+    sessionStorage.removeItem('backend_token_expires_at');
     sessionStorage.removeItem('admin_profile_data');
     sessionStorage.removeItem('admin_profile_avatar');
     localStorage.removeItem(STORAGE_KEY_SESSION);
     localStorage.removeItem('itsm_teamlead_auth');
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('backend_auth_token');
+    localStorage.removeItem('backend_refresh_token');
+    localStorage.removeItem('backend_token_expires_at');
     localStorage.removeItem('admin_profile_data');
     localStorage.removeItem('admin_profile_avatar');
     sessionStorage.setItem('platform_explicitly_logged_out', 'true');
+    localStorage.setItem('platform_explicitly_logged_out', 'true');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('platform-auth-changed', { detail: { user: null } }));
+    }
   }
 }
 
@@ -168,6 +297,9 @@ export async function loginUser(email: string, password?: string): Promise<{ suc
 export function logoutUser(): void {
   setSessionUser(null);
   clearBackendSession();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('platform-logout'));
+  }
 }
 
 export interface RegisterUserData {

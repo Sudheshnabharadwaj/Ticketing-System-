@@ -52,10 +52,22 @@ export const EmailService = {
       };
     }
 
-    // Dynamic Team Lead for custom or unassigned department
+    const allLeads = OrganizationService.getAllTeamLeads();
+    if (allLeads && allLeads.length > 0) {
+      const fallback = allLeads[0];
+      return {
+        id: fallback.id,
+        name: fallback.name,
+        email: fallback.email,
+        department: fallback.departmentName,
+        role: fallback.role,
+        categories: [fallback.departmentName],
+      };
+    }
+
     const cleanName = (department || '').trim() || 'General';
     return {
-      id: `tl-custom-${cleanName.toLowerCase().replace(/\s+/g, '-')}`,
+      id: '',
       name: `${cleanName} Team Lead`,
       email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}.lead@company.com`,
       department: cleanName,

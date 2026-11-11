@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom
 import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
 import { AssignTicketModal } from '../../components/tickets/AssignTicketModal';
+import { TicketDetailsModal } from '../../components/tickets/TicketDetailsModal';
 import { SearchBar } from '../../components/common/SearchBar';
 import { TicketFilters } from '../../components/tickets/TicketFilters';
 import { Pagination } from '../../components/common/Pagination';
@@ -59,7 +60,12 @@ export const AssignedTickets: React.FC = () => {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, priorityFilter, categoryFilter, agentFilter, slaFilter, activeTab]);
+
   const [assignModalTicket, setAssignModalTicket] = useState<Ticket | null>(null);
+  const [viewModalTicket, setViewModalTicket] = useState<Ticket | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,14 +76,19 @@ export const AssignedTickets: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Filter ONLY tickets that are personally assigned to Team Lead
-  const assignedTickets = (tickets || []).filter(
-    (t) =>
+  // Filter ONLY tickets that are personally assigned to this Team Lead
+  // (Requirement 6: Separate creator/requester info from assigned Team Lead.
+  // Tickets created by a Team Lead must not appear here unless specifically assigned to them.)
+  const assignedTickets = (tickets || []).filter((t) => {
+    const agent = String(t.assignedAgent || '').trim().toLowerCase();
+    if (!agent || agent === 'unassigned' || agent === 'none' || agent === 'null') return false;
+    const isAssigned =
+      (t.assignedAgentId && user?.id && String(t.assignedAgentId) === String(user.id)) ||
       (t.assignedAgent && user?.name && t.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
-      (t.assignedAgentId && user?.id && t.assignedAgentId === user.id) ||
-      t.handledBy === 'teamlead' ||
-      t.assignedToType === 'teamlead'
-  );
+      ((t as any).assignedAgentEmail && user?.email && String((t as any).assignedAgentEmail).toLowerCase() === user.email.toLowerCase()) ||
+      (t as any).is_assigned_to_me === true;
+    return Boolean(isAssigned);
+  });
 
   const agentsList = (users || []).map((u) => u.name);
 
@@ -86,16 +97,29 @@ export const AssignedTickets: React.FC = () => {
     if (activeTab !== 'All' && ticket.status !== activeTab) return false;
     if (statusFilter !== 'All' && ticket.status !== statusFilter) return false;
     if (priorityFilter !== 'All' && ticket.priority !== priorityFilter) return false;
-    if (categoryFilter !== 'All' && ticket.category !== categoryFilter) return false;
+    if (categoryFilter !== 'All') {
+      if (categoryFilter === 'Other') {
+        const standardCats = ['Hardware', 'Software', 'Network', 'Access Issue', 'Email', 'Application'];
+        if (standardCats.includes(ticket.category)) return false;
+      } else if (ticket.category !== categoryFilter) {
+        return false;
+      }
+    }
     if (agentFilter !== 'All' && ticket.assignedAgent !== agentFilter) return false;
     if (slaFilter !== 'All' && ticket.slaStatus !== slaFilter) return false;
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchId = (ticket.id || '').toLowerCase().includes(q);
-      const matchSubject = (ticket.subject || '').toLowerCase().includes(q);
-      const matchDept = (ticket.department || '').toLowerCase().includes(q);
-      if (!matchId && !matchSubject && !matchDept) return false;
+      const q = searchQuery.toLowerCase().trim();
+      const matchId = String(ticket.id || '').toLowerCase().includes(q);
+      const matchNumber = String((ticket as any).ticketNumber || (ticket as any).ticket_number || '').toLowerCase().includes(q);
+      const matchSubject = String(ticket.subject || '').toLowerCase().includes(q);
+      const matchDesc = String(ticket.description || '').toLowerCase().includes(q);
+      const matchDept = String(ticket.department || '').toLowerCase().includes(q);
+      const matchCat = String(ticket.category || '').toLowerCase().includes(q);
+      const matchEmployee = String(ticket.employee || '').toLowerCase().includes(q);
+      const matchAgent = String(ticket.assignedAgent || '').toLowerCase().includes(q);
+      const matchPriority = String(ticket.priority || '').toLowerCase().includes(q);
+      if (!matchId && !matchNumber && !matchSubject && !matchDesc && !matchDept && !matchCat && !matchEmployee && !matchAgent && !matchPriority) return false;
     }
 
     return true;
@@ -247,7 +271,7 @@ export const AssignedTickets: React.FC = () => {
                     return (
                       <tr
                         key={ticket.id}
-                        onClick={() => navigate(`/teamlead/assigned-tickets/${ticket.id}`)}
+                        onClick={() => navigate(`/teamlead/assigned-tickets/${ticket.id}?mode=work`)}
                         className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
                       >
                         {/* Ticket ID */}
@@ -292,13 +316,14 @@ export const AssignedTickets: React.FC = () => {
 
                         {/* Actions */}
                         <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => navigate(`/teamlead/assigned-tickets/${ticket.id}`)}
+                              onClick={() => navigate(`/teamlead/assigned-tickets/${ticket.id}?mode=work`)}
                               className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0284C7] hover:bg-[#0369a1] rounded-lg transition-colors cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs whitespace-nowrap"
+                              title="Work on Ticket"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Work on Ticket</span>
                             </button>
                           </div>
@@ -328,6 +353,19 @@ export const AssignedTickets: React.FC = () => {
           isOpen={!!assignModalTicket}
           onClose={() => setAssignModalTicket(null)}
           onSuccessToast={(msg) => showToast(msg)}
+        />
+      )}
+
+      {/* View Modal (Read-Only) */}
+      {viewModalTicket && (
+        <TicketDetailsModal
+          ticket={viewModalTicket}
+          onClose={() => setViewModalTicket(null)}
+          isReadOnly={true}
+          onWorkOnTicket={(t) => {
+            setViewModalTicket(null);
+            navigate(`/teamlead/assigned-tickets/${t.id}?mode=work`);
+          }}
         />
       )}
     </div>

@@ -21,9 +21,10 @@ import { useNavigate } from 'react-router-dom';
 
 export const UserManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedUsers() || AdminApiService.getCachedUsers()!.length === 0);
+  const [customEditDepartment, setCustomEditDepartment] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
@@ -51,10 +52,12 @@ export const UserManagementPage: React.FC = () => {
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedUsers() || AdminApiService.getCachedUsers()!.length === 0) {
+      setIsLoading(true);
+    }
     try {
-      const userData = await AdminApiService.getUsers();
+      const userData = await AdminApiService.getUsers(force);
       setUsers(userData);
       setFilteredUsers(userData);
     } catch (e) {
@@ -66,6 +69,13 @@ export const UserManagementPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const handleUpdate = () => {
+      loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('ticket-updated', handleUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -89,24 +99,30 @@ export const UserManagementPage: React.FC = () => {
 
   const handleOpenEdit = (user: User) => {
     setEditingUser(user);
+    const standardDepts = ['IT Support', 'HR', 'Finance', 'Development', 'QA Team'];
+    const isStandard = standardDepts.includes(user.department);
     setEditFormData({
       name: user.name,
       email: user.email,
-      department: user.department,
+      department: (isStandard ? user.department : 'Other') as UserDepartment,
       role: user.role,
       status: user.status,
     });
+    setCustomEditDepartment(isStandard ? '' : user.department);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
     setIsSavingEdit(true);
+    const finalDepartment = editFormData.department === 'Other'
+      ? (customEditDepartment.trim() || 'Other')
+      : editFormData.department;
     try {
       await AdminApiService.updateUser(editingUser.id, {
         name: editFormData.name,
         email: editFormData.email,
-        department: editFormData.department,
+        department: finalDepartment,
         role: editFormData.role,
         status: editFormData.status,
       });
@@ -118,7 +134,7 @@ export const UserManagementPage: React.FC = () => {
                 ...u,
                 name: editFormData.name,
                 email: editFormData.email,
-                department: editFormData.department,
+                department: finalDepartment as UserDepartment,
                 role: editFormData.role,
                 status: editFormData.status,
               }
@@ -408,13 +424,25 @@ export const UserManagementPage: React.FC = () => {
                 <option value="IT Support">IT Support</option>
                 <option value="HR">HR</option>
                 <option value="Finance">Finance</option>
-                <option value="Operations">Operations</option>
-                <option value="Facilities">Facilities</option>
-                <option value="Sales">Sales</option>
-                <option value="Marketing">Marketing</option>
-                <option value="Legal">Legal</option>
+                <option value="Development">Development</option>
+                <option value="QA Team">QA Team</option>
+                <option value="Other">Other</option>
               </select>
             </div>
+
+            {editFormData.department === 'Other' && (
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Specify Department Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={customEditDepartment}
+                  onChange={(e) => setCustomEditDepartment(e.target.value)}
+                  placeholder="Enter custom department"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#0284C7]"
+                />
+              </div>
+            )}
 
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">Role</label>

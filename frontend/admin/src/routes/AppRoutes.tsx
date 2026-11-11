@@ -28,6 +28,7 @@ import { SecuritySettingsPage } from '../pages/administration/SecuritySettingsPa
 import { AdminSettingsPage } from '../pages/administration/AdminSettingsPage';
 import { ProfilePage as AdminProfilePage } from '../pages/ProfilePage';
 import { MyTicketsPage as AdminMyTicketsPage } from '../pages/workspace/MyTicketsPage';
+import { AdminCreateTicketPage } from '../pages/workspace/AdminCreateTicketPage';
 
 // Employee Layout & Pages (from sibling employee project)
 import { EmployeeLayout } from '../../../employee/src/components/layout/EmployeeLayout';
@@ -54,6 +55,7 @@ import { Escalations } from '../../../teamlead/src/pages/teamlead/Escalations';
 import { Reports } from '../../../teamlead/src/pages/teamlead/Reports';
 import { KnowledgeBase as TeamLeadKB } from '../../../teamlead/src/pages/teamlead/KnowledgeBase';
 import { TeamLeadProfile } from '../../../teamlead/src/pages/teamlead/TeamLeadProfile';
+import { CreateTicketPage as TeamLeadCreateTicket } from '../../../teamlead/src/pages/teamlead/CreateTicketPage';
 
 import { getCurrentSessionUser } from '../services/unifiedAuth';
 
@@ -143,6 +145,7 @@ export const AppRoutes: React.FC = () => {
       >
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
+        <Route path="create-ticket" element={<AdminCreateTicketPage />} />
         <Route path="profile" element={<AdminProfilePage />} />
         <Route path="add-user" element={<AddUserPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
@@ -150,6 +153,7 @@ export const AppRoutes: React.FC = () => {
         {/* Workspace Sub-routes */}
         <Route path="workspace/all" element={<AllTicketsPage />} />
         <Route path="workspace/my-tickets" element={<AdminMyTicketsPage />} />
+        <Route path="workspace/create-ticket" element={<AdminCreateTicketPage />} />
         <Route path="workspace/tickets/:id" element={<AdminTicketDetailsPage />} />
         <Route path="workspace/management" element={<TicketManagementPage />} />
         <Route path="workspace/escalated" element={<EscalatedTicketsPage />} />
@@ -158,6 +162,8 @@ export const AppRoutes: React.FC = () => {
 
         {/* Administration Sub-routes */}
         <Route path="administration/users" element={<UserManagementPage />} />
+        <Route path="users" element={<Navigate to="/admin/administration/users" replace />} />
+        <Route path="user-management" element={<Navigate to="/admin/administration/users" replace />} />
         <Route path="administration/roles" element={<RolesPermissionsPage />} />
         <Route path="administration/ticket-config" element={<TicketConfigPage />} />
         <Route path="administration/workflows" element={<WorkflowSettingsPage />} />
@@ -218,6 +224,7 @@ export const AppRoutes: React.FC = () => {
       >
         <Route index element={<Navigate to="/teamlead/dashboard" replace />} />
         <Route path="dashboard" element={<TeamLeadDashboard />} />
+        <Route path="create-ticket" element={<TeamLeadCreateTicket />} />
         <Route path="team-tickets" element={<TeamTickets />} />
         <Route path="assigned-tickets" element={<TeamLeadAssignedTickets />} />
         <Route path="assigned-tickets/:ticketId" element={<TeamLeadTicketDetails />} />

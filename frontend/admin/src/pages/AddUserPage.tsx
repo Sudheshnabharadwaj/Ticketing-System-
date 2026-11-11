@@ -8,6 +8,8 @@ import { Badge } from '../components/ui/Badge';
 import { PasswordStrengthValidator, validatePassword } from '../components/ui/PasswordStrengthValidator';
 import type { UserRole, UserDepartment } from '../types';
 import { AdminApiService } from '../services/api';
+import { supabase } from '../services/supabaseClient';
+import { OrganizationService } from '../services/organizationService';
 import { apiRequestSafe } from '../services/backendAuth';
 import {
   UserPlus,
@@ -43,7 +45,14 @@ export const AddUserPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [copiedCreds, setCopiedCreds] = useState(false);
-  const [teamLeadsFromDb, setTeamLeadsFromDb] = useState<{ id: string; name: string; department: string; email: string }[]>([]);
+  const [teamLeadsFromDb, setTeamLeadsFromDb] = useState<{ id: string; name: string; department: string; email: string }[]>(() =>
+    OrganizationService.getAllTeamLeads().map((tl) => ({
+      id: tl.id || tl.employeeId,
+      name: tl.name,
+      department: tl.departmentName || 'IT Support',
+      email: tl.email || '',
+    }))
+  );
 
   const [createdUserSummary, setCreatedUserSummary] = useState<{
     employeeId: string;
@@ -55,25 +64,49 @@ export const AddUserPage: React.FC = () => {
     loginUrl: string;
   } | null>(null);
 
-  // Fetch actual Team Leads from the authenticated backend directory
+  // Fetch actual Team Leads with instant Supabase fallback
   useEffect(() => {
+    let cancelled = false;
     const fetchTeamLeads = async () => {
-      const result = await apiRequestSafe<any[]>('/users/directory?role=teamlead');
-      if (result.error || !Array.isArray(result.data)) {
-        console.warn('Error fetching team leads:', result.error);
-        return;
+      // 1. Direct Supabase query (instant)
+      try {
+        const { data: supaLeads, error: supaErr } = await supabase
+          .from('users')
+          .select('id, name, email, department, role')
+          .ilike('role', '%lead%');
+        if (!cancelled && !supaErr && Array.isArray(supaLeads) && supaLeads.length > 0) {
+          setTeamLeadsFromDb(
+            supaLeads.map((u) => ({
+              id: u.id,
+              name: u.name || (u.email || '').split('@')[0],
+              department: u.department || 'IT Support',
+              email: u.email || '',
+            }))
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn('Supabase leads query fallback warning:', err);
       }
-      setTeamLeadsFromDb(
-        result.data.map((u) => ({
-          id: u.id,
-          name: u.name || (u.email || '').split('@')[0],
-          department: u.department || 'IT Support',
-          email: u.email || '',
-        }))
-      );
+
+      // 2. Backend directory endpoint
+      const result = await apiRequestSafe<any[]>('/users/directory?role=teamlead');
+      if (!cancelled && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+        setTeamLeadsFromDb(
+          result.data.map((u) => ({
+            id: u.id,
+            name: u.name || (u.email || '').split('@')[0],
+            department: u.department || 'IT Support',
+            email: u.email || '',
+          }))
+        );
+      }
     };
 
-    fetchTeamLeads();
+    void fetchTeamLeads();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const validate = () => {
@@ -382,12 +415,9 @@ export const AddUserPage: React.FC = () => {
                   { value: 'IT Support', label: 'IT Support' },
                   { value: 'HR', label: 'HR' },
                   { value: 'Finance', label: 'Finance' },
-                  { value: 'Operations', label: 'Operations' },
-                  { value: 'Sales', label: 'Sales' },
-                  { value: 'Marketing', label: 'Marketing' },
-                  { value: 'Legal', label: 'Legal' },
-                  { value: 'Facilities', label: 'Facilities' },
-                  { value: 'Others', label: 'Others (Custom)' },
+                  { value: 'Development', label: 'Development' },
+                  { value: 'QA Team', label: 'QA Team' },
+                  { value: 'Others', label: 'Other' },
                 ]}
               />
 
@@ -414,9 +444,8 @@ export const AddUserPage: React.FC = () => {
                 error={errors.role}
                 options={[
                   { value: '', label: 'Select Role', disabled: true, hidden: true },
-                  { value: 'Employee', label: 'Employee (Submit & Track Tickets)' },
-                  { value: 'Team Lead', label: 'Team Lead (Manage Team & Escalate)' },
-                  { value: 'Admin', label: 'System Admin (Full Access & Oversight)' },
+                  { value: 'Employee', label: 'Employee' },
+                  { value: 'Team Lead', label: 'Team Lead' },
                 ]}
               />
 
@@ -473,19 +502,6 @@ export const AddUserPage: React.FC = () => {
                 />
               </div>
 
-              {/* Additional User Details */}
-              <div className="sm:col-span-2">
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  User Notes / Access Details (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.userDetails}
-                  onChange={(e) => setFormData({ ...formData, userDetails: e.target.value })}
-                  placeholder="Additional notes, office location, or special workspace instructions..."
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20 transition-all"
-                />
-              </div>
             </div>
 
             {/* Action Buttons: Cancel and Add User */}
@@ -507,7 +523,7 @@ export const AddUserPage: React.FC = () => {
                   disabled={isSubmitting}
                   icon={<UserPlus className="w-4 h-4" />}
                 >
-                  {isSubmitting ? 'Creating User...' : 'Add User'}
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </Button>
               </div>
             </div>

@@ -36,7 +36,7 @@ async def test_complete_workflow():
     sb = get_supabase_admin_client()
 
     # 1. Fetch real users from Supabase to verify test subjects
-    res = sb.table("users").select("*").in_("id", ["OKL003", "OKL004", "OKL010", "OKL020"]).execute()
+    res = sb.table("users").select("*").in_("id", ["OKL003", "OKL002", "OKL010", "OKL020"]).execute()
     users_by_id = {u["id"]: u for u in (res.data or [])}
     print("Fetched test users from DB:", {k: v["name"] for k, v in users_by_id.items()})
 
@@ -48,9 +48,9 @@ async def test_complete_workflow():
     # Generate tokens for all personas
     admin_token = create_app_token(admin_id, admin_user.get("email", "admin@oklut.com"), "admin", name=admin_user.get("name", "Admin"))
     tl_kotesh_token = create_app_token("OKL003", "k.ananthu@oklut.com", "teamlead", name="Kotesh", department="IT Support", team="Team Alpha")
-    tl_mounika_token = create_app_token("OKL010", "mounika@gmail.com", "teamlead", name="Mounika", department="IT Support", team="Team Beta")
-    emp_uday_token = create_app_token("OKL004", "u.vadlamudi@oklut.com", "employee", name="Uday", department="IT Support", team="Team Alpha")
-    emp_bhavya_token = create_app_token("OKL020", "bhavya@oklut.com", "employee", name="Bhavya", department="IT Support", team="Team Beta")
+    tl_mounika_token = create_app_token("OKL120", "s.manikanta@oklut.com", "teamlead", name="manikanta", department="IT Support", team="Team Beta")
+    emp_uday_token = create_app_token("OKL002", "u.vadlamudi@oklut.com", "employee", name="uday", department="IT", team="Team Alpha")
+    emp_bhavya_token = create_app_token("OKL001", "a.reddy@oklut.com", "employee", name="aditya", department="IT", team="Team Beta")
 
     created_ticket_ids = []
 
@@ -67,8 +67,8 @@ async def test_complete_workflow():
             "priority": "High",
             "team_lead_ids": ["OKL003"],
             "team_leads": [{"id": "OKL003", "name": "Kotesh", "email": "k.ananthu@oklut.com"}],
-            "tagged_employee_ids": ["OKL004"],
-            "employees": [{"id": "OKL004", "name": "Uday", "email": "u.vadlamudi@oklut.com"}],
+            "tagged_employee_ids": ["OKL002"],
+            "employees": [{"id": "OKL002", "name": "Uday", "email": "u.vadlamudi@oklut.com"}],
         }
 
         resp = await client.post(
@@ -81,7 +81,7 @@ async def test_complete_workflow():
         ticket1_id = ticket1["id"]
         created_ticket_ids.append(ticket1_id)
         print(f"Created Ticket 1: ID={ticket1_id}")
-        assert ticket1["assigned_agent_id"] == "OKL004", f"Expected assigned_agent_id OKL004, got {ticket1.get('assigned_agent_id')}"
+        assert ticket1["assigned_agent_id"] == "OKL002", f"Expected assigned_agent_id OKL002, got {ticket1.get('assigned_agent_id')}"
         assert ticket1["assigned_to_type"] == "employee", f"Expected assigned_to_type 'employee', got {ticket1.get('assigned_to_type')}"
         assert ticket1["assigned_team_id"] == 1, f"Expected assigned_team_id 1 (Team Alpha), got {ticket1.get('assigned_team_id')}"
         print("Ticket 1 created successfully with correct agent and integer team ID.")
@@ -92,7 +92,7 @@ async def test_complete_workflow():
         assert len(db_res.data or []) == 1, "Ticket was not persisted to Supabase!"
         db_row = db_res.data[0]
         assert db_row["assigned_team_id"] == 1
-        assert db_row["assigned_agent_id"] == "OKL004"
+        assert db_row["assigned_agent_id"] == "OKL002"
         print(f"Verified Supabase row: assigned_team_id={db_row['assigned_team_id']}, assigned_agent={db_row['assigned_agent']}")
 
         # STEP 3: Verify Dashboards for Ticket 1
@@ -158,11 +158,11 @@ async def test_complete_workflow():
         assert ticket2["assigned_to_type"] == "teamlead"
 
         # Kotesh reassigns ticket2 to Uday
-        print("Team Lead Kotesh reassigns Ticket 2 to Uday (OKL004)...")
+        print("Team Lead Kotesh reassigns Ticket 2 to Uday (OKL002)...")
         assign_resp = await client.post(
             f"/api/v1/tickets/{ticket2_id}/assign",
             json={
-                "assigned_agent_id": "OKL004",
+                "assigned_agent_id": "OKL002",
                 "assigned_agent": "Uday",
                 "note": "Assigned to Uday for hardware upgrade.",
             },
@@ -170,7 +170,7 @@ async def test_complete_workflow():
         )
         assert assign_resp.status_code == 200, f"Assignment failed: {assign_resp.status_code} {assign_resp.text}"
         assigned_ticket2 = assign_resp.json()
-        assert assigned_ticket2["assigned_agent_id"] == "OKL004"
+        assert assigned_ticket2["assigned_agent_id"] == "OKL002"
         assert assigned_ticket2["assigned_to_type"] == "employee"
         assert assigned_ticket2["assigned_team_id"] == 1
         print("Reassignment succeeded without DB constraint error. assigned_team_id=1.")

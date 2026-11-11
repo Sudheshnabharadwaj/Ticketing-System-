@@ -31,13 +31,35 @@ export const Employees: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [menuUserId, setMenuUserId] = useState<string | null>(null);
+  const [activeMenuUser, setActiveMenuUser] = useState<User | null>(null);
+  const [menuCoords, setMenuCoords] = useState<{ top: number; right: number } | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleOpenMenu = (e: React.MouseEvent<HTMLButtonElement>, user: User) => {
+    e.stopPropagation();
+    if (activeMenuUser?.id === user.id) {
+      setActiveMenuUser(null);
+      setMenuCoords(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const menuHeight = 115;
+    const top = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4;
+    const right = window.innerWidth - rect.right;
+    setMenuCoords({ top, right });
+    setActiveMenuUser(user);
+  };
+
+  const handleCloseMenu = () => {
+    setActiveMenuUser(null);
+    setMenuCoords(null);
   };
 
   // Team members strictly exclude admin users
@@ -66,7 +88,7 @@ export const Employees: React.FC = () => {
     toggleUserStatus(u.id);
     const nextStatus = u.status === 'Active' ? 'Deactivated' : 'Activated';
     showToast(`Employee ${u.name} (${u.id}) has been ${nextStatus}.`);
-    setMenuUserId(null);
+    handleCloseMenu();
   };
 
   const ConfirmDeleteDialog = () => {
@@ -250,53 +272,15 @@ export const Employees: React.FC = () => {
                           <span>View</span>
                         </button>
 
-                        {/* Secondary Actions 3-Dot Dropdown */}
-                        <div className="relative">
-                          <button
-                            onClick={() => setMenuUserId(menuUserId === u.id ? null : u.id)}
-                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="More Actions"
-                          >
-                            <MoreVertical className="w-3.5 h-3.5" />
-                          </button>
-
-                          {menuUserId === u.id && (
-                            <>
-                              <div className="fixed inset-0 z-20" onClick={() => setMenuUserId(null)} />
-                              <div className="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg border border-slate-200 z-30 py-1 text-xs text-left animate-in fade-in zoom-in-95 duration-100">
-                                <button
-                                  onClick={() => {
-                                    setEditingUser(u);
-                                    setMenuUserId(null);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 hover:text-sky-600 flex items-center gap-2 cursor-pointer"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                  <span>Edit</span>
-                                </button>
-                                <button
-                                  onClick={() => handleToggleStatus(u)}
-                                  className={`w-full px-3 py-1.5 flex items-center gap-2 cursor-pointer ${
-                                    u.status === 'Active' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'
-                                  }`}
-                                >
-                                  <Power className="w-3.5 h-3.5" />
-                                  <span>{u.status === 'Active' ? 'Deactivate' : 'Activate'}</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setDeletingUser(u);
-                                    setMenuUserId(null);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Delete</span>
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                        {/* Secondary Actions 3-Dot Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenMenu(e, u)}
+                          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="More Actions"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -305,6 +289,54 @@ export const Employees: React.FC = () => {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Fixed Context Menu Outside Table Container (Immune to clipping/overflow) */}
+      {activeMenuUser && menuCoords && (
+        <>
+          <div className="fixed inset-0 z-40 bg-transparent" onClick={handleCloseMenu} />
+          <div
+            style={{
+              position: 'fixed',
+              top: `${menuCoords.top}px`,
+              right: `${menuCoords.right}px`,
+              zIndex: 9999,
+            }}
+            className="w-36 bg-white rounded-lg shadow-xl border border-slate-200 py-1 text-xs text-left animate-in fade-in zoom-in-95 duration-100"
+          >
+            <button
+              onClick={() => {
+                setEditingUser(activeMenuUser);
+                handleCloseMenu();
+              }}
+              className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 hover:text-sky-600 flex items-center gap-2 cursor-pointer"
+            >
+              <Edit className="w-3.5 h-3.5 text-slate-500" />
+              <span>Edit</span>
+            </button>
+            <button
+              onClick={() => {
+                handleToggleStatus(activeMenuUser);
+              }}
+              className={`w-full px-3 py-1.5 flex items-center gap-2 cursor-pointer ${
+                activeMenuUser.status === 'Active' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'
+              }`}
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>{activeMenuUser.status === 'Active' ? 'Deactivate' : 'Activate'}</span>
+            </button>
+            <button
+              onClick={() => {
+                setDeletingUser(activeMenuUser);
+                handleCloseMenu();
+              }}
+              className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </>
       )}
 
       {/* Add User Modal */}

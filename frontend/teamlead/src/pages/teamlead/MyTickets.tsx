@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
 import { TicketTable } from '../../components/tickets/TicketTable';
@@ -10,6 +11,7 @@ import { UserCheck, CheckCircle2 } from 'lucide-react';
 import { Ticket } from '../../types/ticket';
 
 export const MyTickets: React.FC = () => {
+  const navigate = useNavigate();
   const { tickets, selectedTicket, setSelectedTicket } = useTickets();
   const { user } = useAuth();
   const [search, setSearch] = useState('');
@@ -24,9 +26,11 @@ export const MyTickets: React.FC = () => {
 
   const myTickets = (tickets || []).filter(
     (t) =>
-      (t.employeeId && user?.id && t.employeeId === user.id) ||
+      (t.employeeId && user?.id && String(t.employeeId) === String(user.id)) ||
       (t.employeeEmail && user?.email && t.employeeEmail.toLowerCase() === user.email.toLowerCase()) ||
-      (t.employee && user?.name && t.employee.toLowerCase() === user.name.toLowerCase())
+      (t.employee && user?.name && t.employee.toLowerCase() === user.name.toLowerCase()) ||
+      (t as any).requester_id === user?.id ||
+      (t as any).is_created_by_me === true
   );
 
   const filtered = myTickets.filter(
@@ -72,7 +76,7 @@ export const MyTickets: React.FC = () => {
         <TicketTable
           tickets={filtered}
           tableType="my"
-          onSelectTicket={(t) => setSelectedTicket(t)}
+          onSelectTicket={(t) => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
           onAssignTicket={(t) => setAssignModalTicket(t)}
         />
       )}

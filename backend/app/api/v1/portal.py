@@ -17,12 +17,16 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user, require_role
 from app.auth.passwords import hash_password
 from app.db.supabase import get_supabase_admin_client
+from app.services.user_store import find_user_by_email, save_user
 from app.services.access import (
     ROLE_ADMIN,
     ROLE_TEAMLEAD,
+    ROLE_EMPLOYEE,
     _scopes_overlap,
     fetch_all_users_cached,
+    invalidate_all_users_cache,
     invalidate_team_cache,
+    invalidate_tickets_cache,
     invalidate_user_cache,
     is_admin,
     is_teamlead,
@@ -85,8 +89,10 @@ def _visible_user(
         if managed_ids is None:
             managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(user)}
         return str(row.get("id") or "") in managed_ids
-    # Employees may see the people in their own department (for team-lead and
-    # employee pickers) plus themselves.
+    # Employees may see Team Leads and colleagues across departments (to route tickets
+    # to the proper department lead and tag team members).
+    if normalize_role(row.get("role")) in (ROLE_TEAMLEAD, ROLE_EMPLOYEE):
+        return True
     return _scopes_overlap(user.get("department"), row.get("department"))
 
 
@@ -136,24 +142,37 @@ def get_team_lead_employees(
     context: tuple[dict[str, Any], dict[str, Any]] = Depends(_current),
 ) -> list[dict[str, Any]]:
     clean_tl_id = str(team_lead_id).strip()
-    sb = get_supabase_admin_client()
-    try:
-        res = sb.table("users").select("*").eq("id", clean_tl_id).limit(1).execute()
-        rows = res.data or []
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Database error: {exc}") from exc
 
-    if not rows:
+    # 1. Fast path: check in-memory cached users first (0ms latency)
+    all_users = fetch_all_users_cached()
+    tl_user = next(
+        (
+            u for u in all_users
+            if str(u.get("id") or "").strip().lower() == clean_tl_id.lower()
+            or str(u.get("email") or "").strip().lower() == clean_tl_id.lower()
+        ),
+        None,
+    )
+
+    if not tl_user:
+        sb = get_supabase_admin_client()
         try:
-            res = sb.table("users").select("*").eq("email", clean_tl_id.lower()).limit(1).execute()
+            res = sb.table("users").select("*").eq("id", clean_tl_id).limit(1).execute()
             rows = res.data or []
-        except Exception:
-            pass
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Database error: {exc}") from exc
 
-    if not rows:
-        raise HTTPException(status_code=404, detail="Team lead not found")
+        if not rows:
+            try:
+                res = sb.table("users").select("*").eq("email", clean_tl_id.lower()).limit(1).execute()
+                rows = res.data or []
+            except Exception:
+                pass
 
-    tl_user = rows[0]
+        if not rows:
+            raise HTTPException(status_code=404, detail="Team lead not found")
+        tl_user = rows[0]
+
     if normalize_role(tl_user.get("role")) != ROLE_TEAMLEAD:
         raise HTTPException(status_code=400, detail="Specified user is not a Team Lead")
 
@@ -217,10 +236,46 @@ def update_profile(
     return _safe_user(updated)
 
 
+# ── Departments ──────────────────────────────────────────────────────────────
+
+_DEPARTMENTS_CACHE: tuple[float, list[dict[str, Any]]] | None = None
+_DEPARTMENTS_CACHE_TTL = 300.0  # 5 minutes
+
+@router.get("/departments", summary="List configured departments")
+def get_departments(
+    context: tuple[dict[str, Any], dict[str, Any]] = Depends(_current),
+) -> list[dict[str, Any]]:
+    global _DEPARTMENTS_CACHE
+    now = time.time()
+    if _DEPARTMENTS_CACHE and (now - _DEPARTMENTS_CACHE[0]) < _DEPARTMENTS_CACHE_TTL:
+        return _DEPARTMENTS_CACHE[1]
+
+    sb = get_supabase_admin_client()
+    try:
+        res = sb.table("departments").select("id, name, code, display_aliases, description, is_active").eq("is_active", True).order("id").execute()
+        rows = res.data or []
+        if rows:
+            _DEPARTMENTS_CACHE = (now, rows)
+            return rows
+    except Exception as exc:
+        print(f"[portal] departments table fallback: {exc}")
+    fallback = [
+        {"id": 1, "name": "IT Support", "code": "ITSUPPORT", "display_aliases": ["IT Support", "IT Support Team", "IT"]},
+        {"id": 2, "name": "Finance", "code": "FINANCE", "display_aliases": ["Finance", "Finance & Payroll"]},
+        {"id": 3, "name": "HR", "code": "HR", "display_aliases": ["HR", "HR Operations", "HR & Benefits"]},
+        {"id": 4, "name": "Operations", "code": "OPS", "display_aliases": ["Operations", "Operations & Logistics"]},
+        {"id": 8, "name": "Facilities", "code": "FACILITY", "display_aliases": ["Facilities", "Facilities & Building"]},
+        {"id": 9, "name": "General Administration", "code": "GENADMIN", "display_aliases": ["General Administration", "Administration"]},
+        {"id": 10, "name": "Other", "code": "OTHER", "display_aliases": ["Other", "Others"]},
+    ]
+    _DEPARTMENTS_CACHE = (now, fallback)
+    return fallback
+
+
 # ── Notifications ────────────────────────────────────────────────────────────
 
 _NOTIF_CACHE: tuple[float, list[dict[str, Any]]] | None = None
-_NOTIF_CACHE_TTL = 3.0  # seconds
+_NOTIF_CACHE_TTL = 15.0  # seconds
 
 
 def invalidate_notifications_cache() -> None:
@@ -391,9 +446,8 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
     if "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email is required")
 
-    sb = get_supabase_admin_client()
-    existing = sb.table("users").select("id").eq("email", email).limit(1).execute()
-    if existing.data:
+    existing = find_user_by_email(email)
+    if existing:
         raise HTTPException(status_code=409, detail="A user with this email already exists")
 
     user_id = (body.employee_id or "").strip() or f"usr-{int(time.time() * 1000)}"
@@ -414,12 +468,9 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
-    try:
-        res = sb.table("users").insert(row).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not create user: {exc}") from exc
-    created = (res.data or [row])[0]
-    return _safe_user(created)
+    saved = save_user(row)
+    invalidate_all_users_cache()
+    return _safe_user(saved)
 
 
 class UserAdminUpdate(BaseModel):
@@ -470,6 +521,80 @@ def admin_update_user(user_id: str, body: UserAdminUpdate) -> dict[str, Any]:
     return _safe_user((res.data or [])[0])
 
 
+def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
+    """Permanently delete a user from authentication, database records, and safe-handle existing tickets and audit history."""
+    clean_id = str(user_id).strip()
+    sb = get_supabase_admin_client()
+
+    # 1. Fetch user to obtain email and details before deletion
+    user_res = sb.table("users").select("*").eq("id", clean_id).limit(1).execute()
+    user_row = (user_res.data or [])[0] if user_res.data else None
+    if not user_row:
+        res_alt = sb.table("users").select("*").or_(f"email.eq.{clean_id},employee_id.eq.{clean_id}").limit(1).execute()
+        user_row = (res_alt.data or [])[0] if res_alt.data else None
+
+    user_email = (user_row.get("email") if user_row else "").strip().lower()
+    canonical_id = str(user_row.get("id") or clean_id).strip()
+
+    # 2. Safely handle ticket_comments to satisfy FK constraints without losing audit history/messages
+    fallback_uid = actor_id if (actor_id and actor_id != canonical_id) else "usr-admin-1791538577749"
+    try:
+        sb.table("ticket_comments").update({
+            "author_user_id": fallback_uid,
+        }).eq("author_user_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] ticket_comments FK update notice: {exc}")
+
+    # 3. Safely handle tickets where user was assigned agent
+    try:
+        sb.table("tickets").update({
+            "assigned_agent": "Unassigned",
+            "assigned_agent_id": None,
+            "assigned_to_type": "unassigned",
+        }).eq("assigned_agent_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] tickets assigned_agent_id update notice: {exc}")
+
+    # 4. Safely handle tickets where user was employee/requester
+    try:
+        sb.table("tickets").update({
+            "employee_id": None,
+        }).eq("employee_id", canonical_id).execute()
+    except Exception as exc:
+        print(f"[portal] tickets employee_id update notice: {exc}")
+
+    # 5. Remove user from ticket_tagged_members
+    try:
+        sb.table("ticket_tagged_members").delete().eq("user_id", canonical_id).execute()
+        sb.table("ticket_tagged_members").delete().eq("member_uid", canonical_id).execute()
+    except Exception:
+        pass
+
+    # 6. Delete user from auth system if applicable
+    if user_row:
+        auth_uid = user_row.get("auth_id") or user_row.get("id")
+        try:
+            if hasattr(sb, "auth") and hasattr(sb.auth, "admin") and hasattr(sb.auth.admin, "delete_user"):
+                sb.auth.admin.delete_user(auth_uid)
+        except Exception as auth_exc:
+            print(f"[portal] auth user deletion notice: {auth_exc}")
+
+    # 7. Delete user from users table
+    try:
+        sb.table("users").delete().eq("id", canonical_id).execute()
+    except Exception as exc:
+        if user_email:
+            sb.table("users").delete().eq("email", user_email).execute()
+        else:
+            raise exc
+
+    # 8. Invalidate all caches so user disappears immediately from every dashboard
+    invalidate_user_cache(canonical_id, user_email)
+    invalidate_all_users_cache()
+    invalidate_team_cache()
+    invalidate_tickets_cache()
+
+
 @router.delete(
     "/admin/users/{user_id}",
     summary="Delete a user (admin only)",
@@ -479,11 +604,11 @@ def admin_delete_user(
     user_id: str,
     payload: dict[str, Any] = Depends(get_current_user),
 ) -> dict[str, Any]:
-    if str(payload.get("sub") or "") == user_id:
+    actor_id = str(payload.get("sub") or "")
+    if actor_id == user_id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
-    sb = get_supabase_admin_client()
     try:
-        sb.table("users").delete().eq("id", user_id).execute()
+        _permanently_delete_user(user_id, actor_id=actor_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
     return {"success": True, "id": user_id}
@@ -609,9 +734,7 @@ def team_delete_user(user_id: str, context: tuple[dict[str, Any], dict[str, Any]
     if not _team_lead_can_manage(user, target):
         raise HTTPException(status_code=403, detail="Not allowed to delete this user")
     try:
-        sb.table("users").delete().eq("id", user_id).execute()
+        _permanently_delete_user(user_id, actor_id=str(user.get("id") or payload.get("sub") or ""))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
-    invalidate_team_cache(str(user.get("id") or ""))
-    invalidate_user_cache(user_id)
     return {"success": True, "id": user_id}

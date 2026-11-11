@@ -18,6 +18,7 @@ import { Escalations } from '../pages/teamlead/Escalations';
 import { Reports } from '../pages/teamlead/Reports';
 import { KnowledgeBase as TeamLeadKB } from '../pages/teamlead/KnowledgeBase';
 import { TeamLeadProfile } from '../pages/teamlead/TeamLeadProfile';
+import { CreateTicketPage } from '../pages/teamlead/CreateTicketPage';
 
 import { TicketDetailsPage } from '../pages/teamlead/TicketDetailsPage';
 
@@ -64,6 +65,7 @@ export const AppRoutes: React.FC = () => {
       >
         <Route index element={<Navigate to="/teamlead/dashboard" replace />} />
         <Route path="dashboard" element={<TeamLeadDashboard />} />
+        <Route path="create-ticket" element={<CreateTicketPage />} />
         <Route path="team-tickets" element={<TeamTickets />} />
         <Route path="assigned-tickets" element={<AssignedTickets />} />
         <Route path="assigned-tickets/:ticketId" element={<TicketDetailsPage />} />

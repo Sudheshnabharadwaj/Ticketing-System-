@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Table, type Column } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
@@ -7,12 +8,17 @@ import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
 import type { Ticket, User } from '../../types';
 import { AdminApiService } from '../../services/api';
-import { Clock, CheckCircle2, UserCheck, AlertTriangle, Bell, Zap } from 'lucide-react';
+import { Clock, CheckCircle2, UserCheck, AlertTriangle, Bell, Zap, Eye } from 'lucide-react';
 
 export const SLARiskPage: React.FC = () => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    return cached.filter((t) => t.slaStatus === 'SLA Risk' || (t as any).is_at_risk);
+  });
+  const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
   // Modal & Intervention states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -25,19 +31,35 @@ export const SLARiskPage: React.FC = () => {
   // Toast state
   const [toast, setToast] = useState<{ type: 'success'; message: string } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const [ticketData, userData] = await Promise.all([
-      AdminApiService.getTickets('sla-risk'),
-      AdminApiService.getUsers()
-    ]);
-    setTickets(ticketData);
-    setUsers(userData);
-    setIsLoading(false);
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    try {
+      const [ticketData, userData] = await Promise.all([
+        AdminApiService.getTickets('sla-risk', force),
+        AdminApiService.getUsers(force)
+      ]);
+      setTickets(ticketData);
+      setUsers(userData);
+    } catch (e) {
+      console.error('Failed to load SLA risk data:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   const handleOpenModal = (ticket: Ticket) => {
@@ -64,22 +86,30 @@ export const SLARiskPage: React.FC = () => {
         setIsSubmitting(false);
         return;
       }
+      const selectedUser = users.find((u) => u.name === newAssignee);
       const logMessage = `SLA Intervention: Reassigned from ${selectedTicket.assignedTo || 'Unassigned'} to ${newAssignee}.${reasonNote ? ` Reason: ${reasonNote}` : ''}`;
-      await AdminApiService.updateTicket(selectedTicket.id, { assignedTo: newAssignee }, logMessage);
+      await AdminApiService.updateTicket(
+        selectedTicket.id,
+        {
+          assignedTo: newAssignee,
+          ...((selectedUser?.id) ? { assignedAgentId: selectedUser.id } : {}),
+        } as any,
+        logMessage
+      );
       setToast({
         type: 'success',
         message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} reassigned to ${newAssignee}. Notifications sent.`
       });
     } else if (actionType === 'escalate') {
-      const logMessage = `SLA Intervention: Escalated priority to Urgent & status to Escalated.${reasonNote ? ` Note: ${reasonNote}` : ''}`;
+      const logMessage = `SLA Intervention: Escalated priority to Critical & status to Escalated.${reasonNote ? ` Note: ${reasonNote}` : ''}`;
       await AdminApiService.updateTicket(
         selectedTicket.id,
-        { priority: 'Urgent', status: 'Escalated' },
+        { priority: 'Critical', status: 'Escalated' },
         logMessage
       );
       setToast({
         type: 'success',
-        message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} escalated to Urgent status. Team Lead notified.`
+        message: `SLA Intervention applied! Ticket ${selectedTicket.ticketNumber} escalated to Critical status. Team Lead notified.`
       });
     } else if (actionType === 'notify') {
       const logMessage = `SLA Intervention: Urgent warning alert sent to Team Lead (${teamLeadName}).${reasonNote ? ` Note: ${reasonNote}` : ''}`;
@@ -144,12 +174,14 @@ export const SLARiskPage: React.FC = () => {
       header: 'Action',
       cell: (row) => (
         <Button
-          variant="secondary"
+          variant="ghost"
           size="sm"
-          className="text-[12px] hover:bg-amber-100 hover:text-amber-800 border-amber-300"
-          onClick={() => handleOpenModal(row)}
+          icon={<Eye className="w-3.5 h-3.5" />}
+          className="text-xs"
+          onClick={() => navigate(`/admin/workspace/tickets/${row.id}`)}
+          title="View Ticket Details"
         >
-          Speed Up SLA
+          View
         </Button>
       )
     }
@@ -264,7 +296,7 @@ export const SLARiskPage: React.FC = () => {
                     <Zap className="w-3.5 h-3.5 text-red-600" />
                     Escalate
                   </div>
-                  <div className="text-[11px] text-slate-500 font-normal">Elevate to Urgent status</div>
+                  <div className="text-[11px] text-slate-500 font-normal">Elevate to Critical status</div>
                 </button>
 
                 <button
@@ -313,7 +345,7 @@ export const SLARiskPage: React.FC = () => {
                 <div className="flex items-start gap-2 text-xs text-red-800">
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                   <span>
-                    Escalating will raise ticket priority to <strong>Urgent</strong> and set status to <strong>Escalated</strong>, signaling immediate action required.
+                    Escalating will raise ticket priority to <strong>Critical</strong> and set status to <strong>Escalated</strong>, signaling immediate action required.
                   </span>
                 </div>
                 <div>
@@ -343,7 +375,7 @@ export const SLARiskPage: React.FC = () => {
                     rows={2}
                     value={reasonNote}
                     onChange={(e) => setReasonNote(e.target.value)}
-                    placeholder="Urgent SLA risk alert details..."
+                    placeholder="Critical SLA risk alert details..."
                     className="w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-blue-500"
                   />
                 </div>

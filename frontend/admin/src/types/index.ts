@@ -1,6 +1,6 @@
 export type UserRole = 'Admin' | 'Team Lead' | 'Employee' | '';
 
-export type UserDepartment = 'IT Support' | 'HR' | 'Finance' | 'Operations' | 'Sales' | 'Marketing' | 'Legal' | 'Facilities' | '';
+export type UserDepartment = 'IT Support' | 'HR' | 'Finance' | 'Development' | 'QA Team' | 'Other' | string;
 
 export type UserStatus = 'Active' | 'Inactive' | 'Pending Invitation' | 'Invite Expired' | 'Invite Failed';
 
@@ -19,11 +19,21 @@ export interface User {
   createdAt: string;
 }
 
-export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 
 export type TicketStatus = 'Open' | 'In Progress' | 'Pending' | 'Escalated' | 'Resolved' | 'Closed';
 
 export type SLAStatus = 'Normal' | 'SLA Risk' | 'SLA Breached';
+
+export interface TicketComment {
+  id: string;
+  ticketId?: string;
+  authorName: string;
+  authorRole: string;
+  message: string;
+  createdAt: string;
+  isInternal?: boolean;
+}
 
 export interface TicketHistoryItem {
   id: string;
@@ -56,6 +66,8 @@ export interface Ticket {
   teamLeads?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   employees?: { id: string; name: string; role: string; employeeId: string; email: string }[];
   history?: TicketHistoryItem[];
+  comments?: TicketComment[];
+  activities?: any[];
 }
 
 export interface DashboardStats {

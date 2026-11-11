@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   Clock,
+  User,
   Users,
   Paperclip,
   Send,
@@ -12,8 +13,10 @@ import {
   AlertTriangle,
   CheckCircle,
   Activity,
+  MessageSquare,
   Eye,
   Download,
+  Trash2,
   X,
   RefreshCw
 } from 'lucide-react';
@@ -21,8 +24,11 @@ import {
   EmployeeService,
   BACKEND_API_URL,
   fetchBackendAttachmentsDetailed,
+  deleteBackendAttachment,
+  getEmployeeSessionUser,
 } from '../services/employeeService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../services/backendAuth';
+import { supabase } from '../services/supabaseClient';
 import type { EmployeeTicket, TicketStatus } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -32,20 +38,57 @@ import { AttachmentFilePicker, type AttachedFile } from '../components/ui/Attach
 export const AssignedTicketDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isReadOnly = searchParams.get('mode') === 'view';
 
-  const [ticket, setTicket] = useState<EmployeeTicket | null>(null);
+  const switchToWorkMode = () => {
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.set('mode', 'work');
+    navigate(`${location.pathname}?${nextParams.toString()}`, { replace: true });
+  };
+
+  const switchToViewMode = () => {
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.set('mode', 'view');
+    navigate(`${location.pathname}?${nextParams.toString()}`, { replace: true });
+  };
+
+  const [ticket, setTicket] = useState<EmployeeTicket | null>(() => (id ? EmployeeService.getTicketById(id) || null : null));
   const [newComment, setNewComment] = useState('');
   const [commentAttachedFiles, setCommentAttachedFiles] = useState<AttachedFile[]>([]);
+  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('In Progress');
   const [statusNote, setStatusNote] = useState('');
 
   const [showEscalateModal, setShowEscalateModal] = useState(false);
-  const [escalateReason, setEscalateReason] = useState('Unable to Resolve');
+  const [escalateReason, setEscalateReason] = useState('Lack of Knowledge');
   const [escalateComment, setEscalateComment] = useState('');
 
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolutionText, setResolutionText] = useState('');
+
+  const currentUser = getEmployeeSessionUser();
+  const isAssignedToMe = Boolean(
+    ticket && (
+      (ticket as any).is_assigned_to_me === true ||
+      (currentUser?.id && ((ticket as any).assignedAgentId === currentUser.id || (ticket as any).assignee_id === currentUser.id)) ||
+      (currentUser?.email && ((ticket as any).assignedToEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).assignedAgentEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+      (currentUser?.name && (ticket.assignedTo?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).assignedAgent?.toLowerCase() === currentUser.name?.toLowerCase()))
+    )
+  );
+  const isCreatedByMe = Boolean(
+    ticket && (
+      (ticket as any).is_created_by_me === true ||
+      (currentUser?.id && ((ticket as any).requester_id === currentUser.id || (ticket as any).employee_id === currentUser.id)) ||
+      (currentUser?.email && ((ticket as any).requesterEmail?.toLowerCase() === currentUser.email?.toLowerCase() || (ticket as any).employeeEmail?.toLowerCase() === currentUser.email?.toLowerCase())) ||
+      (currentUser?.name && ((ticket as any).requesterName?.toLowerCase() === currentUser.name?.toLowerCase() || (ticket as any).employee?.toLowerCase() === currentUser.name?.toLowerCase()))
+    )
+  );
+  const canReply = Boolean(isAssignedToMe || isCreatedByMe || (ticket as any)?.can_reply === true);
+  const canDeleteAttachment = Boolean(currentUser?.role === 'admin' || isAssignedToMe || isCreatedByMe || canReply);
+  const canWorkOnTicket = isAssignedToMe || isCreatedByMe;
 
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [modalAttachedFiles, setModalAttachedFiles] = useState<AttachedFile[]>([]);
@@ -82,6 +125,39 @@ export const AssignedTicketDetails: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const handleDeleteAttachment = async (fileName: string) => {
+    const rawName = fileName.includes(' (') ? fileName.split(' (')[0] : fileName;
+    const ticketId = (ticket as any)?.ticketNumber || (ticket as any)?.id || id;
+    if (!ticketId) return;
+    if (!canDeleteAttachment) {
+      setToastMessage('You are not authorized to delete attachments on this ticket.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
+      return;
+    }
+    // Optimistic UI removal
+    setTicket((prev) =>
+      prev
+        ? {
+            ...prev,
+            attachments: (prev.attachments || []).filter(
+              (f) => !(f === fileName || f.startsWith(rawName) || f.includes(rawName))
+            ),
+          }
+        : prev
+    );
+
+    const success = await deleteBackendAttachment(ticketId, rawName);
+    if (success) {
+      setToastMessage(`Attachment "${rawName}" deleted successfully.`);
+      await reloadAttachments();
+    } else {
+      setToastMessage(`Failed to delete attachment "${rawName}". Please try again.`);
+      await reloadAttachments();
+    }
+  };
+
   const handleViewAttachment = async (fileName: string) => {
     const cleanName = fileName.split(' (')[0] || fileName;
     const size = fileName.includes('(') ? fileName.split('(')[1].replace(')', '') : 'N/A';
@@ -93,25 +169,26 @@ export const AssignedTicketDetails: React.FC = () => {
     setPreviewAttachment({ name: cleanName, size, viewUrl });
   };
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !id || !EmployeeService.getTicketById(id));
 
   const loadTicket = async () => {
     if (!id) return;
-    setIsLoading(true);
+    if (!ticket && !EmployeeService.getTicketById(id)) {
+      setIsLoading(true);
+    }
     setAttachmentsLoading(true);
     setAttachmentsError(null);
 
-    // Always refresh from the backend. The synchronous cache does not contain
-    // attachment metadata, so using it alone would silently show an empty list.
-    let found = EmployeeService.getTicketById(id);
+    // Always fetch fresh ticket data directly from backend
+    const found = await EmployeeService.getTicketByIdAsync(id);
     if (found) {
       setTicket({ ...found });
       setSelectedStatus(found.status);
     } else {
-      found = await EmployeeService.getTicketByIdAsync(id);
-      if (found) {
-        setTicket({ ...found });
-        setSelectedStatus(found.status);
+      const cached = EmployeeService.getTicketById(id);
+      if (cached) {
+        setTicket({ ...cached });
+        setSelectedStatus(cached.status);
       }
     }
 
@@ -137,6 +214,15 @@ export const AssignedTicketDetails: React.FC = () => {
 
   useEffect(() => {
     loadTicket();
+    const handleUpdate = () => {
+      loadTicket();
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -174,7 +260,54 @@ export const AssignedTicketDetails: React.FC = () => {
     );
   }
 
-  const isAssignedToMe = !!ticket.assignedBy || ticket.assignedTo === 'Manikanta (You)';
+  const calculateSLADeadline = (createdAtStr?: string, priority?: string, explicitDueDate?: string): string => {
+    if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+      const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+        ? explicitDueDate.replace(' ', 'T')
+        : explicitDueDate;
+      const due = new Date(raw);
+      if (!isNaN(due.getTime())) {
+        const yyyy = due.getFullYear();
+        const mm = String(due.getMonth() + 1).padStart(2, '0');
+        const dd = String(due.getDate()).padStart(2, '0');
+        const hh = String(due.getHours()).padStart(2, '0');
+        const min = String(due.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+      }
+      return explicitDueDate.replace('T', ' ').slice(0, 16);
+    }
+    const base = createdAtStr ? new Date(createdAtStr.includes(' ') ? createdAtStr.replace(' ', 'T') : createdAtStr) : new Date();
+    const valid = isNaN(base.getTime()) ? new Date() : base;
+    const hoursMap: Record<string, number> = { Critical: 4, High: 12, Medium: 24, Low: 48 };
+    const hrs = hoursMap[priority || 'Medium'] || 24;
+    const deadline = new Date(valid.getTime() + hrs * 60 * 60 * 1000);
+    const yyyy = deadline.getFullYear();
+    const mm = String(deadline.getMonth() + 1).padStart(2, '0');
+    const dd = String(deadline.getDate()).padStart(2, '0');
+    const hh = String(deadline.getHours()).padStart(2, '0');
+    const min = String(deadline.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  };
+
+  const formatDisplayDate = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    let s = dateStr;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(s) && !s.includes('Z') && !s.includes('+')) {
+      s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const deadlineDisplay = calculateSLADeadline(ticket.createdAt, ticket.priority, (ticket as any).dueDate || (ticket as any).slaDeadline || (ticket as any).sla_due_at);
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,16 +348,134 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
+  // Live automatic background comments sync without page refresh
+  useEffect(() => {
+    const tid = ticket?.id || (ticket as any)?.ticketNumber || id;
+    if (!tid) return;
+
+    let isMounted = true;
+    const fetchLatestComments = async () => {
+      try {
+        const { data: dbComments } = await supabase
+          .from('ticket_comments')
+          .select('*')
+          .eq('ticket_id', tid)
+          .order('created_at', { ascending: true });
+
+        if (dbComments && isMounted) {
+          const mapped = dbComments
+            .filter((c: any) => c.author_name !== '__attachment__')
+            .map((c: any) => ({
+              id: c.id,
+              ticketId: c.ticket_id,
+              authorName: c.author_name || 'User',
+              authorRole: (c.author_role || 'EMPLOYEE').toUpperCase(),
+              message: c.message || '',
+              createdAt: c.created_at,
+              isInternal: !!c.is_internal,
+            }));
+
+          setTicket((prev) => {
+            if (!prev) return prev;
+            const currentComments = prev.comments || [];
+            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => c.id).join(',');
+            if (prevIds !== newIds) {
+              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              return { ...prev, comments: [...mapped, ...pendingOptimistic] };
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        // silent sync
+      }
+    };
+
+    const channel = supabase
+      .channel(`employee-live-comments-${tid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'ticket_comments', filter: `ticket_id=eq.${tid}` },
+        () => {
+          void fetchLatestComments();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchLatestComments, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
+    };
+  }, [ticket?.id, id]);
+
   const handleAddCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !newComment.trim()) return;
+    const commentText = newComment.trim();
+    if (!id || !commentText) return;
+
     const attachmentStr = commentAttachedFiles.map((f) => `${f.name} (${f.size})`).join(', ');
-    const updated = await EmployeeService.addComment(id, newComment, attachmentStr || undefined);
-    if (updated) {
-      setTicket({ ...updated });
-      setNewComment('');
-      setCommentAttachedFiles([]);
-      setToastMessage('Comment posted to activity log.');
+    const fullMessage = commentText + (attachmentStr ? ` (Attachment: ${attachmentStr})` : '');
+    const tempId = `temp-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+
+    // 1. Optimistic Update: display sent message immediately & clear input
+    const optimisticComment: any = {
+      id: tempId,
+      ticketId: id,
+      authorName: currentUser?.name || 'Employee',
+      authorRole: 'EMPLOYEE',
+      message: fullMessage,
+      createdAt: nowIso,
+      isInternal: false,
+    };
+
+    setTicket((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        comments: [...(prev.comments || []), optimisticComment],
+      };
+    });
+    setNewComment('');
+    setCommentAttachedFiles([]);
+    setToastMessage('Reply posted successfully.');
+
+    // 2. Persist in database asynchronously
+    try {
+      const updated = await EmployeeService.addComment(id, commentText, attachmentStr || undefined);
+      if (!updated) {
+        // Direct Supabase fallback for guaranteed permanent storage
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: currentUser?.id || null,
+          author_name: currentUser?.name || 'Employee',
+          author_role: 'employee',
+          message: fullMessage,
+          is_internal: false,
+          created_at: nowIso,
+        });
+      }
+    } catch (err) {
+      console.warn('Error saving comment in background:', err);
+      try {
+        await supabase.from('ticket_comments').insert({
+          id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
+          ticket_id: id,
+          author_user_id: currentUser?.id || null,
+          author_name: currentUser?.name || 'Employee',
+          author_role: 'employee',
+          message: fullMessage,
+          is_internal: false,
+          created_at: nowIso,
+        });
+      } catch {}
     }
   };
 
@@ -272,55 +523,66 @@ export const AssignedTicketDetails: React.FC = () => {
           <ArrowLeft className="w-4 h-4" /> Back to Tickets
         </button>
 
-        {isAssignedToMe && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedStatus(ticket.status);
-                setShowStatusModal(true);
-              }}
-              className="border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs"
-            >
-              Update Status
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isReadOnly ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+              <Eye className="w-3.5 h-3.5 text-slate-500" />
+              View
+            </span>
+          ) : (
+            <>
+              {isAssignedToMe && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedStatus(ticket.status);
+                      setShowStatusModal(true);
+                    }}
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs"
+                  >
+                    Update Status
+                  </Button>
 
-            {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && ticket.status !== 'Escalated' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowEscalateModal(true)}
-                className="border-amber-300 text-amber-800 bg-amber-50/50 hover:bg-amber-100/60 font-semibold text-xs cursor-pointer"
-              >
-                <AlertTriangle className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                Escalate
-              </Button>
-            )}
+                  {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && ticket.status !== 'Escalated' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowEscalateModal(true)}
+                      className="border-amber-300 text-amber-800 bg-amber-50/50 hover:bg-amber-100/60 font-semibold text-xs cursor-pointer"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                      Escalate
+                    </Button>
+                  )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAttachModal(true)}
-              className="border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs cursor-pointer"
-            >
-              <Paperclip className="w-3.5 h-3.5 mr-1" />
-              Add Attachment
-            </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAttachModal(true)}
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs cursor-pointer"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 mr-1" />
+                    Add Attachment
+                  </Button>
 
-            {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowResolveModal(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs cursor-pointer"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                Mark as Resolved
-              </Button>
-            )}
-          </div>
-        )}
+                  {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setShowResolveModal(true)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                      Mark as Resolved
+                    </Button>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
 
@@ -343,100 +605,49 @@ export const AssignedTicketDetails: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-900 leading-snug">{ticket.title}</h1>
           </div>
 
-          {ticket.sla && (() => {
-            const slaLower = ticket.sla.toLowerCase();
-            const isBreached = slaLower.includes('breached') || slaLower.includes('overdue');
-            const isRisk = slaLower.includes('risk') || /([1-3]h|\d+m remaining)/i.test(ticket.sla);
-            const isResolved = ticket.status === 'Resolved' || ticket.status === 'Closed';
-
-            if (isResolved) {
-              return (
-                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-emerald-800 text-xs font-medium shrink-0">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <div>
-                    <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">COMPLETED</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isBreached) {
-              return (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-2 rounded-xl text-red-800 text-xs font-medium shrink-0">
-                  <AlertCircle className="w-4 h-4 text-red-600 animate-pulse" />
-                  <div>
-                    <div className="text-[10px] font-bold text-red-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA BREACHED</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (isRisk) {
-              return (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl text-amber-900 text-xs font-medium shrink-0">
-                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
-                  <div>
-                    <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">SLA Status</div>
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded font-black">SLA RISK</span>
-                      <span>{ticket.sla}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
-                <Clock className="w-4 h-4 text-[#0284C7]" />
-                <div>
-                  <div className="text-[10px] font-bold text-[#0284C7] uppercase tracking-wider">SLA Status</div>
-                  <div className="font-bold text-slate-800">{ticket.sla}</div>
-                </div>
+          {/* SLA Badge */}
+          <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-xl text-[#0284C7] text-xs font-medium shrink-0">
+            <Clock className="w-4 h-4 text-[#0284C7]" />
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SLA Deadline</span>
               </div>
-            );
-          })()}
-        </div>
-
-        {/* Assigned Team Leads & Multi-Department Routing Card */}
-        <div className="p-6 bg-sky-50/50 border-b border-sky-100">
-          <h3 className="text-xs font-bold text-[#0284C7] uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Users className="w-4 h-4" />
-            Assigned Department Team Leads ({ticket.teamLeads?.length || 1})
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {ticket.teamLeads && ticket.teamLeads.length > 0 ? (
-              ticket.teamLeads.map((tl) => (
-                <div key={tl.id} className="bg-white border border-sky-200/90 rounded-xl p-3.5 flex items-center gap-3 shadow-2xs">
-                  <div className="w-9 h-9 rounded-full bg-[#0284C7] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                    {tl.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">{tl.name}</div>
-                    <div className="text-[11px] font-medium text-slate-500">{tl.role}</div>
-                    <div className="text-[10px] font-mono text-[#0284C7] mt-0.5">{tl.email}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700">
-                <span className="font-bold">{ticket.assignedBy || 'Team Lead'}</span> — {ticket.department}
-              </div>
-            )}
+              <div className="font-bold text-slate-800">{deadlineDisplay}</div>
+              <div className="text-[10px] font-semibold text-[#0284C7] mt-0.5">{(ticket as any).slaStatus || ticket.sla || 'Normal'}</div>
+            </div>
           </div>
         </div>
 
-        {/* Metadata Grid */}
+        {/* 11 Metadata Fields Display Grid */}
         <div className="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 bg-white border-b border-slate-100">
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Ticket ID
+            </span>
+            <span className="text-xs font-mono font-bold text-[#0284C7]">{ticket.ticketNumber}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.status}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Priority
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.priority}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              Department
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{ticket.department || 'IT Support'}</span>
+          </div>
+
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Category
@@ -446,41 +657,63 @@ export const AssignedTicketDetails: React.FC = () => {
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Sub-category
+              Created By
             </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {ticket.subCategory || 'General'}
-            </span>
+            <div className="text-xs font-semibold text-slate-800">
+              {(ticket as any).requesterName || (ticket as any).employee || 'N/A'}
+            </div>
+            {((ticket as any).requesterEmail || (ticket as any).employeeEmail) && (
+              <div className="text-[10px] font-mono text-slate-400">
+                {(ticket as any).requesterEmail || (ticket as any).employeeEmail}
+              </div>
+            )}
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Department(s)
+              Assigned Employee
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.department}</span>
+            <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-[#0284C7]" />
+              {ticket.assignedTo || (ticket as any).assignedAgent || (ticket as any).assigneeName || 'Unassigned'}
+            </div>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
               Created Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">
-              {ticket.createdAt}
-            </span>
+            <span className="text-xs font-semibold text-slate-800">{formatDisplayDate(ticket.createdAt)}</span>
           </div>
 
           <div>
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-              Last Updated
+              Last Updated Date
             </span>
-            <span className="text-xs font-semibold text-slate-800">{ticket.updatedAt}</span>
+            <span className="text-xs font-semibold text-slate-800">{formatDisplayDate(ticket.updatedAt || ticket.createdAt)}</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+              SLA Status
+            </span>
+            <span className="text-xs font-semibold text-slate-800">{(ticket as any).slaStatus || ticket.sla || 'Normal'}</span>
+          </div>
+
+          <div>
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                SLA Deadline
+              </span>
+            </div>
+            <span className="text-xs font-semibold text-slate-800">{deadlineDisplay}</span>
           </div>
         </div>
 
         {/* Description */}
         <div className="p-6 bg-white border-b border-slate-100">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            Description
+            DESCRIPTION
           </h3>
           <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
             {ticket.description}
@@ -505,15 +738,17 @@ export const AssignedTicketDetails: React.FC = () => {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
               <Paperclip className="w-3.5 h-3.5 text-slate-400" />
-              Attachments ({ticket.attachments?.length || 0})
+              ATTACHMENTS ({ticket.attachments?.length || 0})
             </h3>
-            <button
-              type="button"
-              onClick={() => setShowAttachModal(true)}
-              className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
-            >
-              + Upload File
-            </button>
+            {!isReadOnly && canWorkOnTicket && (
+              <button
+                type="button"
+                onClick={() => setShowAttachModal(true)}
+                className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
+              >
+                + Upload File
+              </button>
+            )}
           </div>
 
           {attachmentsLoading ? (
@@ -573,82 +808,248 @@ export const AssignedTicketDetails: React.FC = () => {
                         <Download className="w-3 h-3 text-[#0284C7]" />
                         <span>Download</span>
                       </button>
+                      {canDeleteAttachment && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
+            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
           )}
         </div>
       </div>
 
-      {/* Activity & Comments Section */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-6 space-y-6">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
-          <Activity className="w-4 h-4 text-[#0284C7]" />
-          <h2 className="text-sm font-bold text-slate-900">Comments & Activity Log</h2>
+      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        {/* Tab Headers */}
+        <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
+          <button
+            type="button"
+            onClick={() => setActiveTab('conversation')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'conversation'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Conversation & Notes ({ticket.comments?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Audit History ({ticket.history?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('attachments')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'attachments'
+                ? 'bg-[#0284C7] text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Paperclip className="w-4 h-4" />
+            Attachments ({ticket.attachments?.length || 0})
+          </button>
         </div>
 
-        {/* Activity Timeline */}
-        <div className="space-y-4">
-          {ticket.history && ticket.history.length > 0 ? (
-            ticket.history.map((item) => (
-              <div key={item.id} className="flex items-start gap-3 text-xs">
-                <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0 mt-0.5">
-                  {item.author.charAt(0)}
-                </div>
-                <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-slate-800">{item.author}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
-                  </div>
-                  <p className="text-slate-700 leading-relaxed">{item.text}</p>
-                  {item.attachment && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
-                      <Paperclip className="w-3 h-3" />
-                      {item.attachment}
+        {/* Tab 1: Conversation & Notes */}
+        {activeTab === 'conversation' && (
+          <div className="p-6 space-y-4">
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {!ticket.comments || ticket.comments.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  No replies recorded yet. Post a comment or reply below.
+                </p>
+              ) : (
+                ticket.comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="p-3.5 rounded-xl border border-slate-200/80 bg-white text-xs text-slate-800"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900">{comment.authorName}</span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-100 text-slate-600">
+                          {comment.authorRole}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-mono">{comment.createdAt}</span>
                     </div>
-                  )}
+                    <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Comment Form - Authorized creator and assigned employee can reply; all others have view-only access without chat/reply options */}
+            {canReply && (
+              <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
+                <label className="block text-xs font-bold text-slate-700">Send a Reply</label>
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Type your reply or progress update here..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                />
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newComment.trim()}
+                    className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Send Reply
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Audit History */}
+        {activeTab === 'history' && (
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+            {ticket.history && ticket.history.length > 0 ? (
+              ticket.history.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 text-xs">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0 mt-0.5">
+                    {item.author.charAt(0)}
+                  </div>
+                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-slate-800">{item.author}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
+                    </div>
+                    <p className="text-slate-700 leading-relaxed">{item.text}</p>
+                    {item.attachment && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
+                        <Paperclip className="w-3 h-3" />
+                        {item.attachment}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 italic text-center py-6">No activity logged yet.</p>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Attachments */}
+        {activeTab === 'attachments' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Attached Files ({ticket.attachments?.length || 0})
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAttachModal(true)}
+                className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
+              >
+                + Upload File
+              </button>
+            </div>
+            {attachmentsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-[#0284C7]" />
+                Loading attachments...
+              </div>
+            ) : attachmentsError ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <div className="flex-1">
+                    <p className="font-semibold">Attachments could not be loaded.</p>
+                    <p className="mt-0.5">{attachmentsError}</p>
+                    <button
+                      type="button"
+                      onClick={reloadAttachments}
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Retry
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))
-          ) : (
-            <p className="text-xs text-slate-400 italic text-center py-4">No activity logged yet.</p>
-          )}
-        </div>
-
-        {/* Add Comment Form */}
-        <form onSubmit={handleAddCommentSubmit} className="pt-4 border-t border-slate-100 space-y-3">
-          <label className="block text-xs font-bold text-slate-700">Add a Comment / Progress Update</label>
-          <textarea
-            rows={3}
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Type your comment or update here..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
-          />
-          <AttachmentFilePicker
-            files={commentAttachedFiles}
-            onFilesChange={setCommentAttachedFiles}
-            label=""
-            buttonText="Attach Local File to Comment"
-            compact
-          />
-          <div className="flex justify-end pt-1">
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              disabled={!newComment.trim()}
-              className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
-            >
-              <Send className="w-3.5 h-3.5 mr-1.5" />
-              Post Comment
-            </Button>
+            ) : ticket.attachments && ticket.attachments.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ticket.attachments.map((file, idx) => {
+                  const cleanName = file.split(' (')[0] || file;
+                  const size = file.includes('(') ? file.split('(')[1].replace(')', '') : 'N/A';
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs hover:border-[#0284C7] transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{cleanName}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{size}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleViewAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3 text-slate-500" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(file)}
+                          className="px-2 py-1 text-[11px] font-semibold text-[#0284C7] bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Download className="w-3 h-3 text-[#0284C7]" />
+                          <span>Download</span>
+                        </button>
+                        {canDeleteAttachment && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(file)}
+                            className="px-2 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">No files attached to this ticket.</p>
+            )}
           </div>
-        </form>
+        )}
       </div>
 
       {/* Modals for Worker Actions */}
@@ -672,18 +1073,7 @@ export const AssignedTicketDetails: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Status Note / Reason (Optional)
-                </label>
-                <textarea
-                  rows={3}
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  placeholder="Explain why status was updated..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7]"
-                />
-              </div>
+
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <Button
@@ -726,9 +1116,11 @@ export const AssignedTicketDetails: React.FC = () => {
                   value={escalateReason}
                   onChange={(e) => setEscalateReason(e.target.value)}
                   options={[
-                    { value: 'Unable to Resolve', label: 'Unable to Resolve' },
-                    { value: 'Requires Team Lead Support', label: 'Requires Team Lead Support' },
-                    { value: 'Technical Issue', label: 'Technical Issue' },
+                    { value: 'Lack of Knowledge', label: 'Lack of Knowledge' },
+                    { value: 'Insufficient Authority', label: 'Insufficient Authority' },
+                    { value: 'Active SLA Breach', label: 'Active SLA Breach' },
+                    { value: 'Third-Party Dependencies', label: 'Third-Party Dependencies' },
+                    { value: 'Recurring/Repeating Issues', label: 'Recurring/Repeating Issues' },
                     { value: 'Other', label: 'Other' },
                   ]}
                 />
@@ -833,6 +1225,7 @@ export const AssignedTicketDetails: React.FC = () => {
               <AttachmentFilePicker
                 files={modalAttachedFiles}
                 onFilesChange={setModalAttachedFiles}
+                existingAttachments={ticket.attachments}
                 label="Select Files from Computer"
                 buttonText="Browse Files from PC"
               />

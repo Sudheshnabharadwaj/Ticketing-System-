@@ -43,7 +43,7 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
   onSelectedEmployeesChange,
   className = '',
 }) => {
-  const [, setDbVersion] = useState(0);
+  const [dbVersion, setDbVersion] = useState(0);
   const [loadingByLead, setLoadingByLead] = useState<Record<string, boolean>>({});
   const [errorByLead, setErrorByLead] = useState<Record<string, string | null>>({});
   const [employeesByLead, setEmployeesByLead] = useState<Record<string, EmployeeItem[]>>({});
@@ -55,21 +55,40 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
   }, []);
 
   const loadEmployeesForLead = async (leadId: string) => {
-    setLoadingByLead((prev) => ({ ...prev, [leadId]: true }));
+    const cached = OrganizationService.getEmployeesByTeamLead(leadId);
+    if (cached && cached.length > 0) {
+      setEmployeesByLead((prev) => ({ ...prev, [leadId]: cached }));
+    }
+    setLoadingByLead((prev) => ({ ...prev, [leadId]: cached.length === 0 }));
     setErrorByLead((prev) => ({ ...prev, [leadId]: null }));
     try {
       const emps = await OrganizationService.fetchEmployeesByTeamLead(leadId);
       setEmployeesByLead((prev) => ({ ...prev, [leadId]: emps }));
     } catch {
-      setErrorByLead((prev) => ({
-        ...prev,
-        [leadId]: 'Failed to load employees for this Team Lead. Please retry.',
-      }));
-      setEmployeesByLead((prev) => ({ ...prev, [leadId]: [] }));
+      if (cached.length === 0) {
+        setErrorByLead((prev) => ({
+          ...prev,
+          [leadId]: 'Failed to load employees for this Team Lead. Please retry.',
+        }));
+        setEmployeesByLead((prev) => ({ ...prev, [leadId]: [] }));
+      }
     } finally {
       setLoadingByLead((prev) => ({ ...prev, [leadId]: false }));
     }
   };
+
+  // Pre-load employees for all available leads in selected departments
+  useEffect(() => {
+    selectedDepartments.forEach((dept) => {
+      const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+      leads.forEach((l) => {
+        const cached = OrganizationService.getEmployeesByTeamLead(l.id);
+        if (cached && cached.length > 0) {
+          setEmployeesByLead((prev) => (prev[l.id] ? prev : { ...prev, [l.id]: cached }));
+        }
+      });
+    });
+  }, [selectedDepartments, dbVersion]);
 
   // Ensure employees are fetched whenever a selected Team Lead changes
   useEffect(() => {
@@ -79,6 +98,65 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
       }
     });
   }, [selectedTeamLeadIds]);
+
+  // Ensure selected Team Leads strictly belong to active selected departments
+  useEffect(() => {
+    if (role === 'teamlead') return;
+    const validLeadIds: string[] = [];
+    selectedDepartments.forEach((dept) => {
+      const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+      leads.forEach((l) => validLeadIds.push(l.id));
+    });
+    const validLeadIdSet = new Set(validLeadIds);
+
+    let currentSelected = selectedTeamLeadIds.filter((id) => validLeadIdSet.has(id));
+
+    // When a department with exactly 1 lead is selected, auto-select that lead
+    selectedDepartments.forEach((dept) => {
+      const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+      if (leads.length === 1) {
+        const singleLead = leads[0];
+        if (!currentSelected.includes(singleLead.id)) {
+          currentSelected = [...currentSelected, singleLead.id];
+        }
+      }
+    });
+
+    if (
+      currentSelected.length !== selectedTeamLeadIds.length ||
+      currentSelected.some((id, idx) => id !== selectedTeamLeadIds[idx])
+    ) {
+      const updatedObjs = currentSelected
+        .map((id) => OrganizationService.getTeamLeadById(id))
+        .filter((l): l is TeamLeadItem => !!l);
+      onSelectedTeamLeadsChange(currentSelected, updatedObjs);
+    }
+  }, [selectedDepartments, selectedTeamLeadIds, role, dbVersion]);
+
+  // Prune any tagged employees that do not belong to the currently selected Team Leads
+  useEffect(() => {
+    if (selectedTeamLeadIds.length === 0) {
+      if (selectedEmployeeIds.length > 0) {
+        onSelectedEmployeesChange([], []);
+      }
+      return;
+    }
+    const allowedEmpIds = new Set<string>();
+    selectedTeamLeadIds.forEach((lid) => {
+      const emps = employeesByLead[lid] || [];
+      emps.forEach((e) => allowedEmpIds.add(e.id));
+    });
+    const allLeadsLoaded = selectedTeamLeadIds.every((lid) => !!employeesByLead[lid] && !loadingByLead[lid]);
+    if (allLeadsLoaded) {
+      const prunedEmpIds = selectedEmployeeIds.filter((id) => allowedEmpIds.has(id));
+      if (prunedEmpIds.length !== selectedEmployeeIds.length) {
+        const prunedEmpObjs = prunedEmpIds
+          .map((id) => OrganizationService.getEmployeeById(id))
+          .filter((e): e is EmployeeItem => !!e);
+        onSelectedEmployeesChange(prunedEmpIds, prunedEmpObjs);
+      }
+    }
+  }, [selectedTeamLeadIds, employeesByLead, loadingByLead, selectedEmployeeIds]);
 
   // Search state stored per Team Lead ID to allow independent search fields
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});

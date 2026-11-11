@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Search,
   Bell,
   ChevronDown,
   LogOut,
@@ -20,11 +19,11 @@ interface EmployeeTopNavProps {
 }
 
 export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
-  onSearch,
+  onSearch: _onSearch,
   onToggleMobileSidebar,
 }) => {
   const navigate = useNavigate();
-  const [searchValue, setSearchValue] = useState('');
+  const location = useLocation();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<EmployeeNotificationItem[]>([]);
@@ -57,12 +56,6 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchValue(query);
-    if (onSearch) onSearch(query);
-  };
-
   const handleMarkAllAsRead = () => {
     const updated = EmployeeService.markNotificationsAsRead();
     setNotifications(updated);
@@ -84,20 +77,6 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
             <Menu className="w-5 h-5" />
           </button>
         )}
-      </div>
-
-      {/* Global Search Bar */}
-      <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchValue}
-            onChange={handleSearchChange}
-            placeholder="Search tickets, priority, status..."
-            className="w-full bg-slate-100/70 border border-slate-200/80 rounded-full pl-9 pr-4 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20 transition-all"
-          />
-        </div>
       </div>
 
       {/* Right Controls */}
@@ -226,12 +205,22 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
 
               <button
                 onClick={() => {
-                  setShowProfileMenu(false);
                   EmployeeService.clearCache();
                   clearBackendSession();
                   localStorage.removeItem('platform_current_user');
+                  sessionStorage.removeItem('platform_current_user');
+                  localStorage.removeItem('backend_auth_token');
+                  sessionStorage.removeItem('backend_auth_token');
+                  localStorage.removeItem('backend_refresh_token');
+                  sessionStorage.removeItem('backend_refresh_token');
+                  localStorage.removeItem('backend_token_expires_at');
+                  sessionStorage.removeItem('backend_token_expires_at');
                   localStorage.setItem('platform_explicitly_logged_out', 'true');
-                  navigate('/signin');
+                  sessionStorage.setItem('platform_explicitly_logged_out', 'true');
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('platform-logout'));
+                  }
+                  navigate('/login', { replace: true });
                 }}
                 className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer font-semibold"
               >

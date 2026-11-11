@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -22,8 +23,9 @@ import {
 } from 'lucide-react';
 
 export const TicketManagementPage: React.FC = () => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const [tickets, setTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
   const [activeQueueTab, setActiveQueueTab] = useState<'all' | 'unassigned' | 'in_progress' | 'pending' | 'escalated'>('all');
 
   // Filters
@@ -33,6 +35,7 @@ export const TicketManagementPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [slaFilter, setSlaFilter] = useState('all');
+  const [assigneeOptions, setAssigneeOptions] = useState<{ id: string; name: string; role: string }[]>([]);
 
   // Drawer / Modal states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -47,20 +50,49 @@ export const TicketManagementPage: React.FC = () => {
   const [modalNote, setModalNote] = useState('');
   const [newComment, setNewComment] = useState('');
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const data = await AdminApiService.getTickets('all');
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    const data = await AdminApiService.getTickets('all', force);
     setTickets(data);
     setIsLoading(false);
   };
 
+  const loadAssignees = async () => {
+    try {
+      const allUsers = await AdminApiService.getUsers();
+      if (Array.isArray(allUsers)) {
+        const eligible = allUsers.filter(
+          (u) => (u.role || '').toLowerCase().includes('employee') || (u.role || '').toLowerCase().includes('lead')
+        );
+        const uniqueMap = new Map<string, { id: string; name: string; role: string }>();
+        eligible.forEach((u) => {
+          const trimmed = (u.name || '').trim();
+          if (trimmed && !uniqueMap.has(trimmed.toLowerCase())) {
+            uniqueMap.set(trimmed.toLowerCase(), { id: u.id, name: trimmed, role: u.role });
+          }
+        });
+        const list = Array.from(uniqueMap.values());
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setAssigneeOptions(list);
+      }
+    } catch (err) {
+      console.warn('Failed to load assignees for filter:', err);
+    }
+  };
+
   useEffect(() => {
-    loadData();
-    window.addEventListener('ticket-updated', loadData);
-    window.addEventListener('storage', loadData);
+    void loadData();
+    void loadAssignees();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
-      window.removeEventListener('ticket-updated', loadData);
-      window.removeEventListener('storage', loadData);
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -78,13 +110,41 @@ export const TicketManagementPage: React.FC = () => {
     if (activeQueueTab === 'escalated' && ((t.status || '').toLowerCase() !== 'escalated' || ['resolved', 'closed'].includes((t.status || '').toLowerCase()))) return false;
 
     // Compact filters
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      !searchQuery ||
-      t.ticketNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.requesterName.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      String(t.ticketNumber || '').toLowerCase().includes(q) ||
+      String(t.id || '').toLowerCase().includes(q) ||
+      String(t.title || '').toLowerCase().includes(q) ||
+      String(t.description || '').toLowerCase().includes(q) ||
+      String(t.department || '').toLowerCase().includes(q) ||
+      String(t.category || '').toLowerCase().includes(q) ||
+      String((t as any).subCategory || '').toLowerCase().includes(q) ||
+      String(t.requesterName || '').toLowerCase().includes(q) ||
+      String(t.assignedTo || '').toLowerCase().includes(q) ||
+      String(t.priority || '').toLowerCase().includes(q) ||
+      String(t.status || '').toLowerCase().includes(q);
 
-    const matchesDept = deptFilter === 'all' || t.department.toLowerCase() === deptFilter.toLowerCase();
+    const standardDepts = new Set(['it support', 'it', 'hr', 'finance', 'operations', 'sales', 'marketing', 'legal', 'facilities', 'general administration']);
+    const isCustomDepartment = (deptStr: string) => {
+      if (!deptStr || !deptStr.trim()) return false;
+      const lower = deptStr.toLowerCase().trim();
+      if (lower === 'other') return true;
+      const parts = lower.split(/[,/&]+/).map((p) => p.trim());
+      return !parts.some((p) => standardDepts.has(p));
+    };
+
+    const matchesDept =
+      deptFilter === 'all'
+        ? true
+        : deptFilter.toLowerCase() === 'other'
+        ? isCustomDepartment(String(t.department || ''))
+        : (() => {
+            const target = deptFilter.toLowerCase();
+            const dept = String(t.department || '').toLowerCase();
+            const parts = dept.split(/[,/&]+/).map((p) => p.trim());
+            return parts.some((p) => p === target || p.includes(target) || target.includes(p)) || dept.includes(target);
+          })();
     const matchesPriority = priorityFilter === 'all' || t.priority.toLowerCase() === priorityFilter.toLowerCase();
     const matchesStatus = statusFilter === 'all' || t.status.toLowerCase() === statusFilter.toLowerCase();
     const matchesAssignee =
@@ -92,7 +152,17 @@ export const TicketManagementPage: React.FC = () => {
         ? true
         : assigneeFilter === 'unassigned'
         ? isTicketUnassigned(t)
-        : t.assignedTo?.toLowerCase() === assigneeFilter.toLowerCase();
+        : (() => {
+            const target = assigneeFilter.toLowerCase().trim();
+            const assigned = String(t.assignedTo || '').toLowerCase().trim();
+            if (!assigned || assigned === 'unassigned') return false;
+            return (
+              assigned === target ||
+              assigned.includes(target) ||
+              target.includes(assigned) ||
+              String((t as any).assignedAgentId || (t as any).assigned_agent_id || '') === assigneeFilter
+            );
+          })();
     const matchesSla = slaFilter === 'all' || t.slaStatus.toLowerCase().replace(' ', '_') === slaFilter.toLowerCase();
 
     return matchesSearch && matchesDept && matchesPriority && matchesStatus && matchesAssignee && matchesSla;
@@ -121,8 +191,12 @@ export const TicketManagementPage: React.FC = () => {
     let persisted: Ticket | null = null;
     if (actionModalType === 'assign' || actionModalType === 'reassign') {
       updatedTicket.assignedTo = modalAssignee;
-      if (updatedTicket.status === 'Open') updatedTicket.status = 'In Progress';
-      persisted = await AdminApiService.updateTicket(selectedTicket.id, { assignedTo: modalAssignee, status: updatedTicket.status }, modalNote || `Assigned to ${modalAssignee}`);
+      updatedTicket.priority = modalPriority;
+      persisted = await AdminApiService.updateTicket(
+        selectedTicket.id,
+        { assignedTo: modalAssignee, status: updatedTicket.status, priority: modalPriority },
+        modalNote || `Assigned to ${modalAssignee}`
+      );
     } else if (actionModalType === 'status') {
       updatedTicket.status = modalStatus;
       persisted = await AdminApiService.updateTicket(selectedTicket.id, { status: modalStatus }, modalNote || `Status changed to ${modalStatus}`);
@@ -131,8 +205,8 @@ export const TicketManagementPage: React.FC = () => {
       persisted = await AdminApiService.updateTicket(selectedTicket.id, { priority: modalPriority }, modalNote || `Priority changed to ${modalPriority}`);
     } else if (actionModalType === 'escalate') {
       updatedTicket.status = 'Escalated';
-      updatedTicket.priority = 'Urgent';
-      persisted = await AdminApiService.updateTicket(selectedTicket.id, { status: 'Escalated', priority: 'Urgent' }, modalNote || 'Ticket escalated');
+      updatedTicket.priority = 'Critical';
+      persisted = await AdminApiService.updateTicket(selectedTicket.id, { status: 'Escalated', priority: 'Critical' }, modalNote || 'Ticket escalated');
     } else if (actionModalType === 'deadline') {
       const formatted = modalDeadline.replace('T', ' ').slice(0, 16);
       updatedTicket.dueDate = formatted;
@@ -215,7 +289,7 @@ export const TicketManagementPage: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={loadData}
+          onClick={() => loadData(true)}
           icon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
           className="text-xs"
         >
@@ -314,9 +388,9 @@ export const TicketManagementPage: React.FC = () => {
           <option value="IT Support">IT Support</option>
           <option value="HR">HR</option>
           <option value="Finance">Finance</option>
-          <option value="Operations">Operations</option>
-          <option value="Sales">Sales</option>
-          <option value="Legal">Legal</option>
+          <option value="Development">Development</option>
+          <option value="QA Team">QA Team</option>
+          <option value="Other">Other</option>
         </select>
 
         {/* Priority Filter */}
@@ -326,7 +400,7 @@ export const TicketManagementPage: React.FC = () => {
           className="bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-[#0284C7] cursor-pointer"
         >
           <option value="all">Priority: All</option>
-          <option value="Urgent">Urgent</option>
+          <option value="Critical">Critical</option>
           <option value="High">High</option>
           <option value="Medium">Medium</option>
           <option value="Low">Low</option>
@@ -355,9 +429,11 @@ export const TicketManagementPage: React.FC = () => {
         >
           <option value="all">Assignee: All</option>
           <option value="unassigned">Unassigned</option>
-          <option value="Kotesh Goud">Kotesh Goud</option>
-          <option value="aditya">aditya</option>
-          <option value="Hyma">Hyma</option>
+          {assigneeOptions.map((u) => (
+            <option key={u.id} value={u.name}>
+              {u.name}
+            </option>
+          ))}
         </select>
 
         {/* SLA Filter */}
@@ -448,7 +524,7 @@ export const TicketManagementPage: React.FC = () => {
                     <td className="py-3 px-3">
                       <Badge
                         variant={
-                          t.priority === 'Urgent'
+                          t.priority === 'Critical'
                             ? 'danger'
                             : t.priority === 'High'
                             ? 'warning'
@@ -520,10 +596,10 @@ export const TicketManagementPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* ACTION MODAL (Assign / Reassign / Status / Priority / Escalate) */}
-      {actionModalType && selectedTicket && (
+      {/* ACTION MODAL disabled in view-only Admin Dashboard */}
+      {selectedTicket && actionModalType && (
         <Modal
-          isOpen={true}
+          isOpen={false}
           onClose={() => setActionModalType(null)}
           title={
             actionModalType === 'assign'
@@ -555,11 +631,12 @@ export const TicketManagementPage: React.FC = () => {
                   onChange={(e) => setModalAssignee(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-md p-2 text-slate-800 focus:outline-none focus:border-[#0284C7]"
                 >
-                  <option value="Sudheshna Bharadwaj">Sudheshna Bharadwaj (Admin)</option>
-                  <option value="Kotesh Goud">Kotesh Goud (IT Lead)</option>
-                  <option value="Lahari Pedada">Lahari Pedada (IT Lead)</option>
-                  <option value="aditya">aditya (Employee)</option>
-                  <option value="Hyma">Hyma (Employee)</option>
+                  <option value="">Select Assignee</option>
+                  {assigneeOptions.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name} ({u.role})
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -590,10 +667,10 @@ export const TicketManagementPage: React.FC = () => {
                   onChange={(e) => setModalPriority(e.target.value as TicketPriority)}
                   className="w-full bg-white border border-slate-300 rounded-md p-2 text-slate-800 focus:outline-none focus:border-[#0284C7]"
                 >
-                  <option value="Low">Low</option>
-                  <option value="Medium">Medium</option>
+                  <option value="Critical">Critical</option>
                   <option value="High">High</option>
-                  <option value="Urgent">Urgent</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
                 </select>
               </div>
             )}
@@ -604,7 +681,7 @@ export const TicketManagementPage: React.FC = () => {
                   <AlertTriangle className="w-4 h-4 text-red-600" /> Escalation Warning
                 </div>
                 <p className="text-[11px] mt-1">
-                  Escalating this ticket will set status to <strong>Escalated</strong> and priority to <strong>Urgent</strong>, flagging it for immediate management review.
+                  Escalating this ticket will set status to <strong>Escalated</strong> and priority to <strong>Critical</strong>, flagging it for immediate management review.
                 </p>
               </div>
             )}
@@ -621,7 +698,7 @@ export const TicketManagementPage: React.FC = () => {
                     }}
                     className="px-2 py-1.5 text-[11px] rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold text-left cursor-pointer hover:bg-rose-100"
                   >
-                    +4 Hours (Urgent)
+                    +4 Hours (Critical)
                   </button>
                   <button
                     type="button"
@@ -698,7 +775,7 @@ export const TicketManagementPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-bold text-[#0284C7]">{selectedTicket.ticketNumber}</span>
-                  <Badge variant={selectedTicket.priority === 'Urgent' ? 'danger' : 'warning'} dot>
+                  <Badge variant={selectedTicket.priority === 'Critical' ? 'danger' : 'warning'} dot>
                     {selectedTicket.priority}
                   </Badge>
                   <Badge variant={selectedTicket.status === 'Escalated' ? 'danger' : 'info'}>
@@ -706,39 +783,18 @@ export const TicketManagementPage: React.FC = () => {
                   </Badge>
                 </div>
                 <h2 className="text-lg font-bold text-slate-900 mt-1">{selectedTicket.title}</h2>
-                <div className="flex items-center gap-1.5 mt-2.5">
+                <div className="flex items-center gap-2 mt-2.5">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    View
+                  </span>
                   <button
-                    onClick={() => handleOpenActionModal(selectedTicket, 'reassign')}
-                    className="px-2 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-300 font-medium cursor-pointer text-[11px]"
+                    onClick={() => navigate(`/admin/workspace/tickets/${selectedTicket.id}`)}
+                    className="px-2.5 py-1 bg-sky-50 text-[#0284C7] hover:bg-sky-100 rounded-lg border border-sky-200 font-semibold cursor-pointer text-xs flex items-center gap-1"
                   >
-                    Assign / Reassign
+                    <Eye className="w-3 h-3" />
+                    View Details
                   </button>
-                  <button
-                    onClick={() => handleOpenActionModal(selectedTicket, 'deadline')}
-                    className="px-2 py-1 bg-sky-50 text-[#0284C7] hover:bg-sky-100 rounded border border-sky-200 font-medium cursor-pointer text-[11px]"
-                  >
-                    Assign Deadline
-                  </button>
-                  <button
-                    onClick={() => handleOpenActionModal(selectedTicket, 'status')}
-                    className="px-2 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-300 font-medium cursor-pointer text-[11px]"
-                  >
-                    Status
-                  </button>
-                  <button
-                    onClick={() => handleOpenActionModal(selectedTicket, 'priority')}
-                    className="px-2 py-1 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded border border-slate-300 font-medium cursor-pointer text-[11px]"
-                  >
-                    Priority
-                  </button>
-                  {selectedTicket.status !== 'Escalated' && (
-                    <button
-                      onClick={() => handleOpenActionModal(selectedTicket, 'escalate')}
-                      className="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded border border-red-200 font-semibold cursor-pointer text-[11px]"
-                    >
-                      Escalate
-                    </button>
-                  )}
                 </div>
               </div>
               <button

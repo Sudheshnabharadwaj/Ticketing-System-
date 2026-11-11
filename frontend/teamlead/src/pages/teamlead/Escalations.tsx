@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { TicketDetailsModal } from '../../components/tickets/TicketDetailsModal';
@@ -8,6 +9,7 @@ import { AlertTriangle, ShieldAlert, Eye, UserPlus, CheckCircle2 } from 'lucide-
 import { Ticket } from '../../types/ticket';
 
 export const Escalations: React.FC = () => {
+  const navigate = useNavigate();
   const { escalations, tickets, setSelectedTicket, selectedTicket, resolveTicket, assignAgent } = useTickets();
   const [search, setSearch] = useState('');
 
@@ -20,10 +22,7 @@ export const Escalations: React.FC = () => {
   );
 
   const handleOpenTicket = (ticketId: string) => {
-    const found = tickets.find((t) => t.id === ticketId);
-    if (found) {
-      setSelectedTicket(found);
-    }
+    navigate(`/teamlead/tickets/${ticketId}?mode=view`);
   };
 
   return (
@@ -61,7 +60,14 @@ export const Escalations: React.FC = () => {
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filteredEscalations.map((esc) => (
+              {filteredEscalations.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-xs">
+                    No data available
+                  </td>
+                </tr>
+              ) : (
+                filteredEscalations.map((esc) => (
                 <tr key={esc.id} className="hover:bg-slate-50/70 transition-colors">
                   <td
                     onClick={() => handleOpenTicket(esc.ticketId)}
@@ -97,7 +103,8 @@ export const Escalations: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>

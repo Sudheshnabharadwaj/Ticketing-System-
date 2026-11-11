@@ -31,6 +31,18 @@ export const Profile: React.FC = () => {
     setEditRole(p.role);
     setEditPhone(p.phone);
     setEditAvatarUrl(p.avatarUrl || '');
+
+    EmployeeService.fetchProfile().then((fresh) => {
+      if (fresh) {
+        setProfile(fresh);
+        setEditName(fresh.name);
+        setEditEmail(fresh.email);
+        setEditDepartment(fresh.department);
+        setEditRole(fresh.role);
+        setEditPhone(fresh.phone);
+        setEditAvatarUrl(fresh.avatarUrl || '');
+      }
+    }).catch(() => {});
   }, []);
 
   if (!profile) return null;
@@ -49,7 +61,7 @@ export const Profile: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneError(null);
 
@@ -58,7 +70,7 @@ export const Profile: React.FC = () => {
       return;
     }
 
-    const updated = EmployeeService.updateProfile({
+    const updated = await EmployeeService.updateProfile({
       name: editName.trim() || profile.name,
       email: editEmail.trim() || profile.email,
       department: editDepartment.trim() || profile.department,
@@ -74,11 +86,11 @@ export const Profile: React.FC = () => {
     window.dispatchEvent(new Event('storage'));
   };
 
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = async () => {
     if (isEditing) {
       setEditAvatarUrl('');
     }
-    const updated = EmployeeService.updateProfile({ avatarUrl: '' });
+    const updated = await EmployeeService.updateProfile({ avatarUrl: '' });
     setProfile(updated);
     setEditAvatarUrl('');
     if (fileInputRef.current) {
@@ -93,12 +105,12 @@ export const Profile: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const result = reader.result as string;
         if (isEditing) {
           setEditAvatarUrl(result);
         } else {
-          const updated = EmployeeService.updateProfile({ avatarUrl: result });
+          const updated = await EmployeeService.updateProfile({ avatarUrl: result });
           setProfile(updated);
           setEditAvatarUrl(result);
         }

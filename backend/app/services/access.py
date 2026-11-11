@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
 from app.db.supabase import get_supabase_admin_client
+from app.services.user_store import find_user_by_email, find_user_by_id, get_all_users
 
 # ── Roles ────────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ _USER_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _USER_CACHE_TTL = 30.0  # seconds
 
 _TEAM_MEMBERS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-_TEAM_MEMBERS_TTL = 5.0  # seconds
+_TEAM_MEMBERS_TTL = 30.0  # seconds
 
 # Lookup index (ids/emails/names) of a team lead's managed employees. Building
 # it once per team instead of once per ticket keeps ticket visibility checks
@@ -75,7 +76,7 @@ _TEAM_MEMBERS_TTL = 5.0  # seconds
 _TEAM_MEMBER_INDEX_CACHE: dict[str, tuple[float, tuple[set[str], set[str], set[str]]]] = {}
 
 _ALL_USERS_CACHE: tuple[float, list[dict[str, Any]]] | None = None
-_ALL_USERS_TTL = 3.0  # seconds
+_ALL_USERS_TTL = 30.0  # seconds
 
 
 def invalidate_all_users_cache() -> None:
@@ -88,19 +89,9 @@ def fetch_all_users_cached() -> list[dict[str, Any]]:
     now = time.time()
     if _ALL_USERS_CACHE and (now - _ALL_USERS_CACHE[0]) < _ALL_USERS_TTL:
         return _ALL_USERS_CACHE[1]
-    sb = get_supabase_admin_client()
-    try:
-        res = (
-            sb.table("users")
-            .select("id, name, email, phone, role, department, designation, team, avatar, location, status, created_at")
-            .execute()
-        )
-        data = res.data or []
-        _ALL_USERS_CACHE = (now, data)
-        return data
-    except Exception as exc:
-        print(f"[access] could not fetch all users: {exc}")
-        return _ALL_USERS_CACHE[1] if _ALL_USERS_CACHE else []
+    data = get_all_users()
+    _ALL_USERS_CACHE = (now, data)
+    return data
 
 
 def invalidate_team_cache(tl_id: str | None = None) -> None:
@@ -142,24 +133,37 @@ def load_current_user(payload: dict[str, Any]) -> dict[str, Any]:
         if now - cached_time < _USER_CACHE_TTL:
             return cached_row
 
-    sb = get_supabase_admin_client()
+    # Fast path: check memory-cached users first (eliminates WAN roundtrip on every API request)
+    all_users = fetch_all_users_cached()
+    for u in all_users:
+        uid = str(u.get("id") or "").strip()
+        uemail = str(u.get("email") or "").strip().lower()
+        if (sub and uid.lower() == sub.lower()) or (email and uemail == email):
+            if uid:
+                _USER_CACHE[uid] = (now, u)
+            if uemail:
+                _USER_CACHE[uemail] = (now, u)
+            return u
+
     row: dict[str, Any] | None = None
     if sub:
-        try:
-            res = sb.table("users").select("*").eq("id", sub).limit(1).execute()
-            rows = res.data or []
-            row = rows[0] if rows else None
-        except Exception:
-            row = None
+        row = find_user_by_id(sub)
     if row is None and email:
-        try:
-            res = sb.table("users").select("*").eq("email", email).limit(1).execute()
-            rows = res.data or []
-            row = rows[0] if rows else None
-        except Exception:
-            row = None
+        row = find_user_by_email(email)
+
     if row is None:
-        raise LookupError("Authenticated user no longer exists")
+        if sub or email:
+            row = {
+                "id": sub or f"usr-{int(time.time() * 1000)}",
+                "email": email,
+                "name": payload.get("name") or (email.split("@")[0] if email else "User"),
+                "role": normalize_role(payload.get("role")),
+                "department": payload.get("department") or "IT Support",
+                "team": payload.get("team") or "",
+                "status": "Active",
+            }
+        else:
+            raise LookupError("Authenticated user no longer exists")
 
     if sub:
         _USER_CACHE[sub] = (now, row)
@@ -236,13 +240,16 @@ TEAM_NAME_OR_LEAD_TO_ID: dict[str, int] = {
     "digital campaigns": 6,
     "it support team": 7,
     "it support": 7,
+    "it": 7,
+    "it operations": 7,
+    "okl120": 7,
+    "manikanta": 7,
     "finance team": 8,
     "finance": 8,
     "hr operations team": 9,
     "hr operations": 9,
     "hr": 9,
     "okl011": 9,
-    "manikanta": 9,
     "facilities team": 10,
     "facilities": 10,
     "general administration team": 11,
@@ -286,7 +293,8 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
     - Target user is not an admin or another team lead.
     - Linked by employee.team matching tl.id or tl.team, OR
       employee.team_lead_id matching tl.id.
-    - Department alone does NOT establish a team relationship.
+    - If the lead has no restricted team, employees in the same department
+      are managed by this lead.
     """
     tl_id = str(tl_user.get("id") or "").strip()
     now = time.time()
@@ -318,6 +326,10 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
                 is_member = True
         if not is_member and u.get("team_lead_id"):
             if str(u.get("team_lead_id") or "").strip() == tl_id:
+                is_member = True
+        if not is_member and not tl_team and not uteam:
+            # If lead and employee both have no specific sub-team, match by department
+            if _scopes_overlap(tl_user.get("department"), u.get("department")):
                 is_member = True
 
         if is_member:
@@ -356,6 +368,60 @@ def teamlead_member_index(
     return index
 
 
+def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    """Find the Team Lead of a user (or the user themselves if they are already a Team Lead)."""
+    role = normalize_role(user.get("role"))
+    if role == ROLE_TEAMLEAD:
+        return user
+
+    users = all_users if all_users is not None else fetch_all_users_cached()
+    uid = str(user.get("id") or "").strip()
+    uteam = str(user.get("team") or "").strip()
+    udept = user.get("department")
+    tl_id_field = str(user.get("team_lead_id") or "").strip()
+
+    # 1. Direct team_lead_id match
+    if tl_id_field:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("id") or "").strip() == tl_id_field:
+                return u
+
+    # 2. uteam matches team lead's id (e.g. team='OKL013')
+    if uteam:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                tl_id = str(u.get("id") or "").strip()
+                if tl_id and tl_id.lower() == uteam.lower():
+                    return u
+
+    # 3. uteam matches team lead's team name (e.g. team='Team Alpha')
+    if uteam:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                tl_team = str(u.get("team") or "").strip()
+                if tl_team and (tl_team.lower() == uteam.lower() or _teams_overlap(tl_team, uteam)):
+                    return u
+
+    # 4. Department match fallback
+    if udept:
+        for u in users:
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                if _scopes_overlap(udept, u.get("department")):
+                    return u
+
+    # 5. Fallback: first active team lead
+    for u in users:
+        if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("status") or "").strip().lower() == "active":
+            return u
+
+    # 6. Fallback: any team lead
+    for u in users:
+        if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+            return u
+
+    return None
+
+
 # ── Ticket authorization ─────────────────────────────────────────────────────
 
 
@@ -365,6 +431,12 @@ def _norm(value: Any) -> str:
 
 def _same_person(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any], prefix: str) -> bool:
     """Compare the authenticated user with ``<prefix>_id``/``<prefix>_email``/``<prefix>``."""
+    if prefix == "assigned_agent":
+        ag_name = _norm(ticket.get("assigned_agent"))
+        to_type = _norm(ticket.get("assigned_to_type"))
+        if ag_name in ("", "unassigned", "none", "null") or to_type == "unassigned":
+            return False
+
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
     email = _norm(user.get("email") or payload.get("email"))
     name = _norm(user.get("name") or payload.get("name"))
@@ -426,6 +498,13 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if assigned_team_id and (assigned_team_id == tl_id or (tl_team and assigned_team_id.lower() == tl_team.lower())):
             return True
         if tl_team and _scopes_overlap(tl_team, ticket.get("assigned_team_id")):
+            return True
+
+        # 4b. Explicitly routed to this Team Lead via team_lead_id / team_lead_ids
+        tl_ids_on_ticket = [str(x) for x in (ticket.get("team_lead_ids") or [])]
+        if str(ticket.get("team_lead_id") or ""):
+            tl_ids_on_ticket.append(str(ticket.get("team_lead_id")))
+        if tl_id and tl_id in tl_ids_on_ticket:
             return True
 
         # 5. Tagged members
@@ -491,9 +570,114 @@ def can_manage_ticket(payload: dict[str, Any], user: dict[str, Any], ticket: dic
         return ticket_visible(payload, user, ticket)
     # Employees may update the tickets they created (status/comment) and the
     # ones assigned to them.
+    user_id = str(user.get("id") or payload.get("sub") or "").strip()
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or ticket.get("created_by") or "").strip()
+    if user_id and creator_id and user_id.lower() == creator_id.lower():
+        return True
     return _same_person(user, payload, ticket, "employee") or _same_person(
         user, payload, ticket, "assigned_agent"
     )
+
+
+def is_ticket_creator(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or ticket.get("created_by") or "").strip().lower()
+    if user_id and creator_id and user_id == creator_id:
+        return True
+    return _same_person(user, payload, ticket, "employee")
+
+
+def is_teamlead_involved_in_ticket(user: dict[str, Any], payload: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Check if a Team Lead is assigned to or involved in the ticket."""
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    user_name = str(user.get("name") or "").strip().lower()
+    user_email = str(user.get("email") or payload.get("email") or "").strip().lower()
+
+    # 1. Directly assigned agent
+    agent_id = str(ticket.get("assigned_agent_id") or "").strip().lower()
+    agent_name = str(ticket.get("assigned_agent") or "").strip().lower()
+    agent_email = str(ticket.get("assigned_agent_email") or "").strip().lower()
+    if user_id and agent_id and user_id == agent_id:
+        return True
+    if user_name and agent_name and user_name == agent_name:
+        return True
+    if user_email and agent_email and user_email == agent_email:
+        return True
+
+    # 2. Creator
+    if is_ticket_creator(user, payload, ticket):
+        return True
+
+    # 3. Explicitly assigned/tagged team leads
+    tl_ids = [str(x).strip().lower() for x in (ticket.get("team_lead_ids") or []) if x]
+    if user_id and user_id in tl_ids:
+        return True
+    for tl in (ticket.get("team_leads") or []):
+        if isinstance(tl, dict):
+            tl_id = str(tl.get("id") or tl.get("employeeId") or "").strip().lower()
+            tl_em = str(tl.get("email") or "").strip().lower()
+            if (user_id and tl_id == user_id) or (user_email and tl_em == user_email):
+                return True
+        elif isinstance(tl, str) and (user_id == tl.lower() or user_name == tl.lower()):
+            return True
+
+    # 4. Assigned by this team lead
+    assigned_by = str(ticket.get("assigned_by") or "").strip().lower()
+    if user_name and user_name in assigned_by:
+        return True
+
+    # 5. Lead of the assigned employee who is working on the ticket
+    if agent_id or agent_name or agent_email:
+        managed = teamlead_managed_employees(user)
+        for m in managed:
+            mid = str(m.get("id") or "").strip().lower()
+            mem = str(m.get("email") or "").strip().lower()
+            mnm = str(m.get("name") or "").strip().lower()
+            if (agent_id and mid == agent_id) or (agent_email and mem == agent_email) or (agent_name and mnm == agent_name):
+                return True
+
+    return False
+
+
+def can_view_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """All users with ticket access have view-only access to view the complete conversation history."""
+    return ticket_visible(payload, user, ticket)
+
+
+def can_reply_ticket_chat(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Tickets under My Tickets and Assigned Tickets have chat/reply access for the ticket creator
+    and assigned users who are working on the ticket. All other users have view-only access without chat/reply.
+    """
+    if is_ticket_creator(user, payload, ticket):
+        return True
+
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    user_name = str(user.get("name") or "").strip().lower()
+    user_email = str(user.get("email") or payload.get("email") or "").strip().lower()
+
+    agent_id = str(ticket.get("assigned_agent_id") or "").strip().lower()
+    agent_name = str(ticket.get("assigned_agent") or "").strip().lower()
+    agent_email = str(ticket.get("assigned_agent_email") or "").strip().lower()
+
+    if user_id and agent_id and user_id == agent_id:
+        return True
+    if user_name and agent_name and user_name == agent_name:
+        return True
+    if user_email and agent_email and user_email == agent_email:
+        return True
+    if _same_person(user, payload, ticket, "assigned_agent"):
+        return True
+
+    return False
+
+
+def can_view_internal_notes(payload: dict[str, Any], user: dict[str, Any], ticket: dict[str, Any]) -> bool:
+    """Internal notes are strictly restricted to Admin and authorized Team Leads, never regular employees."""
+    if is_admin(payload):
+        return True
+    if is_teamlead(payload):
+        return is_teamlead_involved_in_ticket(user, payload, ticket) and ticket_visible(payload, user, ticket)
+    return False
 
 
 # ── SLA ──────────────────────────────────────────────────────────────────────
@@ -547,6 +731,14 @@ def compute_sla(ticket: dict[str, Any], now: datetime | None = None) -> dict[str
     deadline = sla_deadline(ticket)
 
     if status in ("resolved", "closed"):
+        resolved_at = _parse_dt(ticket.get("resolved_at") or ticket.get("closed_at") or ticket.get("updated_at"))
+        if deadline and resolved_at and resolved_at > deadline:
+            return {
+                "status": "SLA Breached",
+                "state": "breached",
+                "remaining": "Breached prior to resolution",
+                "due_at": deadline.isoformat(),
+            }
         return {
             "status": "Within SLA",
             "state": "normal",
@@ -598,6 +790,7 @@ def serialize_ticket(
     now: datetime | None = None,
     payload: dict[str, Any] | None = None,
     user: dict[str, Any] | None = None,
+    load_attachments: bool = True,
 ) -> dict[str, Any]:
     """Add server-computed SLA fields without mutating the stored row."""
     result = dict(ticket)
@@ -607,10 +800,15 @@ def serialize_ticket(
     result["sla_remaining"] = sla["remaining"]
     if sla["due_at"]:
         result["sla_due_at"] = sla["due_at"]
+
+    cached_users = fetch_all_users_cached()
     agent = _norm(ticket.get("assigned_agent"))
-    if agent and agent not in ("", "unassigned", "none", "null"):
+    to_type = _norm(ticket.get("assigned_to_type"))
+    is_ticket_unassigned = agent in ("", "unassigned", "none", "null") or to_type == "unassigned"
+
+    if not is_ticket_unassigned and agent:
         matched = None
-        for u in fetch_all_users_cached():
+        for u in cached_users:
             uname = _norm(u.get("name"))
             uid = _norm(u.get("id"))
             if uname == agent or (len(uname) >= 3 and uname in agent) or uid == agent:
@@ -618,18 +816,48 @@ def serialize_ticket(
                 break
         if matched:
             result["assigned_agent_id"] = str(matched.get("id") or "")
+            if not result.get("assigned_agent_email"):
+                result["assigned_agent_email"] = matched.get("email")
             if not result.get("assigned_team_id"):
                 result["assigned_team_id"] = resolve_team_id(matched.get("team")) or resolve_team_id(matched.get("id"))
+    elif is_ticket_unassigned:
+        result["assigned_agent"] = "Unassigned"
+        result["assigned_agent_id"] = None
+        result["assigned_agent_email"] = None
 
-    result["is_unassigned"] = agent in ("", "unassigned", "none", "null") and not result.get(
-        "assigned_agent_id"
-    )
+    emp = _norm(ticket.get("employee"))
+    if emp and emp not in ("", "unassigned", "none", "null") and not result.get("employee_id"):
+        for u in cached_users:
+            uname = _norm(u.get("name"))
+            uid = _norm(u.get("id"))
+            if uname == emp or (len(uname) >= 3 and uname in emp) or uid == emp:
+                result["employee_id"] = str(u.get("id") or "")
+                if not result.get("employee_email"):
+                    result["employee_email"] = u.get("email")
+                break
+
+    result["is_unassigned"] = is_ticket_unassigned
     if payload is not None and user is not None:
         result["is_assigned_to_me"] = _same_person(user, payload, result, "assigned_agent")
         result["is_created_by_me"] = (
             _same_person(user, payload, result, "employee")
             or str(result.get("requester_id") or "") == str(user.get("id") or "")
         )
+
+    tid = str(ticket.get("id") or "")
+    if load_attachments and tid:
+        try:
+            from app.api.v1.attachments import _disk_records
+            disk_atts = _disk_records(tid, "")
+            result["attachments"] = disk_atts
+            result["attachments_count"] = len(disk_atts)
+        except Exception:
+            result["attachments"] = ticket.get("attachments") or []
+            result["attachments_count"] = len(result["attachments"])
+    else:
+        result["attachments"] = ticket.get("attachments") or []
+        result["attachments_count"] = len(result["attachments"])
+
     return result
 
 
@@ -638,13 +866,13 @@ def is_active(ticket: dict[str, Any]) -> bool:
 
 
 _RAW_TICKETS_CACHE: tuple[float, list[dict[str, Any]]] | None = None
-_RAW_TICKETS_TTL = 3.0  # seconds
+_RAW_TICKETS_TTL = 30.0  # seconds
 
 # Per-caller result of the visibility filter. ``/tickets``, ``/tickets/stats``
 # and ``/notifications`` all need the same scoped list, so the filtered rows
 # are computed once per caller instead of once per endpoint.
 _SCOPED_TICKETS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-_SCOPED_TICKETS_TTL = 3.0  # seconds
+_SCOPED_TICKETS_TTL = 30.0  # seconds
 
 
 def invalidate_tickets_cache() -> None:
@@ -669,7 +897,7 @@ def _scoped_cache_key(payload: dict[str, Any], user: dict[str, Any]) -> str:
 def scoped_tickets(payload: dict[str, Any], user: dict[str, Any]) -> list[dict[str, Any]]:
     """Fetch and filter tickets according to the caller's role.
 
-    The raw Supabase ticket list is cached for 3s to collapse parallel dashboard
+    The raw Supabase ticket list is cached for 30s to collapse parallel dashboard
     requests, and the per-caller visibility filter is cached for the same
     window so several endpoints share a single pass over the rows.
     """
@@ -687,6 +915,24 @@ def scoped_tickets(payload: dict[str, Any], user: dict[str, Any]) -> list[dict[s
         sb = get_supabase_admin_client()
         res = sb.table("tickets").select("*").order("created_at", desc=True).execute()
         rows = res.data or []
+
+        # Batch load tagged members to populate visibility without N+1 queries
+        tagged_map: dict[str, list[str]] = {}
+        try:
+            tt_res = sb.table("ticket_tagged_members").select("ticket_id, user_id").execute()
+            for tm in (tt_res.data or []):
+                t_id = str(tm.get("ticket_id") or "")
+                u_id = str(tm.get("user_id") or "")
+                if t_id and u_id:
+                    tagged_map.setdefault(t_id, []).append(u_id)
+        except Exception:
+            pass
+
+        for r in rows:
+            t_id = str(r.get("id") or "")
+            if t_id in tagged_map:
+                r["tagged_member_ids"] = tagged_map[t_id]
+
         _RAW_TICKETS_CACHE = (now, rows)
 
     unique: dict[str, dict[str, Any]] = {}
@@ -706,33 +952,66 @@ def ticket_stats(
     user: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     now = now or datetime.now(timezone.utc)
-    serialized = [serialize_ticket(t, now, payload, user) for t in tickets]
-    active = [t for t in serialized if is_active(t)]
+    total = len(tickets)
+    open_cnt = 0
+    in_progress_cnt = 0
+    pending_cnt = 0
+    resolved_cnt = 0
+    unassigned_cnt = 0
+    escalated_cnt = 0
+    sla_risk_cnt = 0
+    sla_breached_cnt = 0
+    assigned_to_me_cnt = 0
+    my_tickets_cnt = 0
+
+    for t in tickets:
+        st = _norm(t.get("status"))
+        active = st not in ("resolved", "closed")
+
+        if not active:
+            resolved_cnt += 1
+        else:
+            if st == "open":
+                open_cnt += 1
+            elif st == "in progress":
+                in_progress_cnt += 1
+            elif st == "pending":
+                pending_cnt += 1
+            if st == "escalated":
+                escalated_cnt += 1
+
+            sla = compute_sla(t, now)
+            if sla["state"] == "risk":
+                sla_risk_cnt += 1
+            elif sla["state"] == "breached":
+                sla_breached_cnt += 1
+
+            ag = _norm(t.get("assigned_agent"))
+            ag_id = str(t.get("assigned_agent_id") or "")
+            to_type = _norm(t.get("assigned_to_type"))
+            if (not ag or ag in ("unassigned", "none", "null")) or to_type == "unassigned":
+                unassigned_cnt += 1
+
+        if payload is not None and user is not None:
+            if _same_person(user, payload, t, "assigned_agent"):
+                assigned_to_me_cnt += 1
+            if _same_person(user, payload, t, "employee") or str(t.get("requester_id") or "") == str(user.get("id") or ""):
+                my_tickets_cnt += 1
+
     stats: dict[str, int] = {
-        "totalTickets": len(serialized),
-        "openTickets": sum(1 for t in active if _norm(t.get("status")) == "open"),
-        "inProgressTickets": sum(1 for t in active if _norm(t.get("status")) == "in progress"),
-        "pendingTickets": sum(1 for t in active if _norm(t.get("status")) == "pending"),
-        "resolvedTickets": sum(
-            1 for t in serialized if _norm(t.get("status")) in ("resolved", "closed")
-        ),
-        "unassignedTickets": sum(1 for t in active if t.get("is_unassigned")),
-        "escalatedTickets": sum(1 for t in active if _norm(t.get("status")) == "escalated"),
-        "slaRiskCount": sum(1 for t in active if t.get("sla_state") == "risk"),
-        "slaBreachedCount": sum(1 for t in active if t.get("sla_state") == "breached"),
+        "totalTickets": total,
+        "openTickets": open_cnt,
+        "inProgressTickets": in_progress_cnt,
+        "pendingTickets": pending_cnt,
+        "resolvedTickets": resolved_cnt,
+        "unassignedTickets": unassigned_cnt,
+        "escalatedTickets": escalated_cnt,
+        "slaRiskCount": sla_risk_cnt,
+        "slaBreachedCount": sla_breached_cnt,
     }
     if payload is not None and user is not None:
-        stats["assignedTicketsCount"] = sum(
-            1 for t in serialized if _same_person(user, payload, t, "assigned_agent")
-        )
-        stats["myTicketsCount"] = sum(
-            1
-            for t in serialized
-            if (
-                _same_person(user, payload, t, "employee")
-                or str(t.get("requester_id") or "") == str(user.get("id") or "")
-            )
-        )
+        stats["assignedTicketsCount"] = assigned_to_me_cnt
+        stats["myTicketsCount"] = my_tickets_cnt
     return stats
 
 

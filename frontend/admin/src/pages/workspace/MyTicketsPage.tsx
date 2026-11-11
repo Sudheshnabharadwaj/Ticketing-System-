@@ -13,14 +13,30 @@ import { getCurrentSessionUser } from '../../services/unifiedAuth';
 
 export const MyTicketsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    const sessionUser = getCurrentSessionUser();
+    const userEmail = (sessionUser?.email || '').toLowerCase();
+    const userName = (sessionUser?.name || '').toLowerCase();
+    return cached.filter((t) => {
+      const reqEmail = (t.requesterEmail || '').toLowerCase();
+      const reqName = (t.requesterName || '').toLowerCase();
+      const assigned = (t.assignedTo || '').toLowerCase();
+      if (userEmail && reqEmail === userEmail) return true;
+      if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+      return false;
+    });
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
-  const loadTickets = async () => {
-    setIsLoading(true);
-    const all = await AdminApiService.getTickets('all');
+  const loadTickets = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    const all = await AdminApiService.getTickets('all', force);
     const sessionUser = getCurrentSessionUser();
     const userEmail = (sessionUser?.email || '').toLowerCase();
     const userName = (sessionUser?.name || '').toLowerCase();
@@ -61,6 +77,7 @@ export const MyTicketsPage: React.FC = () => {
           type="button"
           onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=my-tickets`)}
           className="font-mono text-xs font-bold text-[#0284C7] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+          title="View Ticket"
         >
           {row.ticketNumber}
         </button>
@@ -78,7 +95,7 @@ export const MyTicketsPage: React.FC = () => {
     {
       header: 'Priority',
       cell: (row) => {
-        const variant = row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
+        const variant = row.priority === 'Critical' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
         return <Badge variant={variant} dot className="text-[11px] py-0.5 px-2">{row.priority}</Badge>;
       },
     },
@@ -100,15 +117,18 @@ export const MyTicketsPage: React.FC = () => {
     {
       header: 'Action',
       cell: (row) => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=my-tickets`)}
-          className="border-slate-200 hover:border-[#0284C7] text-slate-600 hover:text-[#0284C7] text-xs font-medium cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5 mr-1" />
-          View
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=my-tickets`)}
+            className="border-slate-200 hover:border-[#0284C7] text-slate-600 hover:text-[#0284C7] text-xs font-medium cursor-pointer"
+            title="View Ticket"
+          >
+            <Eye className="w-3.5 h-3.5 mr-1" />
+            View
+          </Button>
+        </div>
       ),
     },
   ];
@@ -133,7 +153,7 @@ export const MyTicketsPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadTickets}
+            onClick={() => loadTickets(true)}
             className="border-slate-200 text-slate-600 hover:bg-slate-50"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
@@ -142,7 +162,7 @@ export const MyTicketsPage: React.FC = () => {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => navigate('/admin/dashboard')}
+            onClick={() => navigate('/admin/workspace/create-ticket')}
             className="bg-[#0284C7] hover:bg-[#0369a1] text-white shadow-2xs font-semibold"
           >
             <PlusCircle className="w-4 h-4 mr-1.5" />
@@ -193,7 +213,7 @@ export const MyTicketsPage: React.FC = () => {
           emptyMessage={
             searchTerm || statusFilter !== 'ALL'
               ? 'No tickets match your search filters'
-              : 'No tickets created yet. Use "Create Ticket" on the Admin Dashboard to submit a ticket.'
+              : 'No tickets created yet. Use "Create Ticket" to submit a ticket.'
           }
         />
       </div>

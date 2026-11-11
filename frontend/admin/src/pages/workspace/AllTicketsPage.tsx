@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Table, type Column } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
@@ -12,10 +12,13 @@ import { Search, RefreshCw, Eye, CheckCircle } from 'lucide-react';
 
 export const AllTicketsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
+
+  const [tickets, setTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
+  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
+  const [search, setSearch] = useState(urlSearch);
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -23,16 +26,42 @@ export const AllTicketsPage: React.FC = () => {
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const fetchTickets = async () => {
-    setIsLoading(true);
-    const data = await AdminApiService.getTickets('all');
+  const fetchTickets = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    const data = await AdminApiService.getTickets('all', force);
     setTickets(data);
     setIsLoading(false);
   };
 
   useEffect(() => {
-    fetchTickets();
+    fetchTickets(false);
+    const handleTicketUpdated = () => {
+      fetchTickets(false);
+    };
+    window.addEventListener('ticket-updated', handleTicketUpdated);
+    window.addEventListener('storage', handleTicketUpdated);
+    return () => {
+      window.removeEventListener('ticket-updated', handleTicketUpdated);
+      window.removeEventListener('storage', handleTicketUpdated);
+    };
   }, []);
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    const nextParams = new URLSearchParams(searchParams);
+    if (val.trim()) {
+      nextParams.set('search', val);
+    } else {
+      nextParams.delete('search');
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
 
   useEffect(() => {
     if (toastMessage) {
@@ -45,23 +74,41 @@ export const AllTicketsPage: React.FC = () => {
     let result = tickets;
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase().trim();
       result = result.filter(
-        t => t.ticketNumber.toLowerCase().includes(q) ||
-             t.title.toLowerCase().includes(q) ||
-             t.requesterName.toLowerCase().includes(q) ||
-             t.category.toLowerCase().includes(q)
+        t =>
+          String(t.ticketNumber || '').toLowerCase().includes(q) ||
+          String(t.id || '').toLowerCase().includes(q) ||
+          String(t.title || '').toLowerCase().includes(q) ||
+          String(t.description || '').toLowerCase().includes(q) ||
+          String(t.requesterName || '').toLowerCase().includes(q) ||
+          String(t.category || '').toLowerCase().includes(q) ||
+          String(t.department || '').toLowerCase().includes(q) ||
+          String(t.assignedTo || '').toLowerCase().includes(q) ||
+          String(t.priority || '').toLowerCase().includes(q) ||
+          String(t.status || '').toLowerCase().includes(q)
       );
     }
 
     if (departmentFilter !== 'all') {
       const targetDept = departmentFilter.toLowerCase();
-      result = result.filter(t => {
-        if (!t.department) return false;
-        const deptStr = String(t.department).toLowerCase();
-        const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
-        return parts.some(p => p.includes(targetDept) || targetDept.includes(p)) || deptStr.includes(targetDept);
-      });
+      const standardDepts = new Set(['it support', 'it', 'hr', 'finance', 'operations', 'sales', 'marketing', 'legal', 'facilities', 'general administration']);
+      if (targetDept === 'other') {
+        result = result.filter(t => {
+          if (!t.department) return false;
+          const deptStr = String(t.department).toLowerCase().trim();
+          if (deptStr === 'other') return true;
+          const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
+          return !parts.some(p => standardDepts.has(p));
+        });
+      } else {
+        result = result.filter(t => {
+          if (!t.department) return false;
+          const deptStr = String(t.department).toLowerCase();
+          const parts = deptStr.split(/[,/&]+/).map(p => p.trim());
+          return parts.some(p => p.includes(targetDept) || targetDept.includes(p)) || deptStr.includes(targetDept);
+        });
+      }
     }
 
     if (statusFilter !== 'all') {
@@ -89,6 +136,7 @@ export const AllTicketsPage: React.FC = () => {
         <button
           onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=all-tickets`)}
           className="font-mono text-[#2563EB] font-semibold text-[12.5px] hover:underline text-left cursor-pointer"
+          title="View Ticket"
         >
           {row.ticketNumber}
         </button>
@@ -114,7 +162,7 @@ export const AllTicketsPage: React.FC = () => {
     {
       header: 'Priority',
       cell: (row) => {
-        const variant = row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
+        const variant = row.priority === 'Critical' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
         return <Badge variant={variant} dot className="text-[11px] py-0.5 px-2">{row.priority}</Badge>;
       }
     },
@@ -147,9 +195,10 @@ export const AllTicketsPage: React.FC = () => {
             size="sm"
             icon={<Eye className="w-3.5 h-3.5" />}
             onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=all-tickets`)}
-            title="View Details"
+            title="View Ticket"
+            className="text-xs"
           >
-            View Ticket
+            View
           </Button>
         </div>
       )
@@ -188,7 +237,7 @@ export const AllTicketsPage: React.FC = () => {
           variant="secondary"
           size="sm"
           icon={<RefreshCw className="w-4 h-4" />}
-          onClick={fetchTickets}
+          onClick={() => fetchTickets(true)}
           className="text-[13px]"
         >
           Refresh
@@ -202,7 +251,7 @@ export const AllTicketsPage: React.FC = () => {
             <Input
               placeholder="Search by ID, title, or requester..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               icon={<Search className="w-4 h-4 text-slate-400" />}
             />
           </div>
@@ -220,6 +269,7 @@ export const AllTicketsPage: React.FC = () => {
                 { value: 'Marketing', label: 'Marketing' },
                 { value: 'Legal', label: 'Legal' },
                 { value: 'Facilities', label: 'Facilities' },
+                { value: 'Other', label: 'Other' },
               ]}
             />
           </div>
@@ -246,7 +296,7 @@ export const AllTicketsPage: React.FC = () => {
                 { value: 'low', label: 'Low' },
                 { value: 'medium', label: 'Medium' },
                 { value: 'high', label: 'High' },
-                { value: 'urgent', label: 'Urgent' },
+                { value: 'critical', label: 'Critical' },
               ]}
             />
           </div>
@@ -257,6 +307,7 @@ export const AllTicketsPage: React.FC = () => {
           data={filteredTickets}
           keyExtractor={(row) => row.id}
           isLoading={isLoading}
+          emptyMessage={search.trim() ? `No tickets found matching "${search}"` : 'No tickets found'}
         />
       </Card>
     </div>

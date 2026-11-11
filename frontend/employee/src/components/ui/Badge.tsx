@@ -27,7 +27,7 @@ export const Badge: React.FC<BadgeProps> = ({
   if (priority) {
     labelText = priority;
     hasDot = true;
-    if (priority === 'Urgent') computedVariant = 'danger';
+    if (priority === 'Critical') computedVariant = 'danger';
     else if (priority === 'High') computedVariant = 'warning';
     else if (priority === 'Medium') computedVariant = 'info';
     else computedVariant = 'neutral';

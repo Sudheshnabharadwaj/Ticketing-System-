@@ -9,9 +9,8 @@ import { registerBackend } from '../services/backendAuth';
 export const EmployeeSignUp: React.FC = () => {
   const navigate = useNavigate();
 
-  // If already authenticated, redirect to Dashboard
   try {
-    const raw = localStorage.getItem('platform_current_user');
+    const raw = sessionStorage.getItem('platform_current_user') || localStorage.getItem('platform_current_user');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.email) {

@@ -8,7 +8,6 @@ import {
   Users,
   AlertTriangle,
   BookOpen,
-  User,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -40,16 +39,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleLogoutConfirm = () => {
     setIsLogoutModalOpen(false);
     logout();
-    navigate('/signup');
+    navigate('/login', { replace: true });
   };
 
-  const assignedCount = (tickets || []).filter(
-    (t) =>
+  const assignedCount = (tickets || []).filter((t) => {
+    const agent = String(t.assignedAgent || '').trim().toLowerCase();
+    if (!agent || agent === 'unassigned' || agent === 'none' || agent === 'null') return false;
+    return Boolean(
+      (t.assignedAgentId && user?.id && String(t.assignedAgentId) === String(user.id)) ||
       (t.assignedAgent && user?.name && t.assignedAgent.toLowerCase() === user.name.toLowerCase()) ||
-      (t.assignedAgentId && user?.id && t.assignedAgentId === user.id) ||
-      t.handledBy === 'teamlead' ||
-      t.assignedToType === 'teamlead'
-  ).length;
+      ((t as any).assignedAgentEmail && user?.email && String((t as any).assignedAgentEmail).toLowerCase() === user.email.toLowerCase()) ||
+      (t as any).is_assigned_to_me === true
+    );
+  }).length;
 
   const teamLeadNav = [
     { label: 'Dashboard', path: '/teamlead/dashboard', icon: LayoutDashboard },
@@ -59,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { label: 'Employees', path: '/teamlead/employees', icon: Users },
     { label: 'Escalations', path: '/teamlead/escalations', icon: AlertTriangle },
     { label: 'Knowledge Base', path: '/teamlead/knowledge-base', icon: BookOpen },
-    { label: 'Profile', path: '/teamlead/profile', icon: User },
   ];
 
   return (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Ticket, TicketPriority } from '../../types/ticket';
 import { useAuth } from '../../hooks/useAuth';
 import { useTickets } from '../../hooks/useTickets';
@@ -19,50 +19,109 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
 }) => {
   if (!isOpen || !ticket) return null;
 
-  const { users } = useAuth();
+  const { user, users } = useAuth();
   const { assignAgent, changePriority } = useTickets();
 
-  // Filter Active Employees
-  const activeEmployees = users.filter((u) => u.status === 'Active');
+  // Candidates: current Team Lead (self-assignment) + active managed employees
+  const candidateAssignees = React.useMemo(() => {
+    const list: Array<{ id: string; name: string; department: string; isSelf?: boolean }> = [];
+    if (user && user.id) {
+      list.push({
+        id: user.id,
+        name: user.name,
+        department: user.department || 'Team Lead',
+        isSelf: true,
+      });
+    }
+    const activeEmps = users.filter((u) => u.status === 'Active');
+    for (const emp of activeEmps) {
+      if (user && emp.id === user.id) continue;
+      list.push({
+        id: emp.id,
+        name: emp.name,
+        department: emp.department || 'Team',
+        isSelf: false,
+      });
+    }
+    if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+      const exists = list.some((u) => u.name.toLowerCase().trim() === ticket.assignedAgent!.toLowerCase().trim());
+      if (!exists) {
+        list.push({
+          id: ticket.assignedAgentId || '',
+          name: ticket.assignedAgent,
+          department: ticket.department || 'Team',
+          isSelf: false,
+        });
+      }
+    }
+    return list;
+  }, [user, users, ticket.assignedAgent, ticket.assignedAgentId, ticket.department]);
 
   const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>(
     ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned'
       ? ticket.assignedAgent
-      : activeEmployees[0]?.name || ''
+      : candidateAssignees[0]?.name || ''
   );
-  const [priority, setPriority] = useState<TicketPriority>(ticket.priority);
+  const [priority, setPriority] = useState<TicketPriority>(ticket.priority || 'Medium');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (ticket) {
+      setSelectedEmployeeName(
+        ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned'
+          ? ticket.assignedAgent
+          : candidateAssignees[0]?.name || ''
+      );
+      setPriority(ticket.priority || 'Medium');
+      setError('');
+    }
+  }, [ticket, isOpen]);
 
   const isReassign = ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned';
 
-  const handleAssign = (e: React.FormEvent) => {
+  const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (ticket.status === 'Resolved') {
+      setError('Reassignment is disabled for resolved tickets.');
+      return;
+    }
 
     if (!selectedEmployeeName) {
       setError('Please select an active employee.');
       return;
     }
 
-    const selectedEmployee = activeEmployees.find((u) => u.name === selectedEmployeeName);
-    const empId = selectedEmployee ? selectedEmployee.id : 'EMP-001';
+    const selectedAssignee = candidateAssignees.find(
+      (u) => u.name.toLowerCase().trim() === selectedEmployeeName.toLowerCase().trim()
+    );
+    const empId =
+      selectedAssignee?.id ||
+      (selectedEmployeeName.toLowerCase() === (ticket.assignedAgent || '').toLowerCase()
+        ? ticket.assignedAgentId
+        : '') ||
+      '';
 
-    // Call Context Assign
-    assignAgent(ticket.id, empId, selectedEmployeeName);
+    setIsSubmitting(true);
+    try {
+      // Call Context Assign passing priority atomically
+      await assignAgent(ticket.id, empId, selectedEmployeeName, priority);
 
-    // Update Priority if changed
-    if (priority !== ticket.priority) {
-      changePriority(ticket.id, priority);
+      const toastMsg = `Ticket ${(ticket as any).ticket_number || ticket.id} assigned to ${selectedEmployeeName} with ${priority} priority successfully.`;
+      if (onSuccessToast) {
+        onSuccessToast(toastMsg);
+      } else {
+        alert(toastMsg);
+      }
+
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to assign ticket.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const toastMsg = `Ticket ${ticket.id} assigned successfully.`;
-    if (onSuccessToast) {
-      onSuccessToast(toastMsg);
-    } else {
-      alert(toastMsg);
-    }
-
-    onClose();
   };
 
   return (
@@ -93,6 +152,12 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
         {error && (
           <div className="mb-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
             {error}
+          </div>
+        )}
+
+        {ticket.status === 'Resolved' && (
+          <div className="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+            This ticket is resolved. Reassignment is disabled.
           </div>
         )}
 
@@ -128,12 +193,12 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
               required
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-1 focus:ring-sky-500 cursor-pointer"
             >
-              {activeEmployees.length === 0 ? (
-                <option value="">No Active Employees Found</option>
+              {candidateAssignees.length === 0 ? (
+                <option value="">No Active Assignees Found</option>
               ) : (
-                activeEmployees.map((emp) => (
+                candidateAssignees.map((emp) => (
                   <option key={emp.id} value={emp.name}>
-                    {emp.name} - {emp.id} ({emp.department})
+                    {emp.name} {emp.isSelf ? '(Myself - Team Lead)' : `- ${emp.id} (${emp.department})`}
                   </option>
                 ))
               )}
@@ -166,10 +231,11 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
             </button>
             <button
               type="submit"
-              className="flex-1 py-2 px-3 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-lg shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1 hover:shadow-md"
+              disabled={isSubmitting || ticket.status === 'Resolved'}
+              className="flex-1 py-2 px-3 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white font-semibold text-xs rounded-lg shadow-xs transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1 hover:shadow-md"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isReassign ? 'Reassign Ticket' : 'Assign Ticket'}</span>
+              <span>{isSubmitting ? 'Saving...' : isReassign ? 'Reassign Ticket' : 'Assign Ticket'}</span>
             </button>
           </div>
         </form>

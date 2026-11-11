@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Settings, LogOut, User } from 'lucide-react';
+import { ShieldCheck, LogOut, User } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { LogoutConfirmModal } from '../common/LogoutConfirmModal';
@@ -20,7 +20,7 @@ export const ProfileDropdown: React.FC = () => {
     setIsLogoutModalOpen(false);
     setIsOpen(false);
     logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -58,14 +58,6 @@ export const ProfileDropdown: React.FC = () => {
               >
                 <User className="w-4 h-4 text-slate-400" />
                 Profile
-              </button>
-
-              <button
-                onClick={navigateToProfile}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <Settings className="w-4 h-4 text-slate-400" />
-                Settings
               </button>
 
               <div className="my-1 border-t border-slate-100" />

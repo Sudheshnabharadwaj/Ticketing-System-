@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Table, type Column } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
@@ -7,12 +8,17 @@ import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
 import type { Ticket, User } from '../../types';
 import { AdminApiService } from '../../services/api';
-import { AlertTriangle, ArrowUpRight, CheckCircle2, UserCheck, Bell } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, UserCheck, Bell, Eye } from 'lucide-react';
 
 export const EscalatedTicketsPage: React.FC = () => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const cached = AdminApiService.getCachedTickets();
+    if (!cached || cached.length === 0) return [];
+    return cached.filter((t) => t.status === 'Escalated' || (t as any).isEscalated);
+  });
+  const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
 
   // Modal & Action states
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
@@ -23,27 +29,37 @@ export const EscalatedTicketsPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Toast notification state
-  const [toast, setToast] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    const [ticketData, userData] = await Promise.all([
-      AdminApiService.getTickets('escalated'),
-      AdminApiService.getUsers()
-    ]);
-    const uniqueTickets = Array.from(new Map(ticketData.map(t => [t.id, t])).values());
-    setTickets(uniqueTickets);
-    setUsers(userData);
-    setIsLoading(false);
+  const loadData = async (force = false) => {
+    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+      setIsLoading(true);
+    }
+    try {
+      const [ticketData, userData] = await Promise.all([
+        AdminApiService.getTickets('escalated', force),
+        AdminApiService.getUsers(force)
+      ]);
+      const uniqueTickets = Array.from(new Map(ticketData.map(t => [t.id, t])).values());
+      setTickets(uniqueTickets);
+      setUsers(userData);
+    } catch (e) {
+      console.error('Failed to load escalated tickets data:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadData();
-    window.addEventListener('ticket-updated', loadData);
-    window.addEventListener('storage', loadData);
+    void loadData();
+    const handleUpdate = () => {
+      void loadData(true);
+    };
+    window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
-      window.removeEventListener('ticket-updated', loadData);
-      window.removeEventListener('storage', loadData);
+      window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -61,40 +77,64 @@ export const EscalatedTicketsPage: React.FC = () => {
 
   const handleReassignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTicket || !newAssignee) return;
+    if (isSubmitting || !selectedTicket || !newAssignee) return;
 
     setIsSubmitting(true);
-    const logText = `Ticket reassigned from ${selectedTicket.assignedTo || 'Unassigned'} to ${newAssignee}.${reassignReason ? ` Reason: ${reassignReason}` : ''}`;
-    
-    await AdminApiService.updateTicket(selectedTicket.id, { assignedTo: newAssignee }, logText);
+    try {
+      const selectedUser = users.find((u) => u.name === newAssignee);
+      const logText = `Ticket reassigned from ${selectedTicket.assignedTo || 'Unassigned'} to ${newAssignee}.${reassignReason ? ` Reason: ${reassignReason}` : ''}`;
+      
+      await AdminApiService.updateTicket(
+        selectedTicket.id,
+        {
+          assignedTo: newAssignee,
+          ...((selectedUser?.id) ? { assignedAgentId: selectedUser.id } : {}),
+        } as any,
+        logText
+      );
 
-    setToast({
-      type: 'success',
-      message: `Ticket ${selectedTicket.ticketNumber} reassigned to ${newAssignee}. Notifications sent to new assignee & Team Lead.`
-    });
+      setToast({
+        type: 'success',
+        message: `Ticket ${selectedTicket.ticketNumber} reassigned to ${newAssignee}. Notifications sent to new assignee & Team Lead.`
+      });
 
-    setIsSubmitting(false);
-    handleCloseModal();
-    loadData();
+      handleCloseModal();
+      loadData();
+    } catch (err) {
+      setToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to reassign ticket.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTicket) return;
+    if (isSubmitting || !selectedTicket) return;
 
     setIsSubmitting(true);
-    const logText = `Ticket marked as Resolved by Admin.${resolveNotes ? ` Resolution notes: ${resolveNotes}` : ''}`;
+    try {
+      const logText = `Ticket marked as Resolved by Admin.${resolveNotes ? ` Resolution notes: ${resolveNotes}` : ''}`;
 
-    await AdminApiService.updateTicket(selectedTicket.id, { status: 'Resolved' }, logText);
+      await AdminApiService.updateTicket(selectedTicket.id, { status: 'Resolved' }, logText);
 
-    setToast({
-      type: 'success',
-      message: `Ticket ${selectedTicket.ticketNumber} has been resolved successfully.`
-    });
+      setToast({
+        type: 'success',
+        message: `Ticket ${selectedTicket.ticketNumber} has been resolved successfully.`
+      });
 
-    setIsSubmitting(false);
-    handleCloseModal();
-    loadData();
+      handleCloseModal();
+      loadData();
+    } catch (err) {
+      setToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to resolve ticket.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Active staff users options for Select component
@@ -110,7 +150,15 @@ export const EscalatedTicketsPage: React.FC = () => {
   const columns: Column<Ticket>[] = [
     {
       header: 'Ticket ID',
-      cell: (row) => <span className="font-mono text-red-600 font-bold text-[12.5px]">{row.ticketNumber}</span>
+      cell: (row) => (
+        <button
+          onClick={() => navigate(`/admin/workspace/tickets/${row.id}`)}
+          className="font-mono text-red-600 font-bold text-[12.5px] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+          title="Click to view ticket details"
+        >
+          {row.ticketNumber}
+        </button>
+      )
     },
     {
       header: 'Title & Category',
@@ -149,13 +197,14 @@ export const EscalatedTicketsPage: React.FC = () => {
       header: 'Actions',
       cell: (row) => (
         <Button
-          variant="danger"
+          variant="ghost"
           size="sm"
-          icon={<ArrowUpRight className="w-3.5 h-3.5" />}
-          className="text-[12px]"
-          onClick={() => handleOpenModal(row)}
+          icon={<Eye className="w-3.5 h-3.5" />}
+          className="text-xs"
+          onClick={() => navigate(`/admin/workspace/tickets/${row.id}`)}
+          title="View Ticket Details"
         >
-          Reassign / Resolve
+          View
         </Button>
       )
     }
@@ -199,10 +248,10 @@ export const EscalatedTicketsPage: React.FC = () => {
         <Table columns={columns} data={tickets} keyExtractor={(row) => row.id} isLoading={isLoading} />
       </Card>
 
-      {/* Action Modal */}
+      {/* Action Modal disabled in view-only Admin Dashboard */}
       {selectedTicket && (
         <Modal
-          isOpen={!!selectedTicket}
+          isOpen={false}
           onClose={handleCloseModal}
           title={`Escalation Action — ${selectedTicket.ticketNumber}`}
           subtitle={selectedTicket.title}

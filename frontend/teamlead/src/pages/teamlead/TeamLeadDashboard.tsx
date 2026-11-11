@@ -42,16 +42,20 @@ export const TeamLeadDashboard: React.FC = () => {
     (t: Ticket) =>
       t.status !== 'Resolved' &&
       t.status !== 'Closed' &&
-      (typeof t.isUnassigned === 'boolean'
-        ? t.isUnassigned
-        : !t.assignedAgent ||
-          t.assignedAgent.trim() === '' ||
-          t.assignedAgent.toLowerCase() === 'unassigned'),
+      (t.isUnassigned === true ||
+        !t.assignedAgent ||
+        t.assignedAgent.trim() === '' ||
+        t.assignedAgent.toLowerCase() === 'unassigned' ||
+        (t as any).assignedToType === 'unassigned'),
     [],
   );
 
-  // Server-computed SLA status: only "At Risk" is risk; breached is separate.
-  const isTicketSLARisk = useCallback((t: Ticket) => t.slaStatus === 'At Risk', []);
+  // Server-computed SLA status: only "At Risk" is risk; breached, resolved, and escalated are separate.
+  const isTicketSLARisk = useCallback((t: Ticket) => {
+    const st = (t.status || '').toLowerCase();
+    if (st === 'resolved' || st === 'closed' || st === 'escalated') return false;
+    return t.slaStatus === 'At Risk';
+  }, []);
 
   // 1. Calculate Summary Card Metrics. Memoised so the counters are not
   // recomputed on every unrelated re-render of the dashboard.
@@ -97,24 +101,7 @@ export const TeamLeadDashboard: React.FC = () => {
     [employeeTicketCounts],
   );
 
-  // 3. Tickets Needing Attention (Critical, High priority, SLA risk, Escalated, Pending)
-  const ticketsNeedingAttention = useMemo(
-    () =>
-      tickets
-        .filter(
-          (t) =>
-            t.priority === 'Critical' ||
-            t.priority === 'High' ||
-            t.status === 'Escalated' ||
-            t.slaStatus === 'At Risk' ||
-            t.slaStatus === 'Breached' ||
-            t.status === 'Pending'
-        )
-        .slice(0, 5),
-    [tickets],
-  );
-
-  // 4. Quick Filter Toolbar Pills and Filtered Recent Tickets
+  // 3. Quick Filter Toolbar Pills and Filtered Recent Tickets
   const quickFilterPills: Array<'All' | 'Unassigned' | 'In Progress' | 'SLA Risk' | 'Escalated'> = [
     'All',
     'Unassigned',
@@ -436,63 +423,7 @@ export const TeamLeadDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* 3. Tickets Needing Attention */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
-            Tickets Needing Attention
-          </h2>
-          <Link
-            to="/teamlead/team-tickets"
-            className="text-xs text-[#0284C7] hover:text-[#0369a1] font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-          >
-            View All <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        <div className="overflow-x-auto w-full max-w-full min-w-0">
-          <table className="w-full min-w-[650px] text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="py-2.5 px-3 w-28 whitespace-nowrap">Ticket ID</th>
-                <th className="py-2.5 px-3 min-w-[200px]">Subject</th>
-                <th className="py-2.5 px-3 w-28 whitespace-nowrap">Priority</th>
-                <th className="py-2.5 px-3 w-28 whitespace-nowrap">Status</th>
-                <th className="py-2.5 px-3 w-20 text-right whitespace-nowrap">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {ticketsNeedingAttention.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="py-2.5 px-3 font-mono font-semibold text-[#0284C7] text-xs whitespace-nowrap">{t.id}</td>
-                  <td className="py-2.5 px-3 font-medium text-slate-900 truncate" title={t.subject}>
-                    {t.subject}
-                  </td>
-                  <td className="py-2.5 px-3 whitespace-nowrap">{renderPriorityBadge(t.priority)}</td>
-                  <td className="py-2.5 px-3 whitespace-nowrap">{renderStatusBadge(t.status)}</td>
-                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => setSelectedTicket(t)}
-                      className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer whitespace-nowrap"
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {ticketsNeedingAttention.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-xs text-slate-400">
-                    No urgent tickets needing attention
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* 4. Recent Tickets */}
+      {/* 3. Recent Tickets */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -554,7 +485,16 @@ export const TeamLeadDashboard: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
               {filteredRecentTickets.map((t) => (
                 <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="py-2.5 px-3 font-mono font-semibold text-[#0284C7] text-xs whitespace-nowrap">{t.id}</td>
+                  <td className="py-2.5 px-3 font-mono font-semibold text-[#0284C7] text-xs whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
+                      className="font-mono text-xs font-bold text-[#0284C7] hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+                      title="View Ticket Details"
+                    >
+                      {(t as any).ticketNumber || t.id}
+                    </button>
+                  </td>
                   <td className="py-2.5 px-3 font-medium text-slate-900 truncate" title={t.subject}>
                     {t.subject}
                   </td>
@@ -562,7 +502,8 @@ export const TeamLeadDashboard: React.FC = () => {
                   <td className="py-2.5 px-3 whitespace-nowrap">{renderStatusBadge(t.status)}</td>
                   <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button
-                      onClick={() => setSelectedTicket(t)}
+                      type="button"
+                      onClick={() => navigate(`/teamlead/tickets/${t.id}?mode=view`)}
                       className="px-2.5 py-1 text-xs font-semibold text-[#0284C7] hover:text-[#0369a1] hover:bg-sky-50 rounded transition-colors cursor-pointer whitespace-nowrap"
                     >
                       View

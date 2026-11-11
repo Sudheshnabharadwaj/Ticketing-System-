@@ -13,7 +13,7 @@ test.describe('Employee Portal — Create Ticket End-to-End Tests', () => {
     // Verify Department selection cards
     await expect(page.locator('button', { hasText: 'IT Support' })).toBeVisible();
     await expect(page.locator('button', { hasText: 'Finance' })).toBeVisible();
-    await expect(page.locator('button', { hasText: 'HR Operations' })).toBeVisible();
+    await expect(page.locator('button', { hasText: 'HR' })).toBeVisible();
     await expect(page.locator('button', { hasText: 'Other' })).toBeVisible();
 
     // Verify Team Lead search input is visible above leads

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Ticket,
@@ -23,6 +23,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
   onClose,
   assignedCount: propAssignedCount,
 }) => {
+  const navigate = useNavigate();
   const location = useLocation();
   const [internalCount, setInternalCount] = useState<number>(() => {
     return EmployeeService.getAssignedTickets().length;
@@ -191,8 +192,19 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
               EmployeeService.clearCache();
               clearBackendSession();
               localStorage.removeItem('platform_current_user');
+              sessionStorage.removeItem('platform_current_user');
+              localStorage.removeItem('backend_auth_token');
+              sessionStorage.removeItem('backend_auth_token');
+              localStorage.removeItem('backend_refresh_token');
+              sessionStorage.removeItem('backend_refresh_token');
+              localStorage.removeItem('backend_token_expires_at');
+              sessionStorage.removeItem('backend_token_expires_at');
               localStorage.setItem('platform_explicitly_logged_out', 'true');
-              window.location.hash = '#/signin';
+              sessionStorage.setItem('platform_explicitly_logged_out', 'true');
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('platform-logout'));
+              }
+              navigate('/login', { replace: true });
             }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-red-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
           >

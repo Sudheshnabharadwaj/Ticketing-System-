@@ -37,7 +37,7 @@ export const LoginPage: React.FC = () => {
     setErrors({});
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: { email?: string; password?: string } = {};
 
@@ -57,9 +57,8 @@ export const LoginPage: React.FC = () => {
     }
 
     setIsSubmitting(true);
-    setTimeout(async () => {
+    try {
       const result = await loginUser(email, password);
-      setIsSubmitting(false);
 
       if (!result.success || !result.user) {
         setErrors({ auth: result.error || 'Invalid credentials. Please verify your email and password.' });
@@ -68,13 +67,17 @@ export const LoginPage: React.FC = () => {
 
       // Dynamic routing to appropriate dashboard based on user role
       if (result.user.role === 'admin') {
-        navigate('/admin/dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else if (result.user.role === 'teamlead') {
-        navigate('/teamlead/dashboard');
+        navigate('/teamlead/dashboard', { replace: true });
       } else {
-        navigate('/employee/dashboard');
+        navigate('/employee/dashboard', { replace: true });
       }
-    }, 400);
+    } catch (err: any) {
+      setErrors({ auth: err?.message || 'Login failed. Please check your connection and try again.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -96,11 +99,6 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
-              Workspace Sign In
-            </span>
-          </div>
         </div>
       </header>
 

@@ -5,6 +5,7 @@ import { NotificationItem } from '../types/notification';
 import { ticketService } from '../services/ticketService';
 import { teamLeadService } from '../services/teamLeadService';
 import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../services/supabaseClient';
 
 interface CreateTicketInput {
   subject: string;
@@ -41,7 +42,7 @@ interface TicketContextType {
   createTicket: (data: CreateTicketInput) => Promise<Ticket>;
   workOnTicket: (ticketId: string) => Promise<void>;
   updateStatus: (ticketId: string, status: TicketStatus) => Promise<void>;
-  assignAgent: (ticketId: string, agentId: string, agentName: string) => Promise<void>;
+  assignAgent: (ticketId: string, agentId: string, agentName: string, priority?: TicketPriority) => Promise<void>;
   changePriority: (ticketId: string, priority: TicketPriority) => Promise<void>;
   addComment: (ticketId: string, authorName: string, authorRole: 'teamlead' | 'employee' | 'agent' | 'admin', message: string, isInternal?: boolean) => Promise<void>;
   escalateTicket: (ticketId: string, reason: string, escalatedBy: string) => Promise<void>;
@@ -57,11 +58,13 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { user } = useAuth();
   const userId = user?.id || '';
 
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>(() => ticketService.getCachedTickets() || []);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => !ticketService.getCachedTickets() || ticketService.getCachedTickets()!.length === 0
+  );
   const [error, setError] = useState<string | null>(null);
 
   const currentUserName = user?.name || 'Team Lead';
@@ -78,13 +81,21 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setEscalations(loaded || []);
   }, []);
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    const result = await ticketService.getTicketsDetailed();
+  const refresh = useCallback(async (silent = false, force = false) => {
+    const hasCache = !!ticketService.getCachedTickets() && ticketService.getCachedTickets()!.length > 0;
+    if (!silent && !hasCache) {
+      setIsLoading(true);
+    }
+    if (force) {
+      ticketService.invalidateCache();
+    }
+    const result = await ticketService.getTicketsDetailed(force);
     if (result.error) {
       setError(result.error);
-      setTickets([]);
-      setEscalations([]);
+      if (!silent && !hasCache) {
+        setTickets([]);
+        setEscalations([]);
+      }
     } else {
       setError(null);
       setTickets(result.tickets);
@@ -106,7 +117,50 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setError(null);
       return;
     }
-    void refresh();
+
+    void refresh(false);
+
+    // 1. Supabase Realtime Channel
+    const channel = supabase
+      .channel(`teamlead-realtime-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+        ticketService.invalidateCache();
+        void refresh(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_activities' }, () => {
+        ticketService.invalidateCache();
+        void refresh(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_comments' }, () => {
+        ticketService.invalidateCache();
+        void refresh(true);
+      })
+      .subscribe();
+
+    // 2. Controlled Polling Fallback (15 seconds, non-destructive background sync)
+    const pollInterval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void refresh(true);
+      }
+    }, 15000);
+
+    // 3. Local/Cross-tab update listener
+    const handleTicketUpdated = () => {
+      void refresh(true);
+    };
+    window.addEventListener('ticket-updated', handleTicketUpdated);
+    window.addEventListener('storage', handleTicketUpdated);
+
+    return () => {
+      window.clearInterval(pollInterval);
+      window.removeEventListener('ticket-updated', handleTicketUpdated);
+      window.removeEventListener('storage', handleTicketUpdated);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // channel unsubscribe fallback
+      }
+    };
   }, [userId, refresh]);
 
   const mergeTicket = useCallback((updated: Ticket) => {
@@ -125,10 +179,21 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const setErrorFrom = useCallback((message: string) => setError(message), []);
 
   const createTicket = useCallback(async (data: CreateTicketInput): Promise<Ticket> => {
-    const firstTL = data.teamLeads?.[0];
     const firstEmp = data.taggedEmployees?.[0];
-    const initialAgentName = data.assignedAgent || firstTL?.name || firstEmp?.name || 'Unassigned';
-    const initialAgentId = data.assignedAgentId || firstTL?.id || firstEmp?.id || undefined;
+    const firstLead = data.teamLeads?.[0];
+    const initialAgentName =
+      data.assignedAgent ||
+      firstEmp?.name ||
+      firstLead?.name ||
+      'Unassigned';
+    const initialAgentId =
+      data.assignedAgentId ||
+      firstEmp?.id ||
+      firstLead?.id ||
+      undefined;
+    const assignedToType =
+      data.assignedToType ||
+      (firstEmp ? 'employee' : firstLead ? 'teamlead' : 'unassigned');
 
     const created = await ticketService.createTicket(
       {
@@ -146,12 +211,16 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         employeeEmail: currentUserEmail || undefined,
         assignedAgent: initialAgentName,
         assignedAgentId: initialAgentId,
-        assignedToType: firstTL ? 'teamlead' : firstEmp ? 'employee' : 'unassigned',
+        assignedToType: assignedToType as any,
         assignedBy: `${currentUserName} (Creator)`,
         status: 'Open',
         taggedMembers: data.taggedMembers,
         taggedMemberIds: data.taggedMemberIds,
-      },
+        teamLeads: data.teamLeads,
+        teamLeadIds: data.teamLeadIds,
+        taggedEmployees: data.taggedEmployees,
+        employeeIds: data.employeeIds,
+      } as any,
       data.rawFiles,
     );
 
@@ -193,36 +262,54 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await Promise.all([loadEscalations(), loadNotifications()]);
   }, [loadEscalations, loadNotifications, refreshTicketDetail, setErrorFrom]);
 
-  const assignAgent = useCallback(async (ticketId: string, agentId: string, agentName: string) => {
-    if (!agentId || agentName === 'Unassigned') {
-      setErrorFrom('Please choose a team member to assign.');
-      return;
-    }
-    const isTeamLead = agentId === currentUserId;
+  const assignAgent = useCallback(async (ticketId: string, agentId: string, agentName: string, priority?: TicketPriority) => {
+    const isUnassign = !agentName || agentName === 'Unassigned';
+    const isTeamLead = !isUnassign && (agentId === currentUserId || agentName.toLowerCase() === currentUserName.toLowerCase());
     const ok = await ticketService.assignAgent(
       ticketId,
-      agentName,
+      isUnassign ? 'Unassigned' : agentName,
       `${currentUserName} (Team Lead)`,
-      agentId,
-      isTeamLead ? 'teamlead' : 'employee',
-      isTeamLead ? 'teamlead' : 'employee',
+      isUnassign ? undefined : agentId,
+      isUnassign ? 'unassigned' : (isTeamLead ? 'teamlead' : 'employee'),
+      isUnassign ? 'unassigned' : (isTeamLead ? 'teamlead' : 'employee'),
+      priority,
     );
     if (!ok) {
       setErrorFrom('Could not assign the ticket. Please try again.');
-      return;
+      throw new Error('Could not assign the ticket. Please try again.');
     }
+    ticketService.invalidateCache();
+    await refresh(true, true);
     await refreshTicketDetail(ticketId);
     await loadEscalations();
-  }, [currentUserId, currentUserName, loadEscalations, refreshTicketDetail, setErrorFrom]);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
+      window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: ticketId } }));
+      window.dispatchEvent(new Event('storage'));
+    }
+  }, [currentUserId, currentUserName, loadEscalations, refresh, refreshTicketDetail, setErrorFrom]);
 
   const changePriority = useCallback(async (ticketId: string, priority: TicketPriority) => {
     const ok = await ticketService.changePriority(ticketId, priority);
     if (!ok) {
       setErrorFrom('Could not change the ticket priority. Please try again.');
-      return;
+      throw new Error('Could not change the ticket priority. Please try again.');
     }
+    ticketService.invalidateCache();
+    await refresh(true, true);
     await refreshTicketDetail(ticketId);
-  }, [refreshTicketDetail, setErrorFrom]);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ticket_refresh_event', String(Date.now()));
+        localStorage.setItem('itsm_tickets_version', String(Date.now()));
+      } catch {}
+      window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: ticketId } }));
+      window.dispatchEvent(new Event('storage'));
+    }
+  }, [refresh, refreshTicketDetail, setErrorFrom]);
 
   const addComment = useCallback(async (
     ticketId: string,

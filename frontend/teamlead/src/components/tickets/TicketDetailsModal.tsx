@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Ticket, TicketPriority, TicketStatus } from '../../types/ticket';
 import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
@@ -17,21 +17,34 @@ import {
   MessageSquare,
   FileText,
   Download,
-  Eye
+  Eye,
+  Trash2,
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTickets } from '../../hooks/useTickets';
 import { PRIORITIES, STATUSES } from '../../utils/constants';
+import { ticketService } from '../../services/ticketService';
+import { OrganizationService } from '../../services/organizationService';
+import { authenticatedFetch, API_BASE, withAccessToken } from '../../services/backendAuth';
 
 interface TicketDetailsModalProps {
   ticket: Ticket | null;
   onClose: () => void;
+  isReadOnly?: boolean;
+  onWorkOnTicket?: (ticket: Ticket) => void;
 }
 
-export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, onClose }) => {
+export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
+  ticket,
+  onClose,
+  isReadOnly = true,
+  onWorkOnTicket,
+}) => {
   if (!ticket) return null;
 
   const { role, user, users } = useAuth();
+  const [isReadOnlyMode, setIsReadOnlyMode] = useState<boolean>(isReadOnly);
   const {
     updateStatus,
     assignAgent,
@@ -39,33 +52,136 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
     addComment,
     escalateTicket,
     resolveTicket,
+    setSelectedTicket,
   } = useTickets();
+
+  const [currentTicket, setCurrentTicket] = useState<Ticket>(ticket);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (ticket?.id) {
+      ticketService.getTicketById(ticket.id).then((fresh) => {
+        if (active && fresh) setCurrentTicket(fresh);
+      });
+    }
+    const handleTicketUpdated = async () => {
+      if (ticket?.id) {
+        const fresh = await ticketService.getTicketById(ticket.id);
+        if (fresh) setCurrentTicket(fresh);
+      }
+    };
+    window.addEventListener('ticket-updated', handleTicketUpdated);
+    window.addEventListener('storage', handleTicketUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('ticket-updated', handleTicketUpdated);
+      window.removeEventListener('storage', handleTicketUpdated);
+    };
+  }, [ticket?.id]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
   const [newComment, setNewComment] = useState('');
   const [isInternalNote, setIsInternalNote] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
-  const [escalationReasonInput, setEscalationReasonInput] = useState('');
-  const [previewAttachment, setPreviewAttachment] = useState<{ name: string; size?: string } | null>(null);
+  const [selectedTeamLead, setSelectedTeamLead] = useState('');
+  const [escalationReasonInput, setEscalationReasonInput] = useState('Lack of Knowledge');
+  const [escalationCommentInput, setEscalationCommentInput] = useState('');
+  const [previewAttachment, setPreviewAttachment] = useState<{
+    name: string;
+    size?: string;
+    viewUrl?: string;
+    downloadUrl?: string;
+  } | null>(null);
+  const [modalAttachments, setModalAttachments] = useState<any[]>(ticket.attachments || []);
 
-  const handleDownloadAttachment = (attName: string) => {
-    const content = `Enterprise Ticketing System\nAttachment: ${attName}\nTicket ID: ${ticket.id}\nSubject: ${ticket.subject}\nDownloaded At: ${new Date().toISOString()}\n`;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = attName.includes('.') ? attName : `${attName}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const loadLiveAttachments = async (tid: string) => {
+    try {
+      const res = await ticketService.getAttachmentsDetailed(tid);
+      if (res.attachments) {
+        setModalAttachments(res.attachments);
+      }
+    } catch (e) {
+      console.warn('Could not refresh attachments:', e);
+    }
   };
 
-  const handlePostComment = (e: React.FormEvent) => {
+  useEffect(() => {
+    let active = true;
+    if (currentTicket.id) {
+      ticketService.getAttachmentsDetailed(currentTicket.id).then((res) => {
+        if (active && res.attachments && res.attachments.length > 0) {
+          setModalAttachments(res.attachments);
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [currentTicket.id]);
+
+  const handleViewAttachment = (att: any) => {
+    const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;
+    const tid = currentTicket.id || ticket.id;
+    const baseViewUrl =
+      att.viewUrl ||
+      (att.url
+        ? att.url.replace('/download', '/view')
+        : `${API_BASE}/tickets/${encodeURIComponent(tid)}/attachments/${encodeURIComponent(cleanName)}/view`);
+    const viewUrl = withAccessToken(baseViewUrl);
+    setPreviewAttachment({
+      name: att.name,
+      size: att.size,
+      viewUrl,
+      downloadUrl: att.url,
+    });
+  };
+
+  const handleDeleteAttachment = async (att: any) => {
+    if (!currentTicket) return;
+    const attName = att.name || att.filename || att.id;
+    if (!window.confirm(`Are you sure you want to delete attachment "${attName}"? This action cannot be undone.`)) {
+      return;
+    }
+    const success = await ticketService.deleteAttachment(currentTicket.id, att.id || attName);
+    if (success) {
+      showToast(`Attachment "${attName}" deleted successfully.`);
+      await loadLiveAttachments(currentTicket.id);
+    } else {
+      showToast(`Failed to delete attachment "${attName}". Please try again.`);
+    }
+  };
+
+  const handleDownloadAttachment = async (attName: string, attUrl?: string) => {
+    const cleanName = attName.includes(' (') ? attName.split(' (')[0] : attName;
+    const url = attUrl || `${API_BASE}/tickets/${ticket.id}/attachments/${encodeURIComponent(cleanName)}/download`;
+    try {
+      const res = await authenticatedFetch(url);
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = cleanName.includes('.') ? cleanName : `${cleanName}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      console.warn('Failed to download attachment:', e);
+    }
+  };
+
+  const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
 
-    addComment(
+    await addComment(
       ticket.id,
       user.name,
       role,
@@ -74,36 +190,76 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
     );
 
     setNewComment('');
+    const fresh = await ticketService.getTicketById(ticket.id);
+    if (fresh) {
+      setCurrentTicket(fresh);
+    }
   };
 
   const handleConfirmEscalation = () => {
-    if (!escalationReasonInput.trim()) return;
-    escalateTicket(ticket.id, escalationReasonInput.trim(), user.name);
+    if (!escalationReasonInput.trim() || !escalationCommentInput.trim()) return;
+    const targetLead = selectedTeamLead || user.name || 'Team Lead';
+    const fullReason = `${escalationReasonInput}: ${escalationCommentInput.trim()}`;
+    escalateTicket(ticket.id, fullReason, targetLead);
     setEscalationModalOpen(false);
-    setEscalationReasonInput('');
+    setEscalationReasonInput('Lack of Knowledge');
+    setEscalationCommentInput('');
+    showToast(`Ticket ${ticket.id} escalated successfully to ${targetLead}`);
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-2.5 text-xs font-semibold text-emerald-800 flex items-center justify-between animate-in fade-in duration-150">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              {toastMessage}
+            </span>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="text-emerald-700 hover:text-emerald-950 font-bold ml-4 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Modal Header */}
         <div className="p-5 bg-slate-50 border-b border-slate-200 flex items-start justify-between">
           <div>
             <div className="flex items-center space-x-3 mb-1">
               <span className="font-mono font-bold text-sky-600 bg-sky-100 px-2.5 py-0.5 rounded-md text-xs">
-                {ticket.id}
+                {currentTicket.id}
               </span>
-              <StatusBadge status={ticket.status} />
-              <PriorityBadge priority={ticket.priority} />
+              <StatusBadge status={currentTicket.status} />
+              <PriorityBadge priority={currentTicket.priority} />
             </div>
-            <h2 className="text-xl font-bold text-slate-900">{ticket.subject}</h2>
+            <h2 className="text-xl font-bold text-slate-900">{currentTicket.subject}</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {isReadOnlyMode ? (
+              <span className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 text-slate-600 rounded-lg border border-slate-200">
+                View
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsReadOnlyMode(true)}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1.5 border border-slate-200 cursor-pointer transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5 text-slate-500" />
+                <span>View Mode</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Content Grid */}
@@ -143,7 +299,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                 }`}
               >
                 <Paperclip className="w-4 h-4" />
-                Attachments ({ticket.attachments?.length || 0})
+                Attachments ({modalAttachments.length})
               </button>
             </div>
 
@@ -193,45 +349,56 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                   )}
                 </div>
 
-                {/* Reply Form */}
-                <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
-                  {role === 'teamlead' && (
-                    <div className="flex items-center space-x-2 mb-2">
-                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isInternalNote}
-                          onChange={(e) => setIsInternalNote(e.target.checked)}
-                          className="rounded-xs text-sky-600 focus:ring-sky-500"
-                        />
-                        <Lock className="w-3.5 h-3.5 text-amber-600" />
-                        Add as Internal Team Note (Hidden from employee)
-                      </label>
-                    </div>
-                  )}
+                {/* Reply Form (Hidden in Read-Only View) */}
+                {/* Check chat access */}
+            {(() => {
+              const isCreatedByMe = Boolean(
+                (currentTicket as any).is_created_by_me ||
+                (user?.id && (currentTicket.employeeId === user.id || (currentTicket as any).employee_id === user.id)) ||
+                (user?.email && (currentTicket.employeeEmail === user.email || (currentTicket as any).employee_email === user.email)) ||
+                (user?.name && currentTicket.employee && currentTicket.employee.toLowerCase() === user.name.toLowerCase())
+              );
+              const isAssignedToMe = Boolean(
+                (currentTicket as any).is_assigned_to_me ||
+                (user?.id && (currentTicket.assignedAgentId === user.id || (currentTicket as any).assigned_agent_id === user.id)) ||
+                (user?.name && currentTicket.assignedAgent && currentTicket.assignedAgent.toLowerCase() === user.name.toLowerCase())
+              );
+              const isAssignedLead = Boolean(
+                (user?.name && currentTicket.assignedBy && currentTicket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
+                (user?.id && ((currentTicket as any).teamLeadIds || []).includes(user.id)) ||
+                (user?.name && (currentTicket as any).assignedTeamLead && (currentTicket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
+              );
+              const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
+              const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
 
-                  <div className="relative">
-                    <textarea
-                      rows={3}
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder={
-                        isInternalNote
-                          ? 'Write an internal note for support team...'
-                          : 'Type your message or response...'
-                      }
-                      className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!newComment.trim()}
-                      className="absolute right-3 bottom-3 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors shadow-xs"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Post
-                    </button>
-                  </div>
-                </form>
+              if (!canReply || isReadOnlyMode) {
+                return null;
+              }
+
+              return (
+                  <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
+                    
+
+                    <div className="relative">
+                      <textarea
+                        rows={3}
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Type your message or response..."
+                        className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newComment.trim()}
+                        className="absolute right-3 bottom-3 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors shadow-xs"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Post
+                      </button>
+                    </div>
+                  </form>
+              );
+            })()}
               </div>
             )}
 
@@ -252,40 +419,58 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
 
             {/* Tab 3: Attachments */}
             {activeTab === 'attachments' && (
-              <div className="space-y-2">
-                {ticket.attachments?.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-6">No attachments uploaded.</p>
-                ) : (
-                  ticket.attachments?.map((att, i) => (
-                    <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <FileText className="w-4 h-4 text-sky-600" />
-                        <div>
-                          <p className="font-semibold text-slate-800">{att.name}</p>
-                          <p className="text-[10px] text-slate-400">{att.size}</p>
+              <div className="space-y-4">
+                {/* Existing Attachments List */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Uploaded Attachments ({modalAttachments.length})
+                  </div>
+                  {modalAttachments.length === 0 ? (
+                    <p className="text-center text-xs text-slate-400 py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                      No attachments uploaded for this ticket yet.
+                    </p>
+                  ) : (
+                    modalAttachments.map((att: any, i: number) => (
+                      <div key={i} className="p-3 bg-white rounded-xl border border-slate-200 text-xs flex items-center justify-between hover:border-slate-300 transition-colors shadow-2xs">
+                        <div className="flex items-center space-x-2.5 truncate min-w-0 pr-3">
+                          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center shrink-0 border border-sky-100">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="truncate">
+                            <p className="font-semibold text-slate-800 truncate" title={att.name}>{att.name}</p>
+                            <p className="text-[10px] text-slate-400">{att.size || 'N/A'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleViewAttachment(att)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3 text-slate-500" />
+                            <span>View</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadAttachment(att.name, att.url)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Download className="w-3 h-3 text-sky-600" />
+                            <span>Download</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(att)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewAttachment({ name: att.name, size: att.size })}
-                          className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye className="w-3 h-3 text-slate-500" />
-                          <span>View</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadAttachment(att.name)}
-                          className="px-2 py-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Download className="w-3 h-3 text-sky-600" />
-                          <span>Download</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -298,11 +483,11 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                 SLA Compliance
               </p>
               <div className="flex items-center justify-between">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${getSLABadgeStyle(ticket.slaStatus)}`}>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${getSLABadgeStyle(currentTicket.slaStatus)}`}>
                   <Clock className="w-3 h-3 mr-1" />
-                  {ticket.slaStatus}
+                  {currentTicket.slaStatus}
                 </span>
-                <span className="text-xs font-medium text-slate-600">{ticket.slaRemaining}</span>
+                <span className="text-xs font-medium text-slate-600">{currentTicket.slaRemaining}</span>
               </div>
             </div>
 
@@ -314,48 +499,48 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Department</span>
-                  <span className="font-semibold text-slate-800">{ticket.department || 'IT'}</span>
+                  <span className="font-semibold text-slate-800">{currentTicket.department || 'IT'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Category</span>
-                  <span className="font-semibold text-slate-800">{ticket.category}</span>
+                  <span className="font-semibold text-slate-800">{currentTicket.category}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Assigned To</span>
-                  <span className="font-semibold text-sky-700">{ticket.assignedAgent}</span>
+                  <span className="font-semibold text-sky-700">{currentTicket.assignedAgent || 'Unassigned'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Assigned By</span>
-                  <span className="font-medium text-slate-700">{ticket.assignedBy || (ticket.employee ? `${ticket.employee} (Requester)` : 'Unassigned')}</span>
+                  <span className="font-medium text-slate-700">{currentTicket.assignedBy || (currentTicket.employee ? `${currentTicket.employee} (Requester)` : 'Unassigned')}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Assigned Date</span>
-                  <span className="text-slate-700 text-[11px]">{formatDate(ticket.assignedDate || ticket.createdAt)}</span>
+                  <span className="text-slate-700 text-[11px]">{formatDate(currentTicket.assignedDate || currentTicket.createdAt)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Last Updated</span>
-                  <span className="text-slate-700 text-[11px]">{formatDate(ticket.updatedAt)}</span>
+                  <span className="text-slate-700 text-[11px]">{formatDate(currentTicket.updatedAt)}</span>
                 </div>
               </div>
 
               <div className="pt-1 border-t border-slate-100">
-                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Employee / Requester</span>
-                <span className="font-semibold text-slate-800">{ticket.employee}</span>
-                <span className="text-slate-400 block text-[10px]">{ticket.employeeEmail}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Created By</span>
+                <span className="font-semibold text-slate-800">{currentTicket.employee}</span>
+                <span className="text-slate-400 block text-[10px]">{currentTicket.employeeEmail}</span>
               </div>
 
-              {ticket.status === 'Resolved' && (
+              {currentTicket.status === 'Resolved' && (
                 <div className="pt-2 border-t border-emerald-100 bg-emerald-50/60 p-2.5 rounded-lg text-emerald-900">
                   <span className="text-emerald-700 block text-[10px] uppercase font-bold">Resolution Summary</span>
                   <p className="text-xs text-emerald-800 mt-0.5">
-                    {ticket.resolutionSummary || 'Issue resolved following standard troubleshooting & verification.'}
+                    {currentTicket.resolutionSummary || 'Issue resolved following standard troubleshooting & verification.'}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Team Lead Controls */}
-            {role === 'teamlead' && (
+            {/* Team Lead Controls (Only in Work on Ticket Mode) */}
+            {!isReadOnlyMode && role === 'teamlead' && (
               <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-200">
                 <p className="font-bold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
                   <UserPlus className="w-4 h-4 text-sky-600" />
@@ -365,30 +550,76 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                 {/* Assign Employee */}
                 <div>
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">Assign / Reassign Employee</label>
-                  <select
-                    value={ticket.assignedAgent}
-                    onChange={(e) => {
-                      const selectedUser = users.find((u) => u.name === e.target.value);
-                      assignAgent(ticket.id, selectedUser ? selectedUser.id : 'EMP-001', e.target.value);
-                    }}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
-                  >
-                    <option value="Unassigned">Unassigned</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name} - {u.id} ({u.status})
-                      </option>
-                    ))}
-                  </select>
+                  {currentTicket.status === 'Resolved' ? (
+                    <div className="w-full px-2.5 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-lg text-slate-500 italic">
+                      Reassignment is disabled for resolved tickets.
+                    </div>
+                  ) : (
+                    <select
+                      value={currentTicket.assignedAgent || 'Unassigned'}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        if (val === 'Unassigned') {
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: 'Unassigned', assignedAgentId: undefined }));
+                          await assignAgent(currentTicket.id, '', 'Unassigned', currentTicket.priority);
+                          showToast('Ticket marked as unassigned');
+                        } else if (user && val === user.name) {
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: user.name, assignedAgentId: user.id }));
+                          await assignAgent(currentTicket.id, user.id, user.name, currentTicket.priority);
+                          showToast(`Assigned to ${user.name}`);
+                        } else {
+                          const selectedUser = users.find((u) => u.name === val);
+                          if (!selectedUser) return;
+                          setCurrentTicket((prev) => ({ ...prev, assignedAgent: selectedUser.name, assignedAgentId: selectedUser.id }));
+                          await assignAgent(currentTicket.id, selectedUser.id, selectedUser.name, currentTicket.priority);
+                          showToast(`Assigned to ${selectedUser.name}`);
+                        }
+                        const fresh = await ticketService.getTicketById(currentTicket.id);
+                        if (fresh) {
+                          setCurrentTicket(fresh);
+                          setSelectedTicket(fresh);
+                        }
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: currentTicket.id } }));
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
+                    >
+                      <option value="Unassigned">Unassigned</option>
+                      {user && (
+                        <option value={user.name}>
+                          {user.name} (Myself - Team Lead)
+                        </option>
+                      )}
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} - {u.id} ({u.status})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 {/* Change Status */}
                 <div>
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">Update Status</label>
                   <select
-                    value={ticket.status}
-                    onChange={(e) => updateStatus(ticket.id, e.target.value as TicketStatus)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    value={currentTicket.status}
+                    onChange={async (e) => {
+                      const nextStatus = e.target.value as TicketStatus;
+                      setCurrentTicket((prev) => ({ ...prev, status: nextStatus }));
+                      await updateStatus(currentTicket.id, nextStatus);
+                      showToast(`Status updated to ${nextStatus}`);
+                      const fresh = await ticketService.getTicketById(currentTicket.id);
+                      if (fresh) {
+                        setCurrentTicket(fresh);
+                        setSelectedTicket(fresh);
+                      }
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: currentTicket.id } }));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 cursor-pointer"
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>{s}</option>
@@ -400,9 +631,22 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                 <div>
                   <label className="block text-[11px] font-medium text-slate-500 mb-1">Change Priority</label>
                   <select
-                    value={ticket.priority}
-                    onChange={(e) => changePriority(ticket.id, e.target.value as TicketPriority)}
-                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    value={currentTicket.priority}
+                    onChange={async (e) => {
+                      const nextPriority = e.target.value as TicketPriority;
+                      setCurrentTicket((prev) => ({ ...prev, priority: nextPriority }));
+                      await changePriority(currentTicket.id, nextPriority);
+                      showToast(`Priority updated to ${nextPriority}`);
+                      const fresh = await ticketService.getTicketById(currentTicket.id);
+                      if (fresh) {
+                        setCurrentTicket(fresh);
+                        setSelectedTicket(fresh);
+                      }
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id: currentTicket.id } }));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 cursor-pointer"
                   >
                     {PRIORITIES.map((p) => (
                       <option key={p} value={p}>{p}</option>
@@ -412,7 +656,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
 
                 {/* Escalate & Resolve Buttons */}
                 <div className="pt-2 flex items-center gap-2">
-                  {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && ticket.status !== 'Escalated' && (
+                  {currentTicket.status !== 'Resolved' && currentTicket.status !== 'Closed' && currentTicket.status !== 'Escalated' && (
                     <button
                       onClick={() => setEscalationModalOpen(true)}
                       className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-lg border border-rose-200 text-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
@@ -421,9 +665,17 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
                       Escalate
                     </button>
                   )}
-                  {ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+                  {currentTicket.status !== 'Resolved' && currentTicket.status !== 'Closed' && (
                     <button
-                      onClick={() => resolveTicket(ticket.id)}
+                      onClick={async () => {
+                        await resolveTicket(currentTicket.id);
+                        showToast('Ticket marked as resolved');
+                        const fresh = await ticketService.getTicketById(currentTicket.id);
+                        if (fresh) {
+                          setCurrentTicket(fresh);
+                          setSelectedTicket(fresh);
+                        }
+                      }}
                       className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-1 transition-colors shadow-xs cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -439,37 +691,98 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
 
       {/* Escalation Confirmation Dialog */}
       {escalationModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center space-x-2 text-rose-600 font-bold text-lg mb-2">
-              <AlertTriangle className="w-6 h-6" />
-              <span>Escalate Ticket {ticket.id}</span>
+            <div className="flex items-center space-x-2 text-rose-600 font-bold text-base mb-1">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Escalate Ticket</span>
             </div>
-            <p className="text-xs text-slate-600 mb-4">
-              Escalating will transfer ownership to Tier 3 Incident Management. Please state the justification.
+            <p className="text-xs text-slate-500 mb-4">
+              Escalate ticket <span className="font-mono font-bold text-slate-700">{ticket.id}</span> to supervisory team lead or department management.
             </p>
-            <textarea
-              rows={3}
-              value={escalationReasonInput}
-              onChange={(e) => setEscalationReasonInput(e.target.value)}
-              placeholder="State escalation reason (e.g., SLA breach risk, hardware replacement required)..."
-              className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl mb-4 focus:outline-none focus:border-rose-500"
-            />
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setEscalationModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmEscalation}
-                disabled={!escalationReasonInput.trim()}
-                className="px-4 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50"
-              >
-                Confirm Escalation
-              </button>
-            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConfirmEscalation();
+              }}
+              className="space-y-4 text-xs"
+            >
+              {/* Selected Team Lead */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Team Lead <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={selectedTeamLead || user?.name || ''}
+                  onChange={(e) => setSelectedTeamLead(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer font-medium"
+                >
+                  {(() => {
+                    const deptLeads = OrganizationService.getTeamLeadsByDepartment(ticket.department || '');
+                    const allLeads = deptLeads.length > 0 ? deptLeads : OrganizationService.getTeamLeadsByDepartment('IT Support');
+                    const leadNames = Array.from(new Set([user?.name, ...allLeads.map((l) => l.name), 'Kotesh', 'Manikanta', 'soniya'].filter(Boolean)));
+                    return leadNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name} {name === user?.name ? '(Current Lead)' : ''}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+
+              {/* Reason Dropdown */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Reason <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={escalationReasonInput}
+                  onChange={(e) => setEscalationReasonInput(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-rose-500 text-xs cursor-pointer"
+                >
+                  <option value="Lack of Knowledge">Lack of Knowledge</option>
+                  <option value="Insufficient Authority">Insufficient Authority</option>
+                  <option value="Active SLA Breach">Active SLA Breach</option>
+                  <option value="Third-Party Dependencies">Third-Party Dependencies</option>
+                  <option value="Recurring/Repeating Issues">Recurring/Repeating Issues</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Comment / Explanation Field */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Comment / Explanation <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={escalationCommentInput}
+                  onChange={(e) => setEscalationCommentInput(e.target.value)}
+                  placeholder="Provide explanation or justification for escalating this ticket..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-rose-500 text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEscalationModalOpen(false)}
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!escalationReasonInput || !escalationCommentInput.trim()}
+                  className="px-4 py-2 font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+                >
+                  Escalate Ticket
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -477,35 +790,57 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({ ticket, 
       {/* Attachment Preview Modal */}
       {previewAttachment && (
         <div className="fixed inset-0 z-70 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 p-6 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 p-6 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <div className="flex items-center space-x-2">
                 <FileText className="w-5 h-5 text-sky-600" />
-                <h3 className="font-bold text-slate-900 text-sm">{previewAttachment.name}</h3>
+                <h3 className="font-bold text-slate-900 text-sm truncate max-w-xs">{previewAttachment.name}</h3>
               </div>
               <button
                 onClick={() => setPreviewAttachment(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-700 max-h-60 overflow-y-auto whitespace-pre-wrap">
-              {`File Name: ${previewAttachment.name}
-File Size: ${previewAttachment.size || 'N/A'}
-Ticket ID: ${ticket.id}
-Subject: ${ticket.subject}
-Author: ${ticket.assignedAgent || ticket.employee || 'Assigned Agent'}
-Status: Verified Enterprise Asset Preview
-File Hash / Integrity: OK`}
-            </div>
+            {(() => {
+              const ext = (previewAttachment.name.split('.').pop() || '').toLowerCase();
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+              const isPdf = ext === 'pdf';
+              return (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-80 overflow-auto">
+                  {isImage && previewAttachment.viewUrl ? (
+                    <img
+                      src={previewAttachment.viewUrl}
+                      alt={previewAttachment.name}
+                      className="max-w-full max-h-72 mx-auto rounded-lg border border-slate-200 bg-white object-contain"
+                    />
+                  ) : isPdf && previewAttachment.viewUrl ? (
+                    <iframe
+                      src={previewAttachment.viewUrl}
+                      title={previewAttachment.name}
+                      className="w-full h-72 rounded-lg border border-slate-200 bg-white"
+                    />
+                  ) : (
+                    <div className="text-center py-8">
+                      <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs font-semibold text-slate-600">{previewAttachment.name}</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Size: {previewAttachment.size || 'N/A'} — Inline preview is not available for this file type.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">Use the Download button below to open it.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
               <button
-                onClick={() => handleDownloadAttachment(previewAttachment.name)}
+                onClick={() => handleDownloadAttachment(previewAttachment.name, previewAttachment.downloadUrl || previewAttachment.viewUrl?.replace('/view', '/download'))}
                 className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Download</span>
+                <span>Download File</span>
               </button>
               <button
                 onClick={() => setPreviewAttachment(null)}

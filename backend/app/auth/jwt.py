@@ -1,4 +1,4 @@
-﻿"""JWT validation â€” supports backend-issued HS256 app tokens and Keycloak RS256 tokens."""
+"""JWT validation â€” supports backend-issued HS256 app tokens and Keycloak RS256 tokens."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
@@ -25,7 +25,7 @@ def create_app_token(
     email: str,
     role: str,
     name: str = "",
-    expires_minutes: int = 60,
+    expires_minutes: int = 60 * 24 * 7,  # 7 days persistent session
     department: str = "",
     team: str = "",
 ) -> str:

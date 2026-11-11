@@ -21,6 +21,7 @@ export function formatFileSize(bytes: number): string {
 interface AttachmentFilePickerProps {
   files: AttachedFile[];
   onFilesChange: (files: AttachedFile[]) => void;
+  existingAttachments?: Array<{ name: string; size?: string } | string>;
   label?: string;
   buttonText?: string;
   compact?: boolean;
@@ -29,6 +30,7 @@ interface AttachmentFilePickerProps {
 export const AttachmentFilePicker: React.FC<AttachmentFilePickerProps> = ({
   files,
   onFilesChange,
+  existingAttachments = [],
   label = 'Attachments',
   buttonText = 'Attach Files',
   compact = false,
@@ -39,17 +41,41 @@ export const AttachmentFilePicker: React.FC<AttachmentFilePickerProps> = ({
     const selected = e.target.files;
     if (!selected || selected.length === 0) return;
 
-    const newFiles: AttachedFile[] = Array.from(selected).map((f) => ({
-      id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      name: f.name,
-      size: formatFileSize(f.size),
-      type: f.type || 'Document',
-      file: f,
-    }));
+    const existingNames = new Set<string>();
+    files.forEach((f) => existingNames.add(f.name.toLowerCase()));
+    existingAttachments.forEach((att) => {
+      const name = typeof att === 'string' ? att : att.name;
+      if (name) existingNames.add(name.toLowerCase());
+    });
 
-    onFilesChange([...files, ...newFiles]);
+    const newFiles: AttachedFile[] = [];
+    let duplicatesCount = 0;
 
-    // Reset input value so same file can be selected again if needed
+    Array.from(selected).forEach((f) => {
+      const lowerName = f.name.toLowerCase();
+      if (existingNames.has(lowerName)) {
+        duplicatesCount++;
+      } else {
+        existingNames.add(lowerName);
+        newFiles.push({
+          id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          name: f.name,
+          size: formatFileSize(f.size),
+          type: f.type || 'Document',
+          file: f,
+        });
+      }
+    });
+
+    if (duplicatesCount > 0) {
+      console.warn(`Ignored ${duplicatesCount} duplicate file(s) that were already attached.`);
+    }
+
+    if (newFiles.length > 0) {
+      onFilesChange([...files, ...newFiles]);
+    }
+
+    // Reset input value so new files can be selected
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

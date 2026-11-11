@@ -11,13 +11,23 @@ export const EmployeeSignIn: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // If already authenticated, redirect to Dashboard
+  // If already authenticated with valid tokens, redirect to Dashboard
   try {
-    const raw = localStorage.getItem('platform_current_user');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.email) {
-        return <Navigate to="/dashboard" replace />;
+    const explicitlyLoggedOut =
+      sessionStorage.getItem('platform_explicitly_logged_out') === 'true' ||
+      localStorage.getItem('platform_explicitly_logged_out') === 'true';
+    if (!explicitlyLoggedOut) {
+      const raw = sessionStorage.getItem('platform_current_user') || localStorage.getItem('platform_current_user');
+      const hasToken =
+        !!localStorage.getItem('backend_auth_token') ||
+        !!sessionStorage.getItem('backend_auth_token') ||
+        !!localStorage.getItem('backend_refresh_token') ||
+        !!sessionStorage.getItem('backend_refresh_token');
+      if (raw && hasToken) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.email) {
+          return <Navigate to="/dashboard" replace />;
+        }
       }
     }
   } catch {}
@@ -57,7 +67,6 @@ export const EmployeeSignIn: React.FC = () => {
       const res = await loginBackend(cleanEmail, password);
       if (!res.ok) {
         setErrors({ auth: res.error || 'Invalid credentials. Please verify your email and password.' });
-        setIsSubmitting(false);
         return;
       }
 
@@ -71,14 +80,22 @@ export const EmployeeSignIn: React.FC = () => {
         status: dbUser.status || 'Active',
         avatar: dbUser.avatar || null,
       };
+      sessionStorage.setItem('platform_current_user', JSON.stringify(userSession));
       localStorage.setItem('platform_current_user', JSON.stringify(userSession));
+      sessionStorage.removeItem('platform_explicitly_logged_out');
       localStorage.removeItem('platform_explicitly_logged_out');
       EmployeeService.clearCache();
-      setIsSubmitting(false);
-      navigate('/dashboard');
+      if (dbUser.role === 'admin') {
+        navigate('/admin/dashboard', { replace: true });
+      } else if (dbUser.role === 'teamlead') {
+        navigate('/teamlead/dashboard', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err) {
       console.error('Sign in exception:', err);
       setErrors({ auth: 'Unable to connect to authentication service. Please try again.' });
+    } finally {
       setIsSubmitting(false);
     }
   };

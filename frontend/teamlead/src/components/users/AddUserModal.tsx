@@ -45,6 +45,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
   } | null>(null);
 
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const validateEmail = (emailStr: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr);
@@ -60,6 +61,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrors({});
     setGlobalError('');
 
@@ -97,42 +99,47 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
       return;
     }
 
-    // Add user to Supabase with verification token and custom password
-    const inviteToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
-    const result: any = await addUser({
-      id: employeeId.trim(),
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim() || undefined,
-      department: department.trim(),
-      role: 'employee',
-      status: 'Pending Invitation',
-      invite_token: inviteToken,
-      password: password.trim(),
-    } as any);
+    setIsSubmitting(true);
+    try {
+      // Add user to Supabase with verification token and custom password
+      const inviteToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
+      const result: any = await addUser({
+        id: employeeId.trim(),
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        department: department.trim(),
+        role: 'employee',
+        status: 'Pending Invitation',
+        invite_token: inviteToken,
+        password: password.trim(),
+      } as any);
 
-    if (!result.success) {
-      setGlobalError(result.error || 'Failed to add employee.');
-      return;
+      if (!result.success) {
+        setGlobalError(result.error || 'Failed to add employee.');
+        return;
+      }
+
+      if (onSuccess) {
+        onSuccess(`Employee ${name.trim()} (${employeeId.trim()}) added successfully.`);
+      }
+
+      const realInviteLink = `http://localhost:4173/signin?email=${encodeURIComponent(email.trim())}`;
+
+      // Set Created Employee details for Step 2
+      setCreatedEmployee({
+        name: name.trim(),
+        email: email.trim(),
+        department: department.trim(),
+        role: 'Employee',
+        invitationLink: realInviteLink,
+      });
+
+      // Move to Success Step
+      setStep('success');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (onSuccess) {
-      onSuccess(`Employee ${name.trim()} (${employeeId.trim()}) added successfully.`);
-    }
-
-    const realInviteLink = `http://localhost:4173/signin?email=${encodeURIComponent(email.trim())}`;
-
-    // Set Created Employee details for Step 2
-    setCreatedEmployee({
-      name: name.trim(),
-      email: email.trim(),
-      department: department.trim(),
-      role: 'Employee',
-      invitationLink: realInviteLink,
-    });
-
-    // Move to Success Step
-    setStep('success');
   };
 
   const handleCopyLink = () => {
@@ -373,10 +380,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all duration-200 cursor-pointer hover:shadow-lg"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md shadow-sky-600/20 flex items-center gap-1.5 transition-all duration-200 cursor-pointer hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <UserPlus className="w-4 h-4" />
-                  Add Employee
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>

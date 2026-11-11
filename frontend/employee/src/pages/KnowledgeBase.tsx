@@ -391,19 +391,8 @@ export const KnowledgeBase: React.FC = () => {
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-slate-900">No solution found</h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  No solution found. You can create a ticket for further assistance.
+                  No matching solution or ticket found. Try searching with different keywords or selecting another category.
                 </p>
-              </div>
-
-              <div className="pt-2">
-                <Button
-                  variant="primary"
-                  onClick={() => navigate('/create-ticket')}
-                  className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs text-xs px-5 py-2.5"
-                >
-                  <PlusCircle className="w-4 h-4 mr-1.5" />
-                  Create Ticket
-                </Button>
               </div>
             </div>
           )}

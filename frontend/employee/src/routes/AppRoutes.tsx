@@ -16,7 +16,7 @@ import { Profile } from '../pages/Profile';
 
 const isEmployeeAuthenticated = (): boolean => {
   try {
-    const raw = localStorage.getItem('platform_current_user');
+    const raw = sessionStorage.getItem('platform_current_user') || localStorage.getItem('platform_current_user');
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     return !!(parsed && parsed.email);
@@ -59,8 +59,10 @@ export const AppRoutes: React.FC = () => {
         }
       >
         <Route path="/dashboard" element={<EmployeeDashboard />} />
+        <Route path="/employee/dashboard" element={<EmployeeDashboard />} />
         <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/tickets" element={<MyTickets />} />
+        <Route path="/employee/tickets" element={<MyTickets />} />
         <Route path="/tickets/:id" element={<AssignedTicketDetails />} />
         <Route path="/assigned-tickets" element={<AssignedTickets />} />
         <Route path="/assigned-tickets/:id" element={<AssignedTicketDetails />} />

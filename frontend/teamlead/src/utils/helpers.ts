@@ -69,3 +69,98 @@ export const formatSLAShort = (slaRemaining: string) => {
   if (!slaRemaining) return '';
   return slaRemaining.replace(/\s*remaining/i, '').trim();
 };
+
+export function calculateSLADeadline(
+  createdAtStr?: string,
+  priority?: string,
+  explicitDueDate?: string
+): string {
+  if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+    const raw = explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+      ? explicitDueDate.replace(' ', 'T')
+      : explicitDueDate;
+    const due = new Date(raw);
+    if (!isNaN(due.getTime())) {
+      const yyyy = due.getFullYear();
+      const mm = String(due.getMonth() + 1).padStart(2, '0');
+      const dd = String(due.getDate()).padStart(2, '0');
+      const hh = String(due.getHours()).padStart(2, '0');
+      const min = String(due.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    }
+    const cleanDue = explicitDueDate.replace('T', ' ').slice(0, 16);
+    return cleanDue;
+  }
+
+  const prio = (priority || '').toLowerCase();
+  let hoursToAdd = 24;
+  if (prio === 'critical' || prio === 'urgent') hoursToAdd = 4;
+  else if (prio === 'high') hoursToAdd = 8;
+  else if (prio === 'medium') hoursToAdd = 24;
+  else if (prio === 'low') hoursToAdd = 48;
+
+  const createdTime = createdAtStr
+    ? new Date(createdAtStr.includes(' ') && !createdAtStr.includes('T')
+        ? createdAtStr.replace(' ', 'T')
+        : createdAtStr)
+    : new Date();
+  const validCreated = isNaN(createdTime.getTime()) ? new Date() : createdTime;
+  const deadline = new Date(validCreated.getTime() + hoursToAdd * 60 * 60 * 1000);
+  const yyyy = deadline.getFullYear();
+  const mm = String(deadline.getMonth() + 1).padStart(2, '0');
+  const dd = String(deadline.getDate()).padStart(2, '0');
+  const hh = String(deadline.getHours()).padStart(2, '0');
+  const min = String(deadline.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+}
+
+export function computeSLAStatus(
+  createdAtStr?: string,
+  priority?: string,
+  explicitDueDate?: string,
+  status?: string
+): string {
+  const normStatus = (status || '').toLowerCase();
+  if (['resolved', 'closed'].includes(normStatus)) {
+    return 'Normal';
+  }
+
+  const prio = (priority || '').toLowerCase();
+  let slaHours = 24;
+  if (prio === 'critical' || prio === 'urgent') slaHours = 4;
+  else if (prio === 'high') slaHours = 8;
+  else if (prio === 'medium') slaHours = 24;
+  else if (prio === 'low') slaHours = 48;
+
+  let deadlineMs = 0;
+  if (explicitDueDate && explicitDueDate.trim() && explicitDueDate.length >= 10) {
+    const parsed = new Date(
+      explicitDueDate.includes(' ') && !explicitDueDate.includes('T')
+        ? explicitDueDate.replace(' ', 'T')
+        : explicitDueDate
+    );
+    if (!isNaN(parsed.getTime())) deadlineMs = parsed.getTime();
+  }
+  if (!deadlineMs && createdAtStr) {
+    const cDate = new Date(
+      createdAtStr.includes(' ') && !createdAtStr.includes('T')
+        ? createdAtStr.replace(' ', 'T')
+        : createdAtStr
+    );
+    if (!isNaN(cDate.getTime())) {
+      deadlineMs = cDate.getTime() + slaHours * 60 * 60 * 1000;
+    }
+  }
+
+  if (!deadlineMs) return 'Normal';
+
+  const now = Date.now();
+  if (now > deadlineMs) {
+    return 'SLA Breached';
+  }
+  const fourHoursMs = 4 * 60 * 60 * 1000;
+  if (deadlineMs - now <= fourHoursMs) {
+    return 'SLA Risk';
+  }
+  return 'Normal';
+}

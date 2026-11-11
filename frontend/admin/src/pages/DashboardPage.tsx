@@ -10,7 +10,7 @@ import type { Ticket, DashboardStats } from '../types';
 import { AdminApiService } from '../services/api';
 import { AttachmentFilePicker, type AttachedFile } from '../components/ui/AttachmentFilePicker';
 import { TeamLeadEmployeeSelector } from '../components/ui/TeamLeadEmployeeSelector';
-import type { TeamLeadItem, EmployeeItem } from '../services/organizationService';
+import { OrganizationService, type TeamLeadItem, type EmployeeItem } from '../services/organizationService';
 import {
   Ticket as TicketIcon,
   AlertTriangle,
@@ -24,12 +24,13 @@ import {
   AlertCircle,
   X,
   Inbox,
+  Eye,
 } from 'lucide-react';
 
-const DEPARTMENT_OPTIONS = [
+const DEFAULT_DEPARTMENT_OPTIONS = [
   'IT Support',
   'Finance',
-  'HR Operations',
+  'HR',
   'Facilities',
   'General Administration',
   'Other',
@@ -37,17 +38,18 @@ const DEPARTMENT_OPTIONS = [
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>(DEFAULT_DEPARTMENT_OPTIONS);
+  const [stats, setStats] = useState<DashboardStats | null>(() => AdminApiService.getCachedStats());
+  const [tickets, setTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
   const [filterQuery, setFilterQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedStats() && (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0));
   const [loadError, setLoadError] = useState(false);
 
   // Modal State for Admin Create Ticket
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState('Hardware & Devices');
+  const [newCategory, setNewCategory] = useState('Hardware');
   const [customCategory, setCustomCategory] = useState('');
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['IT Support']);
   const [customDepartment, setCustomDepartment] = useState('');
@@ -85,7 +87,9 @@ export const DashboardPage: React.FC = () => {
   );
 
   const loadData = async (force = false) => {
-    setIsLoading(true);
+    if (!stats && tickets.length === 0) {
+      setIsLoading(true);
+    }
     setLoadError(false);
     const [statsData, ticketsData] = await Promise.all([
       AdminApiService.getDashboardStats(force),
@@ -100,7 +104,9 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     const run = async (force = false) => {
-      setIsLoading(true);
+      if (!AdminApiService.getCachedStats() && (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0)) {
+        setIsLoading(true);
+      }
       setLoadError(false);
       try {
         const [statsData, ticketsData] = await Promise.all([
@@ -119,6 +125,14 @@ export const DashboardPage: React.FC = () => {
     };
 
     void run(false);
+    OrganizationService.syncFromDatabase().then(() => {
+      const depts = OrganizationService.getDepartments();
+      if (depts && depts.length > 0) {
+        const names = depts.map((d) => d.name);
+        if (!names.includes('Other')) names.push('Other');
+        setDepartmentOptions(names);
+      }
+    });
 
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'ticket_refresh_event' || e.key === 'itsm_tickets_version') {
@@ -127,8 +141,7 @@ export const DashboardPage: React.FC = () => {
       }
     };
     const onTicketUpdated = () => {
-      AdminApiService.invalidateCache();
-      void run(true);
+      void run(false);
     };
 
     window.addEventListener('ticket-updated', onTicketUpdated);
@@ -153,10 +166,7 @@ export const DashboardPage: React.FC = () => {
       setValidationError('Department is required');
       return;
     }
-    if (selectedTeamLeadIds.length === 0) {
-      setValidationError('Team Lead is required');
-      return;
-    }
+
     const finalCategory = newCategory === 'Other' ? (customCategory.trim() || 'Other') : newCategory;
     if (!finalCategory.trim()) {
       setValidationError('Category is required');
@@ -214,7 +224,7 @@ export const DashboardPage: React.FC = () => {
       // Reset Form
       setNewTitle('');
       setNewDescription('');
-      setNewCategory('Hardware & Devices');
+      setNewCategory('Hardware');
       setCustomCategory('');
       setSelectedDepartments(['IT Support']);
       setCustomDepartment('');
@@ -233,19 +243,19 @@ export const DashboardPage: React.FC = () => {
       setTimeout(() => {
         setToastNotification(null);
       }, 4000);
-    } catch {
-      setToastNotification({
-        message: 'Ticket created, but email notification failed.',
-      });
+    } catch (err: any) {
+      setValidationError(err?.message || 'Could not create ticket. Please check your selections and try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const isUnassigned = (t: Ticket) =>
+    (t as any).isUnassigned ||
     !t.assignedTo ||
     t.assignedTo.trim() === '' ||
-    t.assignedTo.toLowerCase() === 'unassigned';
+    t.assignedTo.toLowerCase() === 'unassigned' ||
+    (t as any).assignedToType === 'unassigned';
 
   const unassignedCount = stats?.unassignedTickets ?? tickets.filter(
     (t) => isUnassigned(t) && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
@@ -255,27 +265,38 @@ export const DashboardPage: React.FC = () => {
     (t) => (t.status || '').toLowerCase() === 'escalated' && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
   ).length;
 
-  const slaRiskCount = stats?.slaRiskCount ?? tickets.filter(
-    (t) => (t.slaStatus || '').toLowerCase().includes('risk') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
-  ).length;
+  const isTicketActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());
+  const isSlaBreached = (t: Ticket) =>
+    isTicketActive(t) &&
+    (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach'));
+  const isSlaRisk = (t: Ticket) =>
+    isTicketActive(t) &&
+    (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk'));
 
-  const slaBreachedCount = stats?.slaBreachedCount ?? tickets.filter(
-    (t) => (t.slaStatus || '').toLowerCase().includes('breach') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())
-  ).length;
+  const slaRiskCount = stats?.slaRiskCount ?? tickets.filter(isSlaRisk).length;
+  const slaBreachedCount = stats?.slaBreachedCount ?? tickets.filter(isSlaBreached).length;
 
   const filteredTickets = tickets.filter((t) => {
+    const q = filterQuery.toLowerCase().trim();
     const matchesSearch =
-      filterQuery === '' ||
-      t.ticketNumber.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      t.title.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      t.requesterName.toLowerCase().includes(filterQuery.toLowerCase());
+      !q ||
+      String(t.ticketNumber || '').toLowerCase().includes(q) ||
+      String(t.id || '').toLowerCase().includes(q) ||
+      String(t.title || '').toLowerCase().includes(q) ||
+      String(t.description || '').toLowerCase().includes(q) ||
+      String(t.requesterName || '').toLowerCase().includes(q) ||
+      String(t.category || '').toLowerCase().includes(q) ||
+      String(t.department || '').toLowerCase().includes(q) ||
+      String(t.assignedTo || '').toLowerCase().includes(q) ||
+      String(t.priority || '').toLowerCase().includes(q) ||
+      String(t.status || '').toLowerCase().includes(q);
 
     const matchesStatus =
       statusFilter === 'all' ||
       (statusFilter === 'unassigned' && isUnassigned(t) && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
       (statusFilter === 'escalated' && (t.status || '').toLowerCase() === 'escalated' && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
-      (statusFilter === 'sla risk' && (t.slaStatus || '').toLowerCase().includes('risk') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
-      (statusFilter === 'sla breached' && (t.slaStatus || '').toLowerCase().includes('breach') && !['resolved', 'closed'].includes((t.status || '').toLowerCase())) ||
+      (statusFilter === 'sla risk' && isSlaRisk(t)) ||
+      (statusFilter === 'sla breached' && isSlaBreached(t)) ||
       (t.status || '').toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;
@@ -375,7 +396,7 @@ export const DashboardPage: React.FC = () => {
     {
       header: 'Priority',
       cell: (row) => {
-        const variant = row.priority === 'Urgent' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
+        const variant = row.priority === 'Critical' ? 'danger' : row.priority === 'High' ? 'warning' : 'neutral';
         return <Badge variant={variant} dot className="text-[11px] py-0.5 px-2">{row.priority}</Badge>;
       }
     },
@@ -398,6 +419,23 @@ export const DashboardPage: React.FC = () => {
     {
       header: 'Updated Time',
       cell: (row) => <span className="text-[11.5px] text-slate-500">{row.createdAt}</span>
+    },
+    {
+      header: 'Actions',
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Eye className="w-3.5 h-3.5" />}
+            onClick={() => navigate(`/admin/workspace/tickets/${row.id}`)}
+            title="View Ticket"
+            className="text-xs"
+          >
+            View
+          </Button>
+        </div>
+      )
     }
   ];
 
@@ -654,30 +692,38 @@ export const DashboardPage: React.FC = () => {
 
       {/* Admin Create Ticket Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 font-sans space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <PlusCircle className="w-5 h-5 text-[#0284C7]" />
-                Create Ticket (Admin)
-              </h3>
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col my-4 max-h-[92vh] animate-in zoom-in-95 duration-150">
+            {/* Fixed Header */}
+            <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-sky-100 text-[#0284C7] font-bold">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-slate-900">Create Support Ticket (Admin)</h2>
+                  <p className="text-xs text-slate-500">Route tickets to departments and assign to team leads or members</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-sm cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                title="Close"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {validationError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-semibold flex items-center gap-2">
+              <div className="mx-5 mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-semibold flex items-center gap-2 shrink-0">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {validationError}
               </div>
             )}
 
-            <form onSubmit={handleCreateSubmit} className="space-y-4">
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleCreateSubmit} className="p-5 space-y-4 text-xs overflow-y-auto flex-1 font-sans">
               {/* Subject */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -703,7 +749,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {DEPARTMENT_OPTIONS.map((dept) => {
+                  {departmentOptions.map((dept) => {
                     const isSelected = selectedDepartments.includes(dept);
                     return (
                       <button
@@ -770,13 +816,20 @@ export const DashboardPage: React.FC = () => {
                 </label>
                 <Select
                   value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewCategory(val);
+                    if (val !== 'Other') {
+                      setCustomCategory('');
+                    }
+                  }}
                   options={[
-                    { value: 'Hardware & Devices', label: 'Hardware & Devices' },
-                    { value: 'Access & Permissions', label: 'Access & Permissions' },
-                    { value: 'Network & Connectivity', label: 'Network & Connectivity' },
-                    { value: 'HR & Benefits', label: 'HR & Benefits' },
-                    { value: 'General Administration', label: 'General Administration' },
+                    { value: 'Hardware', label: 'Hardware' },
+                    { value: 'Software', label: 'Software' },
+                    { value: 'Network', label: 'Network' },
+                    { value: 'Access Issue', label: 'Access Issue' },
+                    { value: 'Email', label: 'Email' },
+                    { value: 'Application', label: 'Application' },
                     { value: 'Other', label: 'Other' },
                   ]}
                 />
@@ -802,10 +855,10 @@ export const DashboardPage: React.FC = () => {
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value)}
                   options={[
-                    { value: 'Low', label: 'Low' },
-                    { value: 'Medium', label: 'Medium' },
+                    { value: 'Critical', label: 'Critical' },
                     { value: 'High', label: 'High' },
-                    { value: 'Urgent', label: 'Urgent' },
+                    { value: 'Medium', label: 'Medium' },
+                    { value: 'Low', label: 'Low' },
                   ]}
                 />
               </div>

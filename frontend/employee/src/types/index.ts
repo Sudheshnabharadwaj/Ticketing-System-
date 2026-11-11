@@ -1,4 +1,4 @@
-export type TicketPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 export type TicketStatus = 'Open' | 'In Progress' | 'Pending' | 'Resolved' | 'Closed' | 'Escalated';
 
 export interface AssignedTeamLead {
@@ -7,6 +7,16 @@ export interface AssignedTeamLead {
   email: string;
   department: string;
   role: string;
+}
+
+export interface TicketComment {
+  id: string;
+  ticketId?: string;
+  authorName: string;
+  authorRole: string;
+  message: string;
+  createdAt: string;
+  isInternal?: boolean;
 }
 
 export interface EmployeeTicket {
@@ -30,6 +40,7 @@ export interface EmployeeTicket {
   assignedDate?: string;
   sla?: string;
   attachments?: string[];
+  comments?: TicketComment[];
   resolutionNotes?: string;
   history?: Array<{
     id: string;
