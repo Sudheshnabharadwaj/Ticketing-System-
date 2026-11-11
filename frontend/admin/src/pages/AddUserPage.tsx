@@ -391,6 +391,8 @@ export const AddUserPage: React.FC = () => {
               <Input
                 label="Phone Number (10 digits) *"
                 placeholder="e.g. 9876543210"
+                type="tel"
+                name="phone"
                 maxLength={10}
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}

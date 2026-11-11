@@ -342,6 +342,8 @@ export const CreateTicket: React.FC = () => {
             </label>
             <Input
               required
+              id="subject"
+              name="subject"
               placeholder="Brief summary of your issue (e.g. Laptop battery draining quickly)"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
