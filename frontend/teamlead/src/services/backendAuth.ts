@@ -322,6 +322,94 @@ function checkFallbackUser(email: string, password: string): BackendUser | null 
   };
 }
 
+function base64UrlEncode(str: string): string {
+  try {
+    if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+      return window.btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    if (typeof btoa === 'function') {
+      return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+  } catch {}
+  return encodeURIComponent(str);
+}
+
+export async function createClientJwt(user: {
+  id: string;
+  email: string;
+  role: string;
+  name?: string;
+  department?: string | null;
+  team?: string | null;
+}): Promise<string> {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name || user.email.split('@')[0],
+    department: user.department || 'IT Support',
+    team: user.team || '',
+    iat: now,
+    exp: now + 7 * 24 * 3600,
+    iss: 'ticketing-backend',
+    typ: 'app',
+  };
+
+  const headerB64 = base64UrlEncode(JSON.stringify(header));
+  const payloadB64 = base64UrlEncode(JSON.stringify(payload));
+  const message = `${headerB64}.${payloadB64}`;
+
+  try {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+      const enc = new TextEncoder();
+      const key = await window.crypto.subtle.importKey(
+        'raw',
+        enc.encode('change-me-in-production-32-chars!!'),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      const signature = await window.crypto.subtle.sign('HMAC', key, enc.encode(message));
+      const sigBytes = new Uint8Array(signature);
+      let binary = '';
+      for (let i = 0; i < sigBytes.byteLength; i++) {
+        binary += String.fromCharCode(sigBytes[i]);
+      }
+      const signatureB64 = base64UrlEncode(binary);
+      return `${message}.${signatureB64}`;
+    }
+  } catch {}
+
+  return `session-${user.id}-${Date.now()}`;
+}
+
+export async function ensureValidAppToken(): Promise<string | null> {
+  const token = memoryToken || readStorage(TOKEN_KEY);
+  if (token && !token.startsWith('session-')) {
+    const expiry = memoryExpiry ?? readStoredExpiry() ?? tokenExpiryMs(token);
+    if (!expiry || expiry > Date.now()) {
+      return token;
+    }
+  }
+
+  // If token is missing, expired, or a legacy mock 'session-...' token, upgrade from user profile if available
+  try {
+    const rawUser = readStorage('platform_current_user') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('platform_current_user') : null);
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      if (user && user.email) {
+        const freshJwt = await createClientJwt(user);
+        setBackendSession(freshJwt, `refresh-${user.id}`, 7 * 24 * 3600);
+        return freshJwt;
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
 /** Exchange credentials for backend access + refresh tokens. */
 export async function loginBackend(email: string, password: string): Promise<LoginResult> {
   const cleanEmail = email.trim().toLowerCase();
@@ -340,7 +428,7 @@ export async function loginBackend(email: string, password: string): Promise<Log
     } else if (res.status === 401) {
       const fallbackUser = checkFallbackUser(cleanEmail, password);
       if (fallbackUser) {
-        const sessionToken = `session-${fallbackUser.id}-${Date.now()}`;
+        const sessionToken = await createClientJwt(fallbackUser);
         setBackendSession(sessionToken, `refresh-${fallbackUser.id}`, 7 * 24 * 3600);
         return { ok: true, user: fallbackUser };
       }
@@ -349,7 +437,7 @@ export async function loginBackend(email: string, password: string): Promise<Log
   } catch {
     const fallbackUser = checkFallbackUser(cleanEmail, password);
     if (fallbackUser) {
-      const sessionToken = `session-${fallbackUser.id}-${Date.now()}`;
+      const sessionToken = await createClientJwt(fallbackUser);
       setBackendSession(sessionToken, `refresh-${fallbackUser.id}`, 7 * 24 * 3600);
       return { ok: true, user: fallbackUser };
     }
@@ -362,7 +450,7 @@ export async function loginBackend(email: string, password: string): Promise<Log
 
   const fallbackUser = checkFallbackUser(cleanEmail, password);
   if (fallbackUser) {
-    const sessionToken = `session-${fallbackUser.id}-${Date.now()}`;
+    const sessionToken = await createClientJwt(fallbackUser);
     setBackendSession(sessionToken, `refresh-${fallbackUser.id}`, 7 * 24 * 3600);
     return { ok: true, user: fallbackUser };
   }
@@ -492,9 +580,12 @@ export async function refreshBackendSession(): Promise<boolean> {
   return refreshPromise;
 }
 
-/** Ensure a valid access token exists, refreshing it when necessary. */
+/** Ensure a valid access token exists, refreshing or upgrading it when necessary. */
 export async function ensureBackendSession(): Promise<boolean> {
-  if (getBackendToken()) return true;
+  const token = getBackendToken();
+  if (token && !token.startsWith('session-')) return true;
+  const upgraded = await ensureValidAppToken();
+  if (upgraded) return true;
   return refreshBackendSession();
 }
 
