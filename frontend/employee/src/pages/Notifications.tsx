@@ -116,7 +116,7 @@ export const Notifications: React.FC = () => {
           notifications.map((item) => (
             <div
               key={item.id}
-              onClick={() => navigate(`/assigned-tickets/${item.ticketId}`)}
+              onClick={() => navigate(`/employee/assigned-tickets/${item.ticketId}`)}
               className={`p-5 transition-colors cursor-pointer hover:bg-slate-50 flex items-start justify-between gap-4 ${
                 !item.isRead ? 'bg-sky-50/30' : ''
               }`}

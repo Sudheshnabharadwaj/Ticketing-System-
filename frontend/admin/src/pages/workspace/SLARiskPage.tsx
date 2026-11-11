@@ -68,7 +68,7 @@ export const SLARiskPage: React.FC = () => {
     setNewAssignee(ticket.assignedTo || '');
     setReasonNote('');
     const teamLead = users.find((u) => u.role === 'Team Lead' && u.department === ticket.department) || users.find((u) => u.role === 'Team Lead');
-    setTeamLeadName(teamLead ? teamLead.name : 'Manikanta');
+    setTeamLeadName(teamLead ? teamLead.name : 'Team Lead');
   };
 
   const handleCloseModal = () => {
