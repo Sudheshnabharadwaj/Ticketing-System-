@@ -93,13 +93,6 @@ export const Escalations: React.FC = () => {
                         <Eye className="w-3.5 h-3.5" />
                         View
                       </button>
-                      <button
-                        onClick={() => resolveTicket(esc.ticketId)}
-                        className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Action
-                      </button>
                     </div>
                   </td>
                 </tr>

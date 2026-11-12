@@ -81,7 +81,7 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setEscalations(loaded || []);
   }, []);
 
-  const refresh = useCallback(async (silent = false, force = false) => {
+  const refresh = useCallback(async (silent = false, force = true) => {
     const hasCache = !!ticketService.getCachedTickets() && ticketService.getCachedTickets()!.length > 0;
     if (!silent && !hasCache) {
       setIsLoading(true);

@@ -42,16 +42,16 @@ export const DEPARTMENTS: DepartmentItem[] = [
 ];
 
 export const INITIAL_TEAM_LEADS: TeamLeadItem[] = [
-  { id: 'OKL003', employeeId: 'OKL003', name: 'Kotesh', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'k.ananthu@oklut.com' },
-  { id: 'OKL015', employeeId: 'OKL015', name: 'Manikanta', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'm.nisankam@oklut.com' },
-  { id: 'OKL013', employeeId: 'OKL013', name: 'soniya', role: 'HR Team Lead', departmentId: 'D003', departmentName: 'HR', email: 'soni@gmail.com' },
+  { id: 'OKL003', employeeId: 'OKL003', name: 'Kotesh', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'k.ananthu@oklut.com', team: 'Team Alpha' } as any,
+  { id: 'OKL015', employeeId: 'OKL015', name: 'Manikanta', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'm.nisankam@oklut.com', team: 'Team Beta' } as any,
+  { id: 'OKL013', employeeId: 'OKL013', name: 'soniya', role: 'HR Team Lead', departmentId: 'D003', departmentName: 'HR', email: 'soni@gmail.com', team: 'HR Team' } as any,
 ];
 
 export const INITIAL_EMPLOYEES: EmployeeItem[] = [
-  { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com' },
-  { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com' },
-  { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com' },
-  { id: 'OKL014', employeeId: 'OKL014', name: 'Ramya', role: 'Team Member', teamLeadId: 'OKL013', departmentId: 'D003', departmentName: 'HR', email: 'ramya@gmail.com' },
+  { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com', team: 'Team Alpha' } as any,
+  { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com', team: 'Team Alpha' } as any,
+  { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com', team: 'Team Beta' } as any,
+  { id: 'OKL014', employeeId: 'OKL014', name: 'Ramya', role: 'Team Member', teamLeadId: 'OKL013', departmentId: 'D003', departmentName: 'HR', email: 'ramya@gmail.com', team: 'HR Team' } as any,
 ];
 
 export const TEAM_LEADS: TeamLeadItem[] = [...INITIAL_TEAM_LEADS];
@@ -90,7 +90,20 @@ export const OrganizationService = {
       return false;
     });
 
-    if (matches.length > 0) return matches;
+    const seen = new Set<string>();
+    const deduped: TeamLeadItem[] = [];
+    for (const tl of matches) {
+      const empId = (tl.employeeId || tl.id || '').toUpperCase();
+      const name = (tl.name || '').trim().toLowerCase();
+      const k = `${empId}_${name}`;
+      if (!seen.has(k) && !seen.has(empId) && !seen.has(name)) {
+        seen.add(k);
+        seen.add(empId);
+        seen.add(name);
+        deduped.push(tl);
+      }
+    }
+    if (deduped.length > 0) return deduped;
 
     // Safety fallback for HR: ensure Soniya is returned
     if (norm === 'hr' || norm === 'hr operations' || norm.includes('hr')) {
@@ -111,14 +124,46 @@ export const OrganizationService = {
     const cached = _leadEmployeesCache.get(teamLeadId);
 
     try {
-      // 1. Try direct Supabase query
+      // 1. Try backend API endpoint first (live database with strict team boundaries)
+      const res = await apiRequestSafe<any[]>(`/team-leads/${encodeURIComponent(teamLeadId)}/employees`);
+      if (!res.error && Array.isArray(res.data) && res.data.length > 0) {
+        const lead = this.getTeamLeadById(teamLeadId);
+        const items: EmployeeItem[] = res.data.map((u) => {
+          let rawDept = u.department || lead?.departmentName || 'IT Support';
+          const rawLower = rawDept.toLowerCase().trim();
+          if (rawLower === 'hr' || rawLower === 'hr operations') rawDept = 'HR';
+          const deptObj = DEPARTMENTS.find(d => d.name.toLowerCase() === rawDept.toLowerCase()) || DEPARTMENTS[0];
+          return {
+            id: u.id,
+            employeeId: u.employee_id || u.id,
+            name: u.name,
+            role: u.designation || 'Team Member',
+            teamLeadId: teamLeadId,
+            departmentId: deptObj.id,
+            departmentName: rawDept,
+            email: u.email,
+          };
+        });
+        _leadEmployeesCache.set(teamLeadId, items);
+        if (lead?.employeeId) _leadEmployeesCache.set(lead.employeeId, items);
+
+        for (const item of items) {
+          const idx = EMPLOYEES.findIndex(e => e.id === item.id);
+          if (idx >= 0) EMPLOYEES[idx] = item;
+          else EMPLOYEES.push(item);
+        }
+        return items;
+      }
+
+      // 2. Direct Supabase query fallback
       try {
+        const lead = this.getTeamLeadById(teamLeadId);
+        const leadTeam = (lead as any)?.team || (lead?.employeeId === 'OKL003' || teamLeadId === 'OKL003' ? 'Team Alpha' : lead?.employeeId === 'OKL015' || teamLeadId === 'OKL015' ? 'Team Beta' : 'HR Team');
         const { data: supaEmps, error: supaErr } = await supabase
           .from('users')
           .select('*')
-          .or(`team.eq.${teamLeadId},team_lead_id.eq.${teamLeadId},id.eq.${teamLeadId}`);
+          .or(`team.eq.${leadTeam},team.eq.${teamLeadId},id.eq.${teamLeadId}`);
         if (!supaErr && Array.isArray(supaEmps) && supaEmps.length > 0) {
-          const lead = this.getTeamLeadById(teamLeadId);
           const items: EmployeeItem[] = supaEmps
             .filter((u) => {
               const r = (u.role || '').toLowerCase();
@@ -142,6 +187,7 @@ export const OrganizationService = {
             });
           if (items.length > 0) {
             _leadEmployeesCache.set(teamLeadId, items);
+            if (lead?.employeeId) _leadEmployeesCache.set(lead.employeeId, items);
             for (const item of items) {
               const idx = EMPLOYEES.findIndex(e => e.id === item.id);
               if (idx >= 0) EMPLOYEES[idx] = item;
@@ -153,68 +199,41 @@ export const OrganizationService = {
       } catch (supaErr) {
         console.warn('Supabase fetchEmployeesByTeamLead error:', supaErr);
       }
-
-      // 2. Try backend API endpoint
-      const res = await apiRequestSafe<any[]>(`/team-leads/${encodeURIComponent(teamLeadId)}/employees`);
-      if (!res.error && Array.isArray(res.data) && res.data.length > 0) {
-        const lead = this.getTeamLeadById(teamLeadId);
-        const items: EmployeeItem[] = res.data.map((u) => {
-          let rawDept = u.department || lead?.departmentName || 'IT Support';
-          const rawLower = rawDept.toLowerCase().trim();
-          if (rawLower === 'hr' || rawLower === 'hr operations') rawDept = 'HR';
-          const deptObj = DEPARTMENTS.find(d => d.name.toLowerCase() === rawDept.toLowerCase()) || DEPARTMENTS[0];
-          return {
-            id: u.id,
-            employeeId: u.employee_id || u.id,
-            name: u.name,
-            role: u.designation || 'Team Member',
-            teamLeadId: teamLeadId,
-            departmentId: deptObj.id,
-            departmentName: rawDept,
-            email: u.email,
-          };
-        });
-        _leadEmployeesCache.set(teamLeadId, items);
-
-        for (const item of items) {
-          const idx = EMPLOYEES.findIndex(e => e.id === item.id);
-          if (idx >= 0) EMPLOYEES[idx] = item;
-          else EMPLOYEES.push(item);
-        }
-        return items;
-      }
     } catch (e: any) {
       console.warn(`Failed to fetch employees for team lead ${teamLeadId}:`, e);
     }
 
-    // 3. Fallback to memory cache
     if (cached && cached.length > 0) return cached;
-    if (teamLeadId === 'OKL013') {
-      const ramya = INITIAL_EMPLOYEES.find(e => e.employeeId === 'OKL014');
-      if (ramya) return [ramya];
-    }
-    const matching = EMPLOYEES.filter((emp) => emp.teamLeadId === teamLeadId);
-    if (matching.length > 0) return matching;
-    return [];
+    return this.getEmployeesByTeamLead(teamLeadId);
   },
 
   getEmployeesByTeamLead(teamLeadId: string): EmployeeItem[] {
     if (!teamLeadId) return [];
-    if (_leadEmployeesCache.has(teamLeadId)) {
-      return _leadEmployeesCache.get(teamLeadId)!;
-    }
     const leadObj = this.getTeamLeadById(teamLeadId);
-    if (leadObj && leadObj.employeeId && _leadEmployeesCache.has(leadObj.employeeId)) {
-      return _leadEmployeesCache.get(leadObj.employeeId)!;
+    const leadEmpId = leadObj?.employeeId || teamLeadId;
+    const leadTeam = ((leadObj as any)?.team || (leadEmpId === 'OKL003' ? 'Team Alpha' : leadEmpId === 'OKL015' ? 'Team Beta' : leadEmpId === 'OKL013' ? 'HR Team' : '')).toLowerCase();
+
+    let list: EmployeeItem[] = [];
+    if (_leadEmployeesCache.has(teamLeadId)) {
+      list = _leadEmployeesCache.get(teamLeadId)!;
+    } else if (leadObj && leadObj.employeeId && _leadEmployeesCache.has(leadObj.employeeId)) {
+      list = _leadEmployeesCache.get(leadObj.employeeId)!;
+    } else {
+      list = EMPLOYEES.filter((emp) => {
+        if (emp.teamLeadId === teamLeadId || emp.teamLeadId === leadEmpId) return true;
+        const empTeam = ((emp as any).team || '').toLowerCase();
+        if (empTeam && leadTeam && empTeam === leadTeam) return true;
+        return false;
+      });
     }
-    if (teamLeadId === 'OKL013' || leadObj?.employeeId === 'OKL013') {
-      const ramya = INITIAL_EMPLOYEES.find(e => e.employeeId === 'OKL014');
-      if (ramya) return [ramya];
-    }
-    return EMPLOYEES.filter((emp) => 
-      emp.teamLeadId === teamLeadId || 
-      (leadObj && (emp.teamLeadId === leadObj.employeeId || emp.teamLeadId === leadObj.id))
-    );
+
+    const seen = new Set<string>();
+    return list.filter((emp) => {
+      const k = (emp.employeeId || emp.id || '').toUpperCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   },
 
   searchEmployees(teamLeadId: string, query: string): EmployeeItem[] {
@@ -372,7 +391,11 @@ export const OrganizationService = {
             };
             (leadItem as any).team = u.team;
 
-            const existingIdx = TEAM_LEADS.findIndex(tl => tl.id === leadItem.id || tl.employeeId === leadItem.employeeId);
+            const existingIdx = TEAM_LEADS.findIndex(tl =>
+              (tl.id && leadItem.id && tl.id.toUpperCase() === leadItem.id.toUpperCase()) ||
+              (tl.employeeId && leadItem.employeeId && tl.employeeId.toUpperCase() === leadItem.employeeId.toUpperCase()) ||
+              (tl.name && leadItem.name && tl.name.trim().toLowerCase() === leadItem.name.trim().toLowerCase())
+            );
             if (existingIdx >= 0) {
               TEAM_LEADS[existingIdx] = leadItem;
             } else {

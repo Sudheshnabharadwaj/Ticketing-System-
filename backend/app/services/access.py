@@ -322,15 +322,18 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
         if uteam:
             if uteam.lower() in tl_team_keys or uteam.lower() == tl_id.lower():
                 is_member = True
-            elif tl_team and _teams_overlap(tl_team, uteam):
+            elif tl_team and uteam.lower() == tl_team.lower():
                 is_member = True
-        if not is_member and u.get("team_lead_id"):
-            if str(u.get("team_lead_id") or "").strip() == tl_id:
+            else:
+                is_member = False
+        elif u.get("team_lead_id"):
+            u_tl = str(u.get("team_lead_id") or "").strip().lower()
+            if u_tl in (tl_id.lower(), str(tl_user.get("employee_id") or "").strip().lower()):
                 is_member = True
-        if not is_member and _scopes_overlap(tl_user.get("department"), u.get("department")):
-            # If lead and employee belong to the same department, match them unless their teams explicitly conflict
-            if not tl_team or not uteam or _teams_overlap(tl_team, uteam):
-                is_member = True
+            else:
+                is_member = False
+        elif not tl_team and _scopes_overlap(tl_user.get("department"), u.get("department")):
+            is_member = True
 
         if is_member:
             matched.append(u)
@@ -543,6 +546,21 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         # Tagged member is on the team
         if member_ids and any(m_id in member_ids for m_id in tagged):
             return True
+
+        # 7. Unassigned department queue: Team lead can see and triage/assign unassigned tickets in their department
+        tl_dept = str(user.get("department") or payload.get("department") or "").strip().lower()
+        ticket_dept = str(ticket.get("department") or "").strip().lower()
+        ticket_depts = [str(d).strip().lower() for d in (ticket.get("departments") or []) if d]
+        agent_raw = str(ticket.get("assigned_agent") or "").strip().lower()
+        is_unassigned = (
+            ticket.get("is_unassigned") is True
+            or agent_raw in ("", "unassigned", "none", "null")
+            or str(ticket.get("assigned_to_type") or "").lower() == "unassigned"
+            or not ticket.get("assigned_agent_id")
+        )
+        if tl_dept and (tl_dept == ticket_dept or tl_dept in ticket_depts or _scopes_overlap(tl_dept, ticket_dept)):
+            if is_unassigned or str(ticket.get("status") or "").lower() not in ("closed", "resolved"):
+                return True
 
         return False
 
@@ -889,7 +907,7 @@ def serialize_ticket(
         result["can_chat"] = can_view_ticket_chat(payload, user, result)
 
     tid = str(ticket.get("id") or "")
-    if tid and not result.get("escalation_reason"):
+    if tid and (not result.get("escalation_reason") or not result.get("escalated_to")):
         try:
             sb = get_supabase_admin_client()
             esc_rows = sb.table("escalations").select("reason, notes, escalated_by, escalated_to, created_at").eq("ticket_id", tid).order("created_at", desc=True).limit(1).execute().data
@@ -900,6 +918,11 @@ def serialize_ticket(
                 result["escalated_by"] = esc.get("escalated_by") or ""
                 result["escalated_to"] = esc.get("escalated_to") or ""
                 result["escalated_at"] = esc.get("created_at") or ""
+                result["escalationReason"] = result["escalation_reason"]
+                result["escalationNotes"] = result["escalation_notes"]
+                result["escalatedBy"] = result["escalated_by"]
+                result["escalatedTo"] = result["escalated_to"]
+                result["escalatedAt"] = result["escalated_at"]
         except Exception as esc_err:
             print(f"[serialize_ticket] escalation load note: {esc_err}")
 

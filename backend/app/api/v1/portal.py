@@ -6,6 +6,7 @@ by the caller's role and identity, and password hashes are never returned.
 
 from __future__ import annotations
 
+import base64
 import random
 import time
 from datetime import datetime, timezone
@@ -60,9 +61,14 @@ def _current(payload: dict[str, Any] = Depends(get_current_user)) -> tuple[dict[
 
 
 def _safe_user(row: dict[str, Any]) -> dict[str, Any]:
-    return {k: row.get(k) for k in PUBLIC_USER_FIELDS.split(", ")} | {
+    base = {k: row.get(k) for k in PUBLIC_USER_FIELDS.split(", ")} | {
         "role": normalize_role(row.get("role")),
     }
+    base["employee_id"] = str(row.get("employee_id") or row.get("id") or "").strip()
+    avatar_val = row.get("avatar") or row.get("avatarUrl") or row.get("avatar_url") or ""
+    base["avatar"] = avatar_val
+    base["avatarUrl"] = avatar_val
+    return base
 
 
 def _all_users() -> list[dict[str, Any]]:
@@ -206,16 +212,40 @@ def update_profile(
         if value is not None:
             updates[field] = value.strip()
 
+    avatar_url: str | None = None
     if body.avatar is not None:
         avatar = body.avatar.strip()
-        if avatar and len(avatar) > 3_000_000:
-            raise HTTPException(status_code=413, detail="Profile photo is too large (max ~2 MB)")
+        if avatar and len(avatar) > 5_000_000:
+            raise HTTPException(status_code=413, detail="Profile photo is too large (max ~5 MB)")
         if avatar and not avatar.startswith(("data:image/", "http://", "https://", "/")):
             raise HTTPException(status_code=400, detail="Invalid profile photo format")
-        updates["avatar"] = avatar or None
+        avatar_url = avatar or ""
+        if avatar_url and avatar_url.startswith("data:image/"):
+            try:
+                header, encoded = avatar_url.split(",", 1)
+                ext = "png"
+                if "jpeg" in header or "jpg" in header:
+                    ext = "jpg"
+                elif "webp" in header:
+                    ext = "webp"
+                elif "gif" in header:
+                    ext = "gif"
+                image_data = base64.b64decode(encoded)
+                clean_uid = str(user.get("id") or "user").replace("/", "_").replace(" ", "_")
+                file_path = f"avatars/{clean_uid}.{ext}"
+                sb_client = get_supabase_admin_client()
+                sb_client.storage.from_("ticket-attachments").upload(
+                    file_path,
+                    image_data,
+                    file_options={"content-type": f"image/{ext}", "upsert": "true"},
+                )
+                avatar_url = sb_client.storage.from_("ticket-attachments").get_public_url(file_path)
+            except Exception as upload_exc:
+                print(f"[portal] avatar upload to storage warning: {upload_exc}")
+        updates["avatar"] = avatar_url
 
     if body.password:
-        updates["password"] = hash_password(body.password)
+        updates["password_hash"] = hash_password(body.password)
 
     if not updates:
         raise HTTPException(status_code=400, detail="No profile fields provided")
@@ -226,14 +256,29 @@ def update_profile(
         updates.pop("department")
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    sb = get_supabase_admin_client()
-    try:
-        res = sb.table("users").update(updates).eq("id", str(user.get("id"))).execute()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not update profile: {exc}") from exc
-    updated = (res.data or [])[0] if (res.data or []) else {**user, **updates}
+    
+    # Save in persistent user store with avatar
+    saved_user = save_user({**user, **updates})
+
+    valid_user_cols = {
+        "id", "employee_id", "name", "email", "role", "department",
+        "designation", "team", "phone", "location", "status",
+        "password_hash", "updated_at",
+    }
+    clean_user_updates = {k: v for k, v in updates.items() if k in valid_user_cols}
+    if clean_user_updates:
+        sb = get_supabase_admin_client()
+        try:
+            sb.table("users").update(clean_user_updates).eq("id", str(user.get("id"))).execute()
+        except Exception as exc:
+            try:
+                sb.table("users").update(clean_user_updates).eq("email", str(user.get("email")).lower()).execute()
+            except Exception:
+                print(f"[portal] Supabase profile update notice: {exc}")
+
     invalidate_user_cache(str(user.get("id")), str(user.get("email")))
-    return _safe_user(updated)
+    invalidate_all_users_cache()
+    return _safe_user(saved_user)
 
 
 # ── Departments ──────────────────────────────────────────────────────────────
@@ -718,13 +763,23 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
         "created_at": now,
         "updated_at": now,
     }
+    valid_cols = {
+        "id", "employee_id", "name", "email", "phone", "role",
+        "department", "designation", "team", "location", "status",
+        "password_hash", "auth_user_id", "created_at", "updated_at",
+    }
+    clean_row = {k: v for k, v in row.items() if k in valid_cols and v is not None}
     try:
-        res = sb.table("users").insert(row).execute()
+        sb.table("users").insert(clean_row).execute()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not create user: {exc}") from exc
+        try:
+            sb.table("users").upsert(clean_row).execute()
+        except Exception:
+            print(f"[portal] Supabase user creation notice: {exc}")
+    saved = save_user(row)
+    invalidate_all_users_cache()
     invalidate_team_cache(tl_id)
-    created = (res.data or [row])[0]
-    return _safe_user(created)
+    return _safe_user(saved)
 
 
 @router.patch("/team/users/{user_id}", summary="Update an employee under team lead scope")

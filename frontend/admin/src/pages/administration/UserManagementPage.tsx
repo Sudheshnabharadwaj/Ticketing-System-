@@ -15,7 +15,8 @@ import {
   CheckCircle,
   AlertCircle,
   Mail,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -345,11 +346,20 @@ export const UserManagementPage: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <Button
+            variant="outline"
+            size="md"
+            onClick={() => loadData(true)}
+            icon={<RefreshCw className="w-4 h-4" />}
+            className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold px-3 py-2 rounded-xl shadow-xs cursor-pointer"
+          >
+            Refresh
+          </Button>
+          <Button
             variant="primary"
             size="md"
             onClick={() => navigate('/admin/add-user')}
             icon={<UserPlus className="w-4 h-4" />}
-            className="bg-[#0284C7] hover:bg-[#0274B3] text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs"
+            className="bg-[#0284C7] hover:bg-[#0274B3] text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xs cursor-pointer"
           >
             Add New User
           </Button>

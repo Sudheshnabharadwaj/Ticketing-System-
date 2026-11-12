@@ -7,6 +7,7 @@ choose which tickets it can see or mutate.
 
 from __future__ import annotations
 
+import json
 import random
 import time
 from datetime import datetime, timezone
@@ -527,8 +528,11 @@ def list_tickets(
     priority: str | None = None,
     assigned: str | None = None,
     search: str | None = None,
+    force: bool = Query(False, description="Bypass cache and force fresh database read"),
 ) -> list[dict[str, Any]]:
     payload, user = context
+    if force:
+        invalidate_tickets_cache()
     tickets = [serialize_ticket(t, payload=payload, user=user) for t in scoped_tickets(payload, user)]
 
     if status_filter and status_filter.lower() != "all":
@@ -1439,7 +1443,22 @@ def escalate_ticket(
             "kind": "error",
         })
     _notify_batch(esc_notifs)
-    return serialize_ticket({**updated_row, "escalation_reason": body.reason}, payload=payload, user=user)
+    target_lead = body.escalated_to or "Team Lead"
+    return serialize_ticket(
+        {
+            **updated_row,
+            "escalation_reason": body.reason,
+            "escalation_notes": body.notes or body.comment or "",
+            "escalated_by": _actor_name(user),
+            "escalated_to": target_lead,
+            "escalationReason": body.reason,
+            "escalationNotes": body.notes or body.comment or "",
+            "escalatedBy": _actor_name(user),
+            "escalatedTo": target_lead,
+        },
+        payload=payload,
+        user=user,
+    )
 
 
 @router.post("/{ticket_id}/resolve", summary="Resolve a ticket")

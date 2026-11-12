@@ -57,26 +57,35 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
     return list;
   }, [user, users, ticket.assignedAgent, ticket.assignedAgentId, ticket.department]);
 
-  const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>(
-    ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned'
-      ? ticket.assignedAgent
-      : candidateAssignees[0]?.name || ''
-  );
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(() => {
+    if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+      const match = candidateAssignees.find(
+        (c) => (ticket.assignedAgentId && c.id === ticket.assignedAgentId) ||
+               c.name.toLowerCase() === ticket.assignedAgent!.toLowerCase()
+      );
+      if (match) return match.id;
+    }
+    return candidateAssignees[0]?.id || '';
+  });
   const [priority, setPriority] = useState<TicketPriority>(ticket.priority || 'Medium');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (ticket) {
-      setSelectedEmployeeName(
-        ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned'
-          ? ticket.assignedAgent
-          : candidateAssignees[0]?.name || ''
-      );
+      if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+        const match = candidateAssignees.find(
+          (c) => (ticket.assignedAgentId && c.id === ticket.assignedAgentId) ||
+                 c.name.toLowerCase() === ticket.assignedAgent!.toLowerCase()
+        );
+        setSelectedEmployeeId(match ? match.id : candidateAssignees[0]?.id || '');
+      } else {
+        setSelectedEmployeeId(candidateAssignees[0]?.id || '');
+      }
       setPriority(ticket.priority || 'Medium');
       setError('');
     }
-  }, [ticket, isOpen]);
+  }, [ticket, isOpen, candidateAssignees]);
 
   const isReassign = ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned';
 
@@ -89,27 +98,23 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
       return;
     }
 
-    if (!selectedEmployeeName) {
+    if (!selectedEmployeeId) {
       setError('Please select an active employee.');
       return;
     }
 
     const selectedAssignee = candidateAssignees.find(
-      (u) => u.name.toLowerCase().trim() === selectedEmployeeName.toLowerCase().trim()
+      (u) => u.id === selectedEmployeeId
     );
-    const empId =
-      selectedAssignee?.id ||
-      (selectedEmployeeName.toLowerCase() === (ticket.assignedAgent || '').toLowerCase()
-        ? ticket.assignedAgentId
-        : '') ||
-      '';
+    const empId = selectedAssignee?.id || selectedEmployeeId;
+    const employeeName = selectedAssignee?.name || ticket.assignedAgent || 'Team Member';
 
     setIsSubmitting(true);
     try {
       // Call Context Assign passing priority atomically
-      await assignAgent(ticket.id, empId, selectedEmployeeName, priority);
+      await assignAgent(ticket.id, empId, employeeName, priority);
 
-      const toastMsg = `Ticket ${(ticket as any).ticket_number || ticket.id} assigned to ${selectedEmployeeName} with ${priority} priority successfully.`;
+      const toastMsg = `Ticket ${(ticket as any).ticket_number || ticket.id} assigned to ${employeeName} with ${priority} priority successfully.`;
       if (onSuccessToast) {
         onSuccessToast(toastMsg);
       } else {
@@ -188,8 +193,8 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
               Select Employee <span className="text-red-500">*</span>
             </label>
             <select
-              value={selectedEmployeeName}
-              onChange={(e) => setSelectedEmployeeName(e.target.value)}
+              value={selectedEmployeeId}
+              onChange={(e) => setSelectedEmployeeId(e.target.value)}
               required
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-1 focus:ring-sky-500 cursor-pointer"
             >
@@ -197,7 +202,7 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
                 <option value="">No Active Assignees Found</option>
               ) : (
                 candidateAssignees.map((emp) => (
-                  <option key={emp.id} value={emp.name}>
+                  <option key={emp.id} value={emp.id}>
                     {emp.name} {emp.isSelf ? '(Myself - Team Lead)' : `- ${emp.id} (${emp.department})`}
                   </option>
                 ))

@@ -21,8 +21,8 @@ export const MyTickets: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState(paramSearch);
   const [statusFilter, setStatusFilter] = useState<string>(paramStatus || 'ALL');
 
-  const loadTickets = async () => {
-    await EmployeeService.fetchTickets();
+  const loadTickets = async (force = false) => {
+    await EmployeeService.fetchTickets(force);
     // Show only tickets created by the logged-in employee
     const list = EmployeeService.getMyTickets();
     setTickets(list);
@@ -165,8 +165,8 @@ export const MyTickets: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadTickets}
-            className="border-slate-200 text-slate-600 hover:bg-slate-50"
+            onClick={() => loadTickets(true)}
+            className="border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
             Refresh

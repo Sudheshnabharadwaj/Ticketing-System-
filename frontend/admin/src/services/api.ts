@@ -519,6 +519,10 @@ export const AdminApiService = {
     const mappedRole = mapRoleToBackend(data.role);
     const inviteToken = `inv-${Math.random().toString(36).substring(2, 12)}`;
     const cleanEmail = data.email.trim().toLowerCase();
+    const resolvedTeam = (data as any).team ||
+      (data.teamLead?.toLowerCase().includes('kotesh') || data.teamLead === 'OKL003' ? 'Team Alpha' :
+       data.teamLead?.toLowerCase().includes('mani') || data.teamLead === 'OKL015' ? 'Team Beta' :
+       data.teamLead?.toLowerCase().includes('soni') || data.teamLead === 'OKL013' ? 'HR Team' : data.teamLead || undefined);
 
     let created: BackendUserRow;
     try {
@@ -531,6 +535,7 @@ export const AdminApiService = {
           phone: data.phone || '',
           department: data.department || 'IT Support',
           role: mappedRole,
+          team: resolvedTeam,
           password: data.password || undefined,
           status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
           send_email_invite: data.sendEmailInvite,
@@ -547,6 +552,7 @@ export const AdminApiService = {
         phone: data.phone || '',
         department: data.department || 'IT Support',
         role: mappedRole,
+        team: resolvedTeam,
         status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
         created_at: now,
         updated_at: now,

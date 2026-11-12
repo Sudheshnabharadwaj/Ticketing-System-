@@ -284,16 +284,17 @@ export const ProfilePage: React.FC = () => {
 
       // Persist the photo immediately for the authenticated user.
       try {
-        await apiRequest('/users/profile', {
+        const saved: any = await apiRequest('/users/profile', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ avatar: result }),
         });
-        const updated = { ...profile, avatarUrl: result };
+        const savedAvatar = saved?.avatar || saved?.avatarUrl || saved?.avatar_url || result;
+        const updated = { ...profile, avatarUrl: savedAvatar };
         saveAdminProfile(updated);
         setProfile(updated);
         const session = getCurrentSessionUser();
-        if (session) setSessionUser({ ...session, avatarUrl: result });
+        if (session) setSessionUser({ ...session, avatarUrl: savedAvatar });
         setToastMessage('Profile photo updated.');
       } catch (err) {
         setValidationError(

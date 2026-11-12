@@ -685,8 +685,8 @@ export const EmployeeService = {
       name: data.name !== undefined ? data.name : (remoteUser?.name || user?.name),
       phone: data.phone !== undefined ? data.phone : (remoteUser?.phone || user?.phone),
       department: data.department !== undefined ? data.department : (remoteUser?.department || user?.department),
-      avatar: data.avatarUrl !== undefined ? data.avatarUrl : (remoteUser?.avatar || user?.avatar),
-      avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : (remoteUser?.avatar || user?.avatar),
+      avatar: (remoteUser?.avatar || remoteUser?.avatarUrl || remoteUser?.avatar_url) !== undefined ? (remoteUser?.avatar || remoteUser?.avatarUrl || remoteUser?.avatar_url) : (data.avatarUrl !== undefined ? data.avatarUrl : user?.avatar),
+      avatarUrl: (remoteUser?.avatar || remoteUser?.avatarUrl || remoteUser?.avatar_url) !== undefined ? (remoteUser?.avatar || remoteUser?.avatarUrl || remoteUser?.avatar_url) : (data.avatarUrl !== undefined ? data.avatarUrl : user?.avatar),
       updated_at: new Date().toISOString(),
     };
 

@@ -298,17 +298,24 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
         <div className="space-y-3.5">
           {effectiveDepartments.map((deptName) => {
             const availableLeads = OrganizationService.getTeamLeadsByDepartment(deptName);
+            const seenLeadKeys = new Set<string>();
+            const dedupedAvailableLeads = availableLeads.filter((l) => {
+              const k = (l.employeeId || l.id || '').toUpperCase();
+              if (seenLeadKeys.has(k)) return false;
+              seenLeadKeys.add(k);
+              return true;
+            });
 
             // For Team Lead role, filter to own identity
             const leadsToDisplay =
               role === 'teamlead'
-                ? availableLeads.filter(
+                ? dedupedAvailableLeads.filter(
                     (l) =>
                       l.id === currentUser?.id ||
                       l.employeeId === currentUser?.employeeId ||
                       l.name === currentUser?.name
                   )
-                : availableLeads;
+                : dedupedAvailableLeads;
 
           const tlQuery = (teamLeadSearchQueries[deptName] || '').trim().toLowerCase();
           const filteredLeads = leadsToDisplay.filter((lead) => {
@@ -420,11 +427,18 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
 
                     {/* 4 & 7. AFTER SELECTING TEAM LEAD - Display that Team Lead's employees separately */}
                     {leadsToDisplay
-                      .filter((lead) => selectedTeamLeadIds.includes(lead.id))
+                      .filter((lead) => selectedTeamLeadIds.includes(lead.id) || selectedTeamLeadIds.includes(lead.employeeId))
                       .map((lead) => {
                         const isLoading = !!loadingByLead[lead.id];
                         const errorMsg = errorByLead[lead.id];
-                        const teamEmps = employeesByLead[lead.id] || [];
+                        const rawTeamEmps = employeesByLead[lead.id] || employeesByLead[lead.employeeId] || [];
+                        const seenRawEmp = new Set<string>();
+                        const teamEmps = rawTeamEmps.filter((emp) => {
+                          const k = (emp.employeeId || emp.id).toUpperCase();
+                          if (seenRawEmp.has(k)) return false;
+                          seenRawEmp.add(k);
+                          return true;
+                        });
                         const searchQuery = (searchQueries[lead.id] || '').trim().toLowerCase();
                         const filteredEmployees = teamEmps.filter((emp) => {
                           if (!searchQuery) return true;

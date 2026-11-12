@@ -24,6 +24,8 @@ from app.db.supabase import get_supabase_admin_client, has_service_role_key
 
 _STORE_LOCK = threading.Lock()
 _PERSISTENCE_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "users_store.json"
+_DELETED_USERS_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "deleted_users.json"
+_DELETED_USERS_SET: set[str] = set()
 
 DEFAULT_USERS: list[dict[str, Any]] = [
     # ── Admin Users ─────────────────────────────────────────────────────────
@@ -90,21 +92,6 @@ DEFAULT_USERS: list[dict[str, Any]] = [
         "name": "Manikanta",
         "email": "m.nisankam@oklut.com",
         "alternate_email": "s.manikanta@oklut.com",
-        "role": "teamlead",
-        "department": "IT Support",
-        "designation": "IT Support Team Lead",
-        "team": "Team Beta",
-        "phone": "+1 (555) 000-0015",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Manikanta@123"],
-    },
-    {
-        "id": "OKL120",
-        "employee_id": "OKL015",
-        "name": "manikanta",
-        "email": "s.manikanta@oklut.com",
-        "alternate_email": "m.nisankam@oklut.com",
         "role": "teamlead",
         "department": "IT Support",
         "designation": "IT Support Team Lead",
@@ -197,17 +184,31 @@ def _load_persisted() -> None:
     with _STORE_LOCK:
         if _INITIALIZED:
             return
-        # Load defaults first
+
+        # Load deleted users tombstones
+        try:
+            if _DELETED_USERS_FILE.exists():
+                del_data = json.loads(_DELETED_USERS_FILE.read_text(encoding="utf-8"))
+                if isinstance(del_data, list):
+                    _DELETED_USERS_SET.update(str(x).strip().lower() for x in del_data if x)
+        except Exception as exc:
+            print(f"[user_store] error loading {_DELETED_USERS_FILE}: {exc}")
+
+        # Load defaults first (skipping deleted)
         for u in DEFAULT_USERS:
-            email_key = str(u.get("email") or "").strip().lower()
-            if email_key:
-                _LOCAL_USERS_MAP[email_key] = dict(u)
+            uid = str(u.get("id") or "").strip().lower()
+            em = str(u.get("email") or "").strip().lower()
+            emp_id = str(u.get("employee_id") or "").strip().lower()
+            if em in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
+                continue
+
+            if em:
+                _LOCAL_USERS_MAP[em] = dict(u)
             alt = str(u.get("alternate_email") or "").strip().lower()
-            if alt:
+            if alt and alt not in _DELETED_USERS_SET:
                 _LOCAL_USERS_MAP[alt] = dict(u)
-            uid = str(u.get("id") or "").strip()
             if uid:
-                _LOCAL_USERS_MAP[f"id:{uid.lower()}"] = dict(u)
+                _LOCAL_USERS_MAP[f"id:{uid}"] = dict(u)
 
         # Merge file-persisted overrides
         try:
@@ -216,12 +217,15 @@ def _load_persisted() -> None:
                 if isinstance(data, list):
                     for u in data:
                         if isinstance(u, dict):
-                            ek = str(u.get("email") or "").strip().lower()
-                            if ek:
-                                _LOCAL_USERS_MAP[ek] = u
-                            uid = str(u.get("id") or "").strip()
+                            uid = str(u.get("id") or "").strip().lower()
+                            em = str(u.get("email") or "").strip().lower()
+                            emp_id = str(u.get("employee_id") or "").strip().lower()
+                            if em in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
+                                continue
+                            if em:
+                                _LOCAL_USERS_MAP[em] = u
                             if uid:
-                                _LOCAL_USERS_MAP[f"id:{uid.lower()}"] = u
+                                _LOCAL_USERS_MAP[f"id:{uid}"] = u
         except Exception as exc:
             print(f"[user_store] error loading {_PERSISTENCE_FILE}: {exc}")
 
@@ -231,34 +235,56 @@ def _load_persisted() -> None:
 def _save_persisted() -> None:
     try:
         _PERSISTENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        # Deduplicate users by email
+        # Deduplicate users by normalized id, employee_id, and email
         unique_users: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        seen_ids: set[str] = set()
+        seen_emails: set[str] = set()
         for k, u in _LOCAL_USERS_MAP.items():
             if k.startswith("id:"):
                 continue
             ek = str(u.get("email") or "").strip().lower()
-            if ek and ek not in seen:
-                seen.add(ek)
-                unique_users.append(u)
+            uid = str(u.get("id") or "").strip().lower()
+            emp_id = str(u.get("employee_id") or "").strip().lower()
+            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET or emp_id == "okl120" or uid == "okl120":
+                continue
+            id_key = emp_id or uid
+            if (id_key and id_key in seen_ids) or (ek and ek in seen_emails):
+                continue
+            if id_key:
+                seen_ids.add(id_key)
+            if ek:
+                seen_emails.add(ek)
+            unique_users.append(u)
         _PERSISTENCE_FILE.write_text(json.dumps(unique_users, indent=2), encoding="utf-8")
     except Exception as exc:
         print(f"[user_store] error saving {_PERSISTENCE_FILE}: {exc}")
+
+    try:
+        if _DELETED_USERS_SET:
+            _DELETED_USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _DELETED_USERS_FILE.write_text(json.dumps(sorted(list(_DELETED_USERS_SET)), indent=2), encoding="utf-8")
+    except Exception as exc:
+        print(f"[user_store] error saving {_DELETED_USERS_FILE}: {exc}")
 
 
 def find_user_by_email(email: str) -> dict[str, Any] | None:
     """Find user by email or alternate_email. Fast path checks local store first, then Supabase if privileged."""
     _load_persisted()
     clean = (email or "").strip().lower()
-    if not clean:
+    if not clean or clean in _DELETED_USERS_SET:
         return None
 
     # Fast path: Check local store first (instant)
     if clean in _LOCAL_USERS_MAP:
-        return dict(_LOCAL_USERS_MAP[clean])
+        user = dict(_LOCAL_USERS_MAP[clean])
+        if str(user.get("id") or "").lower() in _DELETED_USERS_SET or str(user.get("email") or "").lower() in _DELETED_USERS_SET:
+            return None
+        return user
 
     for u in _LOCAL_USERS_MAP.values():
         if str(u.get("alternate_email") or "").strip().lower() == clean:
+            if str(u.get("id") or "").lower() in _DELETED_USERS_SET or str(u.get("email") or "").lower() in _DELETED_USERS_SET:
+                return None
             return dict(u)
 
     # 2. Try Supabase if privileged
@@ -269,6 +295,11 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
             rows = res.data or []
             if rows and isinstance(rows[0], dict) and rows[0].get("id"):
                 row = dict(rows[0])
+                uid = str(row.get("id") or "").lower()
+                em = str(row.get("email") or "").lower()
+                emp_id = str(row.get("employee_id") or "").lower()
+                if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
+                    return None
                 return row
         except Exception as exc:
             print(f"[user_store] Supabase lookup error for {clean}: {exc}")
@@ -280,18 +311,23 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
     """Find user by ID or employee_id. Fast path checks local store first, then Supabase if privileged."""
     _load_persisted()
     clean = (user_id or "").strip()
-    if not clean:
+    if not clean or clean.lower() in _DELETED_USERS_SET:
         return None
 
     id_key = f"id:{clean.lower()}"
     if id_key in _LOCAL_USERS_MAP:
-        return dict(_LOCAL_USERS_MAP[id_key])
+        user = dict(_LOCAL_USERS_MAP[id_key])
+        if str(user.get("id") or "").lower() in _DELETED_USERS_SET or str(user.get("email") or "").lower() in _DELETED_USERS_SET:
+            return None
+        return user
 
     for u in _LOCAL_USERS_MAP.values():
         if (
             str(u.get("id") or "").strip().lower() == clean.lower()
             or str(u.get("employee_id") or "").strip().lower() == clean.lower()
         ):
+            if str(u.get("id") or "").lower() in _DELETED_USERS_SET or str(u.get("email") or "").lower() in _DELETED_USERS_SET:
+                return None
             return dict(u)
 
     if has_service_role_key():
@@ -300,7 +336,10 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
             res = sb.table("users").select("*").eq("id", clean).limit(1).execute()
             rows = res.data or []
             if rows and isinstance(rows[0], dict) and rows[0].get("id"):
-                return dict(rows[0])
+                row = dict(rows[0])
+                if str(row.get("id") or "").lower() in _DELETED_USERS_SET or str(row.get("email") or "").lower() in _DELETED_USERS_SET:
+                    return None
+                return row
         except Exception:
             pass
 
@@ -310,6 +349,11 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
 def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -> bool:
     """Validate candidate password against hashed/legacy passwords and known valid passwords."""
     if not candidate_password:
+        return False
+
+    uid = str(user_row.get("id") or "").strip().lower()
+    email = str(user_row.get("email") or "").strip().lower()
+    if uid in _DELETED_USERS_SET or email in _DELETED_USERS_SET:
         return False
 
     # 1. Direct password attribute (hashed or plaintext)
@@ -325,7 +369,6 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
                 return True
 
     # 3. Universal fallback for existing seed users if password matches their standard
-    email = str(user_row.get("email") or "").strip().lower()
     if email == "s.ronda@oklut.com" and candidate_password in ("Shruthi@123", "Password123"):
         return True
     if email == "k.ananthu@oklut.com" and candidate_password in ("Kotesh@123", "Password123"):
@@ -349,36 +392,62 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
 
 
 def get_all_users() -> list[dict[str, Any]]:
-    """Return all system users, fast from local store, merged with Supabase if privileged."""
+    """Return all system users from live database, falling back cleanly to local store."""
     _load_persisted()
     all_map: dict[str, dict[str, Any]] = {}
-
-    for k, u in _LOCAL_USERS_MAP.items():
-        if k.startswith("id:"):
-            continue
-        ek = str(u.get("email") or "").strip().lower()
-        if ek and ek not in all_map:
-            all_map[ek] = dict(u)
 
     if has_service_role_key():
         try:
             sb = get_supabase_admin_client()
             res = (
                 sb.table("users")
-                .select("id, name, email, phone, role, department, designation, team, avatar, location, status, created_at")
+                .select("id, employee_id, name, email, phone, role, department, designation, team, location, status, created_at, updated_at")
                 .execute()
             )
             for row in res.data or []:
                 if isinstance(row, dict) and row.get("email"):
                     ek = str(row["email"]).strip().lower()
-                    if ek in all_map:
-                        all_map[ek].update({k: v for k, v in row.items() if v is not None})
-                    else:
-                        all_map[ek] = row
+                    uid = str(row.get("id") or "").strip().lower()
+                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET:
+                        continue
+                    local_match = _LOCAL_USERS_MAP.get(ek) or _LOCAL_USERS_MAP.get(f"id:{uid}") or {}
+                    merged_row = {**local_match, **row}
+                    if not merged_row.get("avatar") and local_match.get("avatar"):
+                        merged_row["avatar"] = local_match["avatar"]
+                    all_map[ek] = merged_row
         except Exception as exc:
             print(f"[user_store] get_all_users Supabase read note: {exc}")
 
-    return list(all_map.values())
+    # Fallback / merge local store if Supabase returned nothing or offline
+    if not all_map:
+        for k, u in _LOCAL_USERS_MAP.items():
+            if k.startswith("id:"):
+                continue
+            ek = str(u.get("email") or "").strip().lower()
+            uid = str(u.get("id") or "").strip().lower()
+            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET:
+                continue
+            if ek and ek not in all_map:
+                all_map[ek] = dict(u)
+
+    # Deduplicate strictly by normalized id, employee_id, and email
+    deduped: dict[str, dict[str, Any]] = {}
+    seen_ids: set[str] = set()
+    seen_emails: set[str] = set()
+    for user in all_map.values():
+        eid = str(user.get("employee_id") or user.get("id") or "").strip().lower()
+        ek = str(user.get("email") or "").strip().lower()
+        if eid in _DELETED_USERS_SET or ek in _DELETED_USERS_SET or eid == "okl120":
+            continue
+        if (eid and eid in seen_ids) or (ek and ek in seen_emails):
+            continue
+        if eid:
+            seen_ids.add(eid)
+        if ek:
+            seen_emails.add(ek)
+        deduped[ek or eid] = user
+
+    return list(deduped.values())
 
 
 def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
@@ -389,6 +458,9 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
 
     with _STORE_LOCK:
         if clean_email:
+            _DELETED_USERS_SET.discard(clean_email)
+            if user_id:
+                _DELETED_USERS_SET.discard(user_id.lower())
             existing = _LOCAL_USERS_MAP.get(clean_email, {})
             merged = {**existing, **user_data}
             _LOCAL_USERS_MAP[clean_email] = merged
@@ -430,23 +502,55 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def delete_user_from_store(user_id_or_email: str) -> None:
-    """Remove user from memory/disk store and Supabase."""
+    """Permanently delete user from memory/disk store and Supabase."""
     _load_persisted()
     clean = str(user_id_or_email or "").strip().lower()
     if not clean:
         return
     with _STORE_LOCK:
+        _DELETED_USERS_SET.add(clean)
         matched_email = None
+        matched_id = None
         for k, v in list(_LOCAL_USERS_MAP.items()):
-            if k == clean or k == f"id:{clean}" or str(v.get("id") or "").lower() == clean or str(v.get("email") or "").lower() == clean:
-                matched_email = str(v.get("email") or "").lower()
+            v_id = str(v.get("id") or "").lower()
+            v_email = str(v.get("email") or "").lower()
+            v_emp = str(v.get("employee_id") or "").lower()
+            if clean in (k, f"id:{clean}", v_id, v_email, v_emp):
+                matched_email = v_email
+                matched_id = v_id
+                _DELETED_USERS_SET.add(v_email)
+                _DELETED_USERS_SET.add(v_id)
+                if v_emp:
+                    _DELETED_USERS_SET.add(v_emp)
                 break
+
         if matched_email:
             _LOCAL_USERS_MAP.pop(matched_email, None)
             for k in list(_LOCAL_USERS_MAP.keys()):
                 if k.startswith("id:") and str(_LOCAL_USERS_MAP[k].get("email") or "").lower() == matched_email:
                     _LOCAL_USERS_MAP.pop(k, None)
+        if matched_id:
+            _LOCAL_USERS_MAP.pop(f"id:{matched_id}", None)
         _LOCAL_USERS_MAP.pop(clean, None)
         _LOCAL_USERS_MAP.pop(f"id:{clean}", None)
+
+        # Remove from DEFAULT_USERS in memory
+        DEFAULT_USERS[:] = [
+            u for u in DEFAULT_USERS
+            if str(u.get("email") or "").lower() not in _DELETED_USERS_SET
+            and str(u.get("id") or "").lower() not in _DELETED_USERS_SET
+            and str(u.get("employee_id") or "").lower() not in _DELETED_USERS_SET
+        ]
         _save_persisted()
+
+    # Permanently delete from Supabase
+    if has_service_role_key():
+        try:
+            sb = get_supabase_admin_client()
+            for key in {clean, matched_id, matched_email}:
+                if key:
+                    sb.table("users").delete().eq("id", key).execute()
+                    sb.table("users").delete().eq("email", key).execute()
+        except Exception as exc:
+            print(f"[user_store] Supabase delete note for {clean}: {exc}")
 
