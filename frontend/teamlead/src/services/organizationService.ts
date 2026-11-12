@@ -44,14 +44,17 @@ export const DEPARTMENTS: DepartmentItem[] = [
 export const INITIAL_TEAM_LEADS: TeamLeadItem[] = [
   { id: 'OKL003', employeeId: 'OKL003', name: 'Kotesh', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'k.ananthu@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL015', employeeId: 'OKL015', name: 'Manikanta', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'm.nisankam@oklut.com', team: 'Team Beta' } as any,
-  { id: 'OKL013', employeeId: 'OKL013', name: 'soniya', role: 'HR Team Lead', departmentId: 'D003', departmentName: 'HR', email: 'soni@gmail.com', team: 'HR Team' } as any,
+  { id: 'OKL013', employeeId: 'OKL013', name: 'soniya', role: 'HR Team Lead', departmentId: 'D002', departmentName: 'HR', email: 'soni@gmail.com', team: 'HR Team' } as any,
+  { id: 'OKL101', employeeId: 'OKL101', name: 'pavan', role: 'QA Team Lead', departmentId: 'D005', departmentName: 'QA Team', email: 'pavan.qa@oklut.com', team: 'QA Team' } as any,
 ];
 
 export const INITIAL_EMPLOYEES: EmployeeItem[] = [
   { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com', team: 'Team Beta' } as any,
-  { id: 'OKL014', employeeId: 'OKL014', name: 'Ramya', role: 'Team Member', teamLeadId: 'OKL013', departmentId: 'D003', departmentName: 'HR', email: 'ramya@gmail.com', team: 'HR Team' } as any,
+  { id: 'OKL014', employeeId: 'OKL014', name: 'Ramya', role: 'Team Member', teamLeadId: 'OKL013', departmentId: 'D002', departmentName: 'HR', email: 'ramya@gmail.com', team: 'HR Team' } as any,
+  { id: 'OKL0006', employeeId: 'OKL0006', name: 'kumar', role: 'QA Engineer', teamLeadId: 'OKL101', departmentId: 'D005', departmentName: 'QA Team', email: 'kumar.qa@oklut.com', team: 'QA Team' } as any,
+  { id: 'OKL040', employeeId: 'OKL040', name: 'mounika', role: 'QA Analyst', teamLeadId: 'OKL101', departmentId: 'D005', departmentName: 'QA Team', email: 'mounika.qa@oklut.com', team: 'QA Team' } as any,
 ];
 
 export const TEAM_LEADS: TeamLeadItem[] = [...INITIAL_TEAM_LEADS];
@@ -62,6 +65,7 @@ const _leadEmployeesCache = new Map<string, EmployeeItem[]>([
   ['OKL003', [INITIAL_EMPLOYEES[0], INITIAL_EMPLOYEES[1]]],
   ['OKL015', [INITIAL_EMPLOYEES[2]]],
   ['OKL013', [INITIAL_EMPLOYEES[3]]],
+  ['OKL101', [INITIAL_EMPLOYEES[4], INITIAL_EMPLOYEES[5]]],
 ]);
 
 let _syncInflight: Promise<void> | null = null;
@@ -75,18 +79,16 @@ export const OrganizationService = {
 
   getTeamLeadsByDepartment(deptName: string): TeamLeadItem[] {
     const norm = (deptName || '').trim().toLowerCase();
+    const isHr = norm === 'hr' || norm === 'hr operations' || norm === 'human resources';
+    const isIt = norm === 'it' || norm === 'it support' || norm === 'information technology';
+    const isQa = norm === 'qa' || norm === 'qa team' || norm === 'quality assurance';
+
     const matches = TEAM_LEADS.filter((tl) => {
       const tlDept = (tl.departmentName || '').trim().toLowerCase();
       if (tlDept === norm) return true;
-      if ((norm === 'hr' || norm === 'hr operations' || norm.includes('hr')) && (tlDept === 'hr' || tlDept === 'hr operations' || tlDept.includes('hr'))) {
-        return true;
-      }
-      if ((norm === 'it' || norm === 'it support' || norm.includes('it')) && (tlDept === 'it' || tlDept === 'it support' || tlDept.includes('it'))) {
-        return true;
-      }
-      if (norm.length >= 2 && tlDept.length >= 2 && (tlDept.includes(norm) || norm.includes(tlDept))) {
-        return true;
-      }
+      if (isHr && (tlDept === 'hr' || tlDept === 'hr operations' || tlDept === 'human resources')) return true;
+      if (isIt && (tlDept === 'it' || tlDept === 'it support' || tlDept === 'information technology')) return true;
+      if (isQa && (tlDept === 'qa' || tlDept === 'qa team' || tlDept === 'quality assurance')) return true;
       return false;
     });
 
@@ -211,7 +213,7 @@ export const OrganizationService = {
     if (!teamLeadId) return [];
     const leadObj = this.getTeamLeadById(teamLeadId);
     const leadEmpId = leadObj?.employeeId || teamLeadId;
-    const leadTeam = ((leadObj as any)?.team || (leadEmpId === 'OKL003' ? 'Team Alpha' : leadEmpId === 'OKL015' ? 'Team Beta' : leadEmpId === 'OKL013' ? 'HR Team' : '')).toLowerCase();
+    const leadTeam = ((leadObj as any)?.team || (leadEmpId === 'OKL003' ? 'Team Alpha' : leadEmpId === 'OKL015' ? 'Team Beta' : leadEmpId === 'OKL013' ? 'HR Team' : leadEmpId === 'OKL101' ? 'QA Team' : '')).toLowerCase();
 
     let list: EmployeeItem[] = [];
     if (_leadEmployeesCache.has(teamLeadId)) {

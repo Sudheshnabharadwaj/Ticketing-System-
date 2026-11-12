@@ -285,17 +285,40 @@ function mapBackendUser(u: BackendUserRow): User {
     : 'Employee';
   return {
     id: u.id,
-    employeeId: u.id,
+    employeeId: (u as any).employee_id || u.id,
     name: u.name || (u.email ? u.email.split('@')[0] : 'User'),
     email: u.email || '',
     phone: u.phone || '',
     department: (u.department || 'IT Support') as UserDepartment,
     role,
-    teamLead: u.team || undefined,
+    teamLead: (u as any).team_lead || u.team || undefined,
     status: computedStatus,
     avatarUrl: u.avatar || '',
     createdAt: u.created_at ? u.created_at.split('T')[0] : '',
   };
+}
+
+const DUMMY_USER_KEYS = new Set(['adm001', 'adm-003', 'admin@platform.local', 'test-emp-999', 'test.mounika.verify@oklut.com']);
+
+function deduplicateUsers(users: User[]): User[] {
+  const seen = new Set<string>();
+  const cleanList: User[] = [];
+  for (const u of users) {
+    const idKey = (u.id || '').trim().toLowerCase();
+    const empKey = (u.employeeId || '').trim().toLowerCase();
+    const emailKey = (u.email || '').trim().toLowerCase();
+    if (DUMMY_USER_KEYS.has(idKey) || DUMMY_USER_KEYS.has(empKey) || DUMMY_USER_KEYS.has(emailKey)) {
+      continue;
+    }
+    const dedupeKey = `${empKey || idKey}::${emailKey}`;
+    if (!seen.has(dedupeKey) && !seen.has(idKey) && !seen.has(emailKey)) {
+      seen.add(dedupeKey);
+      if (idKey) seen.add(idKey);
+      if (emailKey) seen.add(emailKey);
+      cleanList.push(u);
+    }
+  }
+  return cleanList;
 }
 
 function mapBackendTicket(t: BackendTicket): Ticket {
@@ -483,7 +506,7 @@ export const AdminApiService = {
         );
         const result = await Promise.race([resultPromise, timeoutPromise]);
         if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
-          const mapped = result.data.map(mapBackendUser);
+          const mapped = deduplicateUsers(result.data.map(mapBackendUser));
           _adminUsersCache = mapped;
           _lastUsersFetchTime = Date.now();
           return mapped;
@@ -496,7 +519,7 @@ export const AdminApiService = {
             .select('*')
             .order('created_at', { ascending: false });
           if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
-            const mapped = supaUsers.map(mapBackendUser);
+            const mapped = deduplicateUsers(supaUsers.map(mapBackendUser));
             _adminUsersCache = mapped;
             _lastUsersFetchTime = Date.now();
             return mapped;

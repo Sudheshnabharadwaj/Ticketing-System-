@@ -25,6 +25,7 @@ export const UserManagementPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
   const [filteredUsers, setFilteredUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
   const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedUsers() || AdminApiService.getCachedUsers()!.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [customEditDepartment, setCustomEditDepartment] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -54,17 +55,24 @@ export const UserManagementPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const loadData = async (force = false) => {
-    if (!AdminApiService.getCachedUsers() || AdminApiService.getCachedUsers()!.length === 0) {
+    if (force) {
+      setIsRefreshing(true);
+      AdminApiService.invalidateCache();
+    } else if (!AdminApiService.getCachedUsers() || AdminApiService.getCachedUsers()!.length === 0) {
       setIsLoading(true);
     }
     try {
       const userData = await AdminApiService.getUsers(force);
       setUsers(userData);
       setFilteredUsers(userData);
+      if (force) {
+        setToastMessage({ text: `Refreshed ${userData.length} users from database.`, type: 'success' });
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -74,8 +82,12 @@ export const UserManagementPage: React.FC = () => {
       loadData(true);
     };
     window.addEventListener('ticket-updated', handleUpdate);
+    window.addEventListener('user-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('ticket-updated', handleUpdate);
+      window.removeEventListener('user-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -349,10 +361,11 @@ export const UserManagementPage: React.FC = () => {
             variant="outline"
             size="md"
             onClick={() => loadData(true)}
-            icon={<RefreshCw className="w-4 h-4" />}
+            disabled={isRefreshing}
+            icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
             className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold px-3 py-2 rounded-xl shadow-xs cursor-pointer"
           >
-            Refresh
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button
             variant="primary"

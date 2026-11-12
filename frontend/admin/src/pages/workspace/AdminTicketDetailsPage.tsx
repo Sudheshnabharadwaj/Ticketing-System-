@@ -46,7 +46,6 @@ export const AdminTicketDetailsPage: React.FC = () => {
   const [newComment, setNewComment] = useState('');
   const [commentAttachedFiles, setCommentAttachedFiles] = useState<AttachedFile[]>([]);
   const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
-  const [isInternalNote, setIsInternalNote] = useState(false);
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('In Progress');
@@ -443,7 +442,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
       authorRole: 'ADMIN',
       message: fullMessage,
       createdAt: nowIso,
-      isInternal: isInternalNote,
+      isInternal: false,
     };
 
     setTicket((prev) => {
@@ -455,11 +454,11 @@ export const AdminTicketDetailsPage: React.FC = () => {
     });
     setNewComment('');
     setCommentAttachedFiles([]);
-    setToastMessage(isInternalNote ? 'Internal note added.' : 'Reply posted successfully.');
+    setToastMessage('Reply posted successfully.');
 
     // 2. Persist in database asynchronously
     try {
-      const updated = await AdminApiService.addComment(id, commentText, attachmentStr, isInternalNote);
+      const updated = await AdminApiService.addComment(id, commentText, attachmentStr, false);
       if (!updated) {
         await supabase.from('ticket_comments').insert({
           id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
@@ -468,7 +467,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
           author_name: sessionUser?.name || 'Admin',
           author_role: 'admin',
           message: fullMessage,
-          is_internal: isInternalNote,
+          is_internal: false,
           created_at: nowIso,
         });
       }
@@ -482,7 +481,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
           author_name: sessionUser?.name || 'Admin',
           author_role: 'admin',
           message: fullMessage,
-          is_internal: isInternalNote,
+          is_internal: false,
           created_at: nowIso,
         });
       } catch {}
@@ -508,6 +507,34 @@ export const AdminTicketDetailsPage: React.FC = () => {
       setToastMessage(`Attachment upload failed: ${e?.message || 'unknown error'}`);
     }
   };
+
+  if (isLoading && !ticket) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[360px] text-slate-500 font-sans">
+        <RefreshCw className="w-8 h-8 animate-spin text-[#0284C7] mb-3" />
+        <span className="text-sm font-semibold text-slate-700">Loading ticket details...</span>
+      </div>
+    );
+  }
+
+  if (!ticket) {
+    return (
+      <div className="bg-white p-10 rounded-2xl border border-slate-200 text-center max-w-md mx-auto mt-12 shadow-2xs font-sans">
+        <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+        <h2 className="text-base font-bold text-slate-800">Ticket Not Found</h2>
+        <p className="text-xs text-slate-500 mt-1 mb-6">
+          The requested ticket does not exist or may have been removed.
+        </p>
+        <Button
+          variant="primary"
+          onClick={handleBack}
+          className="bg-[#0284C7] hover:bg-[#0369a1] text-white"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Tickets
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 font-sans pb-12">
@@ -859,24 +886,11 @@ export const AdminTicketDetailsPage: React.FC = () => {
             {/* Chat/Reply access: for creator and assigned user working on the ticket */}
             {canReply && (
               <form onSubmit={handleAddCommentSubmit} className="pt-3 border-t border-slate-100 space-y-3">
-                <div className="flex items-center space-x-2">
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isInternalNote}
-                      onChange={(e) => setIsInternalNote(e.target.checked)}
-                      className="rounded text-sky-600 focus:ring-sky-500"
-                    />
-                    <Lock className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Add as Internal Team Note (Hidden from employee)</span>
-                  </label>
-                </div>
-
                 <textarea
                   rows={3}
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder={isInternalNote ? 'Type internal team note...' : 'Type response or update...'}
+                  placeholder="Type response or update..."
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
                 />
 
@@ -896,7 +910,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
                     className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
                   >
                     <Send className="w-3.5 h-3.5 mr-1.5" />
-                    {isInternalNote ? 'Post Internal Note' : 'Post Reply'}
+                    Post Reply
                   </Button>
                 </div>
               </form>

@@ -755,6 +755,7 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
         "department": body.department or user.get("department") or "IT Support",
         "designation": body.designation,
         "team": assigned_team,
+        "team_lead_id": tl_id,
         "status": body.status or "Active",
         "password": hash_password(body.password or "Password123"),
         "password_hash": hash_password(body.password or "Password123"),
@@ -765,7 +766,7 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
     }
     valid_cols = {
         "id", "employee_id", "name", "email", "phone", "role",
-        "department", "designation", "team", "location", "status",
+        "department", "designation", "team", "team_lead_id", "location", "status",
         "password_hash", "auth_user_id", "created_at", "updated_at",
     }
     clean_row = {k: v for k, v in row.items() if k in valid_cols and v is not None}
@@ -841,3 +842,34 @@ def team_delete_user(user_id: str, context: tuple[dict[str, Any], dict[str, Any]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
     return {"success": True, "id": user_id}
+
+
+@router.get("/team-leads", summary="List all team leads across departments")
+def list_all_team_leads() -> list[dict[str, Any]]:
+    all_users = _all_users()
+    leads = [
+        _safe_user(u)
+        for u in all_users
+        if normalize_role(u.get("role")) == "teamlead"
+    ]
+    return leads
+
+
+@router.get("/team-leads/{lead_id}/employees", summary="List employees assigned to a specific team lead")
+def list_lead_employees(lead_id: str) -> list[dict[str, Any]]:
+    all_users = _all_users()
+    clean_id = (lead_id or "").strip().lower()
+    tl_user = None
+    for u in all_users:
+        uid = str(u.get("id") or "").strip().lower()
+        empid = str(u.get("employee_id") or "").strip().lower()
+        email = str(u.get("email") or "").strip().lower()
+        name = str(u.get("name") or "").strip().lower()
+        if clean_id in (uid, empid, email, name):
+            tl_user = u
+            break
+    if not tl_user:
+        return []
+    managed = teamlead_managed_employees(tl_user)
+    return [_safe_user(m) for m in managed]
+

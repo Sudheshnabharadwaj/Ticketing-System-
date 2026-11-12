@@ -299,6 +299,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       const createdUser = mapUser(created);
       setUsers((prev) => [createdUser, ...prev.filter((u) => u.id !== createdUser.id)]);
+      window.dispatchEvent(new Event('user-updated'));
+      window.dispatchEvent(new Event('ticket-updated'));
+      window.dispatchEvent(new Event('storage'));
       return { success: true, inviteToken: userData.invite_token };
     } catch (err: any) {
       console.warn('Backend /team/users failed, trying direct Supabase fallback:', err);
@@ -323,6 +326,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!supaErr && supaUser) {
           const createdUser = mapUser(supaUser);
           setUsers((prev) => [createdUser, ...prev.filter((u) => u.id !== createdUser.id)]);
+          window.dispatchEvent(new Event('user-updated'));
+          window.dispatchEvent(new Event('ticket-updated'));
+          window.dispatchEvent(new Event('storage'));
           return { success: true, inviteToken: userData.invite_token };
         }
       } catch (fallbackErr) {

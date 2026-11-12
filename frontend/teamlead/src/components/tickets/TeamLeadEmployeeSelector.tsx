@@ -90,32 +90,12 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
     let cancelled = false;
     OrganizationService.syncFromDatabase().then(() => {
       if (cancelled) return;
-      if (currentUserId) {
-        const deptNorm = (currentUserDepartment || '').toLowerCase().trim();
-        const deptId = (deptNorm === 'hr' || deptNorm.includes('hr')) ? 'D003' : 'D001';
-        OrganizationService.addTeamLead({
-          id: currentUserId,
-          employeeId: currentUserEmployeeId,
-          name: currentUserName || 'Team Lead',
-          role: currentUserRole || `${currentUserDepartment || 'IT Support'} Team Lead`,
-          departmentId: deptId,
-          departmentName: currentUserDepartment || 'IT Support',
-          email: currentUserEmail,
-        });
-      }
       setDbVersion((v) => v + 1);
     });
     return () => {
       cancelled = true;
     };
-  }, [
-    currentUserId,
-    currentUserEmployeeId,
-    currentUserName,
-    currentUserRole,
-    currentUserDepartment,
-    currentUserEmail,
-  ]);
+  }, []);
 
   // Pre-load employees for all available leads in selected departments
   useEffect(() => {

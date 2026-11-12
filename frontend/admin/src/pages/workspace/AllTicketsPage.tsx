@@ -18,6 +18,7 @@ export const AllTicketsPage: React.FC = () => {
   const [tickets, setTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
   const [filteredTickets, setFilteredTickets] = useState<Ticket[]>(() => AdminApiService.getCachedTickets() || []);
   const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [search, setSearch] = useState(urlSearch);
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -27,12 +28,22 @@ export const AllTicketsPage: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fetchTickets = async (force = false) => {
-    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+    if (force) {
+      setIsRefreshing(true);
+      AdminApiService.invalidateCache();
+    } else if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
       setIsLoading(true);
     }
-    const data = await AdminApiService.getTickets('all', force);
-    setTickets(data);
-    setIsLoading(false);
+    try {
+      const data = await AdminApiService.getTickets('all', force);
+      setTickets(data);
+      if (force) {
+        setToastMessage(`Refreshed ${data.length} tickets from database.`);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -236,11 +247,12 @@ export const AllTicketsPage: React.FC = () => {
         <Button
           variant="secondary"
           size="sm"
-          icon={<RefreshCw className="w-4 h-4" />}
+          icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
           onClick={() => fetchTickets(true)}
+          disabled={isRefreshing}
           className="text-[13px]"
         >
-          Refresh
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </Button>
       </div>
 

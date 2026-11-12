@@ -98,6 +98,11 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTickets(result.tickets);
       const loaded = await teamLeadService.getEscalations(result.tickets);
       setEscalations(loaded || []);
+      setSelectedTicket((prev) => {
+        if (!prev) return prev;
+        const fresh = result.tickets.find((t) => t.id === prev.id || t.ticketNumber === prev.ticketNumber);
+        return fresh || prev;
+      });
     }
     await loadNotifications();
     setIsLoading(false);
@@ -105,13 +110,15 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     if (!userId) {
-      // Signed out / auth still restoring: clear cached cross-account data.
-      setTickets([]);
-      setEscalations([]);
-      setNotifications([]);
-      setSelectedTicket(null);
-      setIsLoading(false);
-      setError(null);
+      const token = sessionStorage.getItem('platform_token') || localStorage.getItem('platform_token');
+      if (!token) {
+        setTickets([]);
+        setEscalations([]);
+        setNotifications([]);
+        setSelectedTicket(null);
+        setIsLoading(false);
+        setError(null);
+      }
       return;
     }
 
