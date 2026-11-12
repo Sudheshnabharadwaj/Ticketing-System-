@@ -112,6 +112,58 @@ async function fetchBackendAttachmentStrings(ticketId: string): Promise<string[]
   return result.attachments;
 }
 
+export function isUserChatMessage(comment: {
+  authorName?: string;
+  author_name?: string;
+  author?: string;
+  message?: string;
+  isInternal?: boolean;
+  is_internal?: boolean;
+}): boolean {
+  if (!comment) return false;
+  const author = (comment.authorName || (comment as any).author_name || (comment as any).author || '').trim().toLowerCase();
+  if (
+    author === '__activity__' ||
+    author === '__attachment__' ||
+    author === '__system__' ||
+    author === 'system'
+  ) {
+    return false;
+  }
+  const msg = (comment.message || '').trim();
+  if (!msg) return false;
+  const msgLower = msg.toLowerCase();
+
+  if (
+    msg.startsWith('[ACTIVITY_V1]:') ||
+    msg.startsWith('[ATTACHMENT_V1]:') ||
+    msg.startsWith('__activity__') ||
+    msg.startsWith('__attachment__')
+  ) {
+    return false;
+  }
+
+  const systemPrefixes = [
+    'ticket created',
+    'uploaded attachment',
+    'status changed',
+    'added reply',
+    'added internal note',
+    'emergency reassign',
+    'ticket reassigned from',
+    'ticket marked as resolved',
+    'assigned sla deadline',
+  ];
+
+  for (const prefix of systemPrefixes) {
+    if (msgLower === prefix || msgLower.startsWith(prefix)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function formatDateTime(isoOrString?: string): string {
   if (!isoOrString) return '';
   let str = isoOrString;
@@ -159,7 +211,7 @@ function mapDbTicket(row: any): EmployeeTicket {
         )
       : [],
     comments: Array.isArray(row.comments)
-      ? row.comments.map((c: any) => ({
+      ? row.comments.filter(isUserChatMessage).map((c: any) => ({
           id: c.id,
           ticketId: c.ticket_id,
           authorName: c.author_name || c.author || 'User',

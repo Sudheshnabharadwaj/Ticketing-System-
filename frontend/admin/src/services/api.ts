@@ -297,6 +297,66 @@ interface BackendTicket {
   history?: { id: string; author: string; text: string; timestamp: string }[];
   comments?: any[];
   activities?: any[];
+  escalated_by?: string;
+  escalated_to?: string;
+  escalation_reason?: string;
+  escalation_notes?: string;
+  escalatedBy?: string;
+  escalatedTo?: string;
+  escalationReason?: string;
+  escalationNotes?: string;
+}
+
+export function isUserChatMessage(comment: {
+  authorName?: string;
+  author_name?: string;
+  author?: string;
+  message?: string;
+  isInternal?: boolean;
+  is_internal?: boolean;
+}): boolean {
+  if (!comment) return false;
+  const author = (comment.authorName || (comment as any).author_name || (comment as any).author || '').trim().toLowerCase();
+  if (
+    author === '__activity__' ||
+    author === '__attachment__' ||
+    author === '__system__' ||
+    author === 'system'
+  ) {
+    return false;
+  }
+  const msg = (comment.message || '').trim();
+  if (!msg) return false;
+  const msgLower = msg.toLowerCase();
+
+  if (
+    msg.startsWith('[ACTIVITY_V1]:') ||
+    msg.startsWith('[ATTACHMENT_V1]:') ||
+    msg.startsWith('__activity__') ||
+    msg.startsWith('__attachment__')
+  ) {
+    return false;
+  }
+
+  const systemPrefixes = [
+    'ticket created',
+    'uploaded attachment',
+    'status changed',
+    'added reply',
+    'added internal note',
+    'emergency reassign',
+    'ticket reassigned from',
+    'ticket marked as resolved',
+    'assigned sla deadline',
+  ];
+
+  for (const prefix of systemPrefixes) {
+    if (msgLower === prefix || msgLower.startsWith(prefix)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 interface BackendUserRow {
@@ -401,23 +461,27 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     category: t.category || 'General Support',
     priority: (t.priority || 'Medium') as Ticket['priority'],
     status: (t.status || 'Open') as Ticket['status'],
-    escalationReason: (t as any).escalation_reason || (t as any).escalationReason || undefined,
-    escalationNotes: (t as any).escalation_notes || (t as any).escalationNotes || undefined,
+    escalatedBy: (t as any).escalated_by || (t as any).escalatedBy || (t as any).assigned_by || '',
+    escalatedTo: (t as any).escalated_to || (t as any).escalatedTo || (t as any).assigned_agent || '',
+    escalationReason: (t as any).escalation_reason || (t as any).escalationReason || (t as any).reason || undefined,
+    escalationNotes: (t as any).escalation_notes || (t as any).escalationNotes || (t as any).notes || undefined,
     slaStatus: computedSla,
     createdAt: formatDateTime(t.created_at),
     updatedAt: formatDateTime(t.updated_at || t.created_at),
     dueDate: calculatedDueDate,
     attachments: normalizedAttachments,
     comments: Array.isArray(t.comments)
-      ? t.comments.map((c: any) => ({
-          id: c.id,
-          ticketId: c.ticket_id,
-          authorName: c.author_name || c.author || 'User',
-          authorRole: c.author_role || 'admin',
-          message: c.message || '',
-          createdAt: c.created_at ? formatDateTime(c.created_at) : '',
-          isInternal: !!c.is_internal,
-        }))
+      ? t.comments
+          .filter(isUserChatMessage)
+          .map((c: any) => ({
+            id: c.id,
+            ticketId: c.ticket_id,
+            authorName: c.author_name || c.author || 'User',
+            authorRole: c.author_role || 'admin',
+            message: c.message || '',
+            createdAt: c.created_at ? formatDateTime(c.created_at) : '',
+            isInternal: !!c.is_internal,
+          }))
       : [],
     history: Array.isArray(t.activities)
       ? t.activities.map((a: any) => ({
@@ -826,6 +890,26 @@ export const AdminApiService = {
             .select('*')
             .order('created_at', { ascending: false });
           if (!supaErr && Array.isArray(supaTickets) && supaTickets.length > 0) {
+            try {
+              const { data: escData } = await supabase.from('escalations').select('*');
+              if (Array.isArray(escData) && escData.length > 0) {
+                const escMap = new Map<string, any>();
+                for (const esc of escData) {
+                  if (esc.ticket_id) escMap.set(String(esc.ticket_id), esc);
+                }
+                for (const st of supaTickets) {
+                  const esc = escMap.get(String(st.id));
+                  if (esc) {
+                    st.escalated_by = esc.escalated_by || st.assigned_by;
+                    st.escalated_to = esc.escalated_to || st.assigned_agent;
+                    st.escalation_reason = esc.reason || st.reason;
+                    st.escalation_notes = esc.notes;
+                  }
+                }
+              }
+            } catch (escE) {
+              console.warn('Failed to load escalations for enrichment:', escE);
+            }
             const m = supaTickets.map(mapBackendTicket);
             _adminTicketsCache = m;
             _lastTicketsFetchTime = Date.now();

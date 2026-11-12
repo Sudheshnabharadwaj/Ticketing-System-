@@ -155,7 +155,9 @@ def get_team_lead_employees(
         (
             u for u in all_users
             if str(u.get("id") or "").strip().lower() == clean_tl_id.lower()
+            or str(u.get("employee_id") or "").strip().lower() == clean_tl_id.lower()
             or str(u.get("email") or "").strip().lower() == clean_tl_id.lower()
+            or str(u.get("name") or "").strip().lower() == clean_tl_id.lower()
         ),
         None,
     )
@@ -163,7 +165,7 @@ def get_team_lead_employees(
     if not tl_user:
         sb = get_supabase_admin_client()
         try:
-            res = sb.table("users").select("*").eq("id", clean_tl_id).limit(1).execute()
+            res = sb.table("users").select("*").or_(f"id.eq.{clean_tl_id},employee_id.eq.{clean_tl_id},email.eq.{clean_tl_id.lower()},name.eq.{clean_tl_id}").limit(1).execute()
             rows = res.data or []
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Database error: {exc}") from exc
@@ -851,6 +853,7 @@ def list_all_team_leads() -> list[dict[str, Any]]:
         _safe_user(u)
         for u in all_users
         if normalize_role(u.get("role")) == "teamlead"
+        and str(u.get("status") or "").strip().lower() not in ("deleted", "inactive")
     ]
     return leads
 

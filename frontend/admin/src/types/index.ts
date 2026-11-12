@@ -70,6 +70,8 @@ export interface Ticket {
   activities?: any[];
   escalationReason?: string;
   escalationNotes?: string;
+  escalatedBy?: string;
+  escalatedTo?: string;
 }
 
 export interface DashboardStats {

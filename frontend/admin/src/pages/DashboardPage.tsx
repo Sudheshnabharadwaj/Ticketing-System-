@@ -296,7 +296,10 @@ export const DashboardPage: React.FC = () => {
       String(t.department || '').toLowerCase().includes(q) ||
       String(t.assignedTo || '').toLowerCase().includes(q) ||
       String(t.priority || '').toLowerCase().includes(q) ||
-      String(t.status || '').toLowerCase().includes(q);
+      String(t.status || '').toLowerCase().includes(q) ||
+      String((t as any).escalatedBy || t.assignedTeamLead || '').toLowerCase().includes(q) ||
+      String((t as any).escalatedTo || t.assignedTo || '').toLowerCase().includes(q) ||
+      String(t.escalationReason || t.escalationNotes || '').toLowerCase().includes(q);
 
     const matchesStatus =
       statusFilter === 'all' ||
@@ -442,6 +445,93 @@ export const DashboardPage: React.FC = () => {
             View
           </Button>
         </div>
+      )
+    }
+  ];
+
+  const escalatedColumns: Column<Ticket>[] = [
+    {
+      header: 'TICKET ID',
+      cell: (row) => (
+        <button
+          onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=escalated`)}
+          className="font-bold text-[#0284C7] text-sm hover:underline cursor-pointer bg-transparent border-none p-0 text-left"
+          title="Click to view ticket details"
+        >
+          {row.ticketNumber || row.id}
+        </button>
+      )
+    },
+    {
+      header: 'SUBJECT',
+      cell: (row) => (
+        <span className="font-semibold text-slate-900 text-sm">
+          {row.title}
+        </span>
+      )
+    },
+    {
+      header: 'PRIORITY',
+      cell: (row) => {
+        const p = (row.priority || '').toLowerCase();
+        if (p === 'critical' || p === 'urgent') {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#FFF1F2] text-[#E11D48] border border-[#FECDD3]">
+              <AlertCircle className="w-3.5 h-3.5 text-[#E11D48]" />
+              Critical
+            </span>
+          );
+        }
+        if (p === 'high') {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]">
+              <AlertTriangle className="w-3.5 h-3.5 text-[#D97706]" />
+              High
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200">
+            {row.priority || 'Medium'}
+          </span>
+        );
+      }
+    },
+    {
+      header: 'ESCALATED BY',
+      cell: (row) => (
+        <span className="text-slate-800 text-sm">
+          {(row as any).escalatedBy || row.assignedTeamLead || 'Admin'}
+        </span>
+      )
+    },
+    {
+      header: 'ESCALATED TO',
+      cell: (row) => (
+        <span className="text-[#0284C7] font-semibold text-sm">
+          {(row as any).escalatedTo || row.assignedTo || 'Team Lead'}
+        </span>
+      )
+    },
+    {
+      header: 'REASON',
+      cell: (row) => (
+        <span className="italic text-slate-600 text-sm">
+          {row.escalationReason || row.escalationNotes || 'Escalated ticket requiring attention'}
+        </span>
+      )
+    },
+    {
+      header: 'ACTIONS',
+      cell: (row) => (
+        <button
+          onClick={() => navigate(`/admin/workspace/tickets/${row.id}?from=escalated`)}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0284C7] hover:text-[#0369a1] bg-transparent border-none p-0 cursor-pointer"
+          title="View Ticket Details"
+        >
+          <Eye className="w-4 h-4 text-[#0284C7]" />
+          View
+        </button>
       )
     }
   ];
@@ -631,9 +721,9 @@ export const DashboardPage: React.FC = () => {
 
       {/* Filter and Search Toolbar */}
       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="w-full sm:w-72">
+        <div className={`w-full ${statusFilter === 'escalated' ? 'sm:flex-1' : 'sm:w-72'}`}>
           <Input
-            placeholder={`Filter ${tableInfo.title.toLowerCase()}...`}
+            placeholder={statusFilter === 'escalated' ? 'Search escalations by Ticket ID, subject, escalated by, or reason...' : `Filter ${tableInfo.title.toLowerCase()}...`}
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
             icon={<Search className="w-3.5 h-3.5 text-slate-400" />}
@@ -688,7 +778,7 @@ export const DashboardPage: React.FC = () => {
         }
       >
         <Table
-          columns={ticketColumns}
+          columns={statusFilter === 'escalated' ? escalatedColumns : ticketColumns}
           data={filteredTickets}
           keyExtractor={(row) => row.id}
           isLoading={isLoading}

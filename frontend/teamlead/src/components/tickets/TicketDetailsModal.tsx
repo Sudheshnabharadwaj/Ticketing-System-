@@ -24,7 +24,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useTickets } from '../../hooks/useTickets';
 import { PRIORITIES, STATUSES } from '../../utils/constants';
-import { ticketService } from '../../services/ticketService';
+import { ticketService, isUserChatMessage } from '../../services/ticketService';
 import { OrganizationService } from '../../services/organizationService';
 import { authenticatedFetch, API_BASE, withAccessToken } from '../../services/backendAuth';
 
@@ -145,6 +145,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   }, [currentTicket?.id]);
 
   if (!ticket) return null;
+
+  const visibleComments = (ticket.comments || []).filter(isUserChatMessage);
 
   const handleViewAttachment = (att: any) => {
     const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;
@@ -298,7 +300,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 }`}
               >
                 <MessageSquare className="w-4 h-4" />
-                Conversation & Notes ({ticket.comments?.length || 0})
+                Conversation & Notes ({visibleComments.length})
               </button>
               <button
                 onClick={() => setActiveTab('attachments')}
@@ -323,12 +325,12 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
             {activeTab === 'conversation' && (
               <div className="flex-1 flex flex-col justify-between">
                 <div className="space-y-3 max-h-64 overflow-y-auto pr-2 mb-4">
-                  {ticket.comments?.length === 0 ? (
+                  {visibleComments.length === 0 ? (
                     <p className="text-center text-xs text-slate-400 py-6">
                       No replies yet. Be the first to comment!
                     </p>
                   ) : (
-                    ticket.comments?.map((comment) => (
+                    visibleComments.map((comment) => (
                       <div
                         key={comment.id}
                         className={`p-3.5 rounded-xl border text-xs ${
@@ -354,54 +356,52 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
                 {/* Reply Form (Hidden in Read-Only View) */}
                 {/* Check chat access */}
-            {(() => {
-              const isCreatedByMe = Boolean(
-                (currentTicket as any).is_created_by_me ||
-                (user?.id && (currentTicket.employeeId === user.id || (currentTicket as any).employee_id === user.id)) ||
-                (user?.email && (currentTicket.employeeEmail === user.email || (currentTicket as any).employee_email === user.email)) ||
-                (user?.name && currentTicket.employee && currentTicket.employee.toLowerCase() === user.name.toLowerCase())
-              );
-              const isAssignedToMe = Boolean(
-                (currentTicket as any).is_assigned_to_me ||
-                (user?.id && (currentTicket.assignedAgentId === user.id || (currentTicket as any).assigned_agent_id === user.id)) ||
-                (user?.name && currentTicket.assignedAgent && currentTicket.assignedAgent.toLowerCase() === user.name.toLowerCase())
-              );
-              const isAssignedLead = Boolean(
-                (user?.name && currentTicket.assignedBy && currentTicket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
-                (user?.id && ((currentTicket as any).teamLeadIds || []).includes(user.id)) ||
-                (user?.name && (currentTicket as any).assignedTeamLead && (currentTicket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
-              );
-              const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
-              const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
+                {(() => {
+                  const isCreatedByMe = Boolean(
+                    (currentTicket as any).is_created_by_me ||
+                    (user?.id && (currentTicket.employeeId === user.id || (currentTicket as any).employee_id === user.id)) ||
+                    (user?.email && (currentTicket.employeeEmail === user.email || (currentTicket as any).employee_email === user.email)) ||
+                    (user?.name && currentTicket.employee && currentTicket.employee.toLowerCase() === user.name.toLowerCase())
+                  );
+                  const isAssignedToMe = Boolean(
+                    (currentTicket as any).is_assigned_to_me ||
+                    (user?.id && (currentTicket.assignedAgentId === user.id || (currentTicket as any).assigned_agent_id === user.id)) ||
+                    (user?.name && currentTicket.assignedAgent && currentTicket.assignedAgent.toLowerCase() === user.name.toLowerCase())
+                  );
+                  const isAssignedLead = Boolean(
+                    (user?.name && currentTicket.assignedBy && currentTicket.assignedBy.toLowerCase().includes(user.name.toLowerCase())) ||
+                    (user?.id && ((currentTicket as any).teamLeadIds || []).includes(user.id)) ||
+                    (user?.name && (currentTicket as any).assignedTeamLead && (currentTicket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
+                  );
+                  const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
+                  const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
 
-              if (!canReply || isReadOnlyMode) {
-                return null;
-              }
+                  if (!canReply || isReadOnlyMode) {
+                    return null;
+                  }
 
-              return (
-                  <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
-                    
-
-                    <div className="relative">
-                      <textarea
-                        rows={3}
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="Type your message or response..."
-                        className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!newComment.trim()}
-                        className="absolute right-3 bottom-3 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors shadow-xs"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Post
-                      </button>
-                    </div>
-                  </form>
-              );
-            })()}
+                  return (
+                    <form onSubmit={handlePostComment} className="pt-2 border-t border-slate-200">
+                      <div className="relative">
+                        <textarea
+                          rows={3}
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          placeholder="Type your message or response..."
+                          className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white resize-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!newComment.trim()}
+                          className="absolute right-3 bottom-3 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50 transition-colors shadow-xs"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          Post
+                        </button>
+                      </div>
+                    </form>
+                  );
+                })()}
               </div>
             )}
 

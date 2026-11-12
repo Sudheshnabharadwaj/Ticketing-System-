@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { getCurrentSessionUser } from '../../services/unifiedAuth';
 import { supabase } from '../../services/supabaseClient';
-import { AdminApiService, BACKEND_API_URL, fetchBackendAttachmentsDetailed } from '../../services/api';
+import { AdminApiService, BACKEND_API_URL, fetchBackendAttachmentsDetailed, isUserChatMessage } from '../../services/api';
 import { API_BASE, authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import type { Ticket, TicketStatus } from '../../types';
 import { Badge } from '../../components/ui/Badge';
@@ -173,7 +173,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
 
         if (dbComments && isMounted) {
           const mapped = dbComments
-            .filter((c: any) => c.author_name !== '__attachment__')
+            .filter((c: any) => isUserChatMessage(c))
             .map((c: any) => ({
               id: c.id,
               ticketId: c.ticket_id,
@@ -414,8 +414,8 @@ export const AdminTicketDetailsPage: React.FC = () => {
     (currentUser?.name && ticket.assignedTo && ticket.assignedTo.toLowerCase() === currentUser.name.toLowerCase())
   );
   const isWorkMode = searchParams.get('mode') === 'work';
-  const isMyTickets = fromSource === 'my-tickets' || isCreatedByMe;
-  const canReply = true;
+  const isMyTickets = fromSource === 'my-tickets';
+  const canReply = fromSource === 'my-tickets';
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

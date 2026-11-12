@@ -305,13 +305,16 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
 
     all_users = fetch_all_users_cached()
 
+    tl_empid = str(tl_user.get("employee_id") or "").strip()
+    tl_name = str(tl_user.get("name") or "").strip()
     tl_team = str(tl_user.get("team") or "").strip()
-    tl_team_keys = {k.lower() for k in (tl_id, tl_team) if k}
+    tl_dept = str(tl_user.get("department") or "").strip()
+    tl_team_keys = {k.lower() for k in (tl_id, tl_empid, tl_name, tl_team) if k}
 
     matched: list[dict[str, Any]] = []
     for u in all_users:
         uid = str(u.get("id") or "").strip()
-        if uid == tl_id:
+        if uid == tl_id or (tl_empid and uid == tl_empid):
             continue
         if str(u.get("status") or "").strip().lower() in ("deleted", "inactive"):
             continue
@@ -320,21 +323,15 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
             continue
 
         uteam = str(u.get("team") or "").strip()
+        ulead = str(u.get("team_lead_id") or u.get("team_lead") or "").strip()
         is_member = False
-        if uteam:
-            if uteam.lower() in tl_team_keys or uteam.lower() == tl_id.lower():
-                is_member = True
-            elif tl_team and uteam.lower() == tl_team.lower():
-                is_member = True
-            else:
-                is_member = False
-        elif u.get("team_lead_id"):
-            u_tl = str(u.get("team_lead_id") or "").strip().lower()
-            if u_tl in (tl_id.lower(), str(tl_user.get("employee_id") or "").strip().lower()):
-                is_member = True
-            else:
-                is_member = False
-        elif not tl_team and _scopes_overlap(tl_user.get("department"), u.get("department")):
+        if ulead and ulead.lower() in tl_team_keys:
+            is_member = True
+        elif uteam and uteam.lower() in tl_team_keys:
+            is_member = True
+        elif tl_team and uteam and uteam.lower() == tl_team.lower():
+            is_member = True
+        elif not tl_team and not uteam and _scopes_overlap(tl_dept, u.get("department")):
             is_member = True
 
         if is_member:
@@ -912,6 +909,16 @@ def serialize_ticket(
                 result["escalatedAt"] = result["escalated_at"]
         except Exception as esc_err:
             print(f"[serialize_ticket] escalation load note: {esc_err}")
+
+    if not result.get("escalated_by"):
+        result["escalated_by"] = ticket.get("escalated_by") or ticket.get("assigned_by") or ticket.get("employee") or ""
+        result["escalatedBy"] = result["escalated_by"]
+    if not result.get("escalated_to"):
+        result["escalated_to"] = ticket.get("escalated_to") or ticket.get("assigned_agent") or ""
+        result["escalatedTo"] = result["escalated_to"]
+    if not result.get("escalation_reason"):
+        result["escalation_reason"] = ticket.get("escalation_reason") or ticket.get("reason") or ""
+        result["escalationReason"] = result["escalation_reason"]
 
     if load_attachments and tid:
         try:

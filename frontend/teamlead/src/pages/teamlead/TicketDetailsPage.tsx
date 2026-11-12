@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
-import { ticketService, type AttachmentRecord } from '../../services/ticketService';
+import { ticketService, type AttachmentRecord, isUserChatMessage } from '../../services/ticketService';
 import { supabase } from '../../services/supabaseClient';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import { API_BASE_URL } from '../../utils/constants';
@@ -203,7 +203,7 @@ export const TicketDetailsPage: React.FC = () => {
 
         if (dbComments && isMounted) {
           const mapped = dbComments
-            .filter((c: any) => c.author_name !== '__attachment__')
+            .filter((c: any) => isUserChatMessage(c))
             .map((c: any) => ({
               id: c.id,
               ticketId: c.ticket_id,

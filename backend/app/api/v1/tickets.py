@@ -640,11 +640,31 @@ def get_ticket(
             .execute()
         )
         raw_comments = res.data or []
-        comments = [
-            c for c in raw_comments
-            if c.get("author_name") not in ("__attachment__", "__activity__")
-            and not str(c.get("message") or "").startswith(("[ATTACHMENT_V1]:", "[ACTIVITY_V1]:"))
-        ]
+        _SYSTEM_MSG_PREFIXES = (
+            "ticket created",
+            "uploaded attachment",
+            "status changed",
+            "added reply",
+            "added internal note",
+            "emergency reassign",
+            "ticket reassigned from",
+            "ticket marked as resolved",
+            "assigned sla deadline",
+        )
+        comments = []
+        for c in raw_comments:
+            aname = str(c.get("author_name") or "").strip().lower()
+            if aname in ("__attachment__", "__activity__", "__system__", "system"):
+                continue
+            cmsg = str(c.get("message") or "").strip()
+            if not cmsg:
+                continue
+            cmsg_lower = cmsg.lower()
+            if cmsg.startswith(("[ATTACHMENT_V1]:", "[ACTIVITY_V1]:", "__activity__", "__attachment__")):
+                continue
+            if any(cmsg_lower.startswith(pfx) for pfx in _SYSTEM_MSG_PREFIXES):
+                continue
+            comments.append(c)
     except Exception as exc:
         print(f"[tickets] comments unavailable: {exc}")
 

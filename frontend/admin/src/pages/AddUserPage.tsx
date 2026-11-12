@@ -72,14 +72,18 @@ export const AddUserPage: React.FC = () => {
       try {
         const { data: supaLeads, error: supaErr } = await supabase
           .from('users')
-          .select('id, name, email, department, role')
+          .select('id, employee_id, name, email, department, role, status')
           .ilike('role', '%lead%');
         if (!cancelled && !supaErr && Array.isArray(supaLeads) && supaLeads.length > 0) {
+          const activeLeads = supaLeads.filter((u: any) => {
+            const st = String(u.status || '').trim().toLowerCase();
+            return st !== 'deleted' && st !== 'inactive';
+          });
           setTeamLeadsFromDb(
-            supaLeads.map((u) => ({
-              id: u.id,
+            activeLeads.map((u) => ({
+              id: (u as any).employee_id || u.id,
               name: u.name || (u.email || '').split('@')[0],
-              department: u.department || 'IT Support',
+              department: u.department || 'Other',
               email: u.email || '',
             }))
           );
@@ -92,11 +96,15 @@ export const AddUserPage: React.FC = () => {
       // 2. Backend directory endpoint
       const result = await apiRequestSafe<any[]>('/users/directory?role=teamlead');
       if (!cancelled && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+        const activeLeads = result.data.filter((u: any) => {
+          const st = String(u.status || '').trim().toLowerCase();
+          return st !== 'deleted' && st !== 'inactive';
+        });
         setTeamLeadsFromDb(
-          result.data.map((u) => ({
-            id: u.id,
+          activeLeads.map((u) => ({
+            id: (u as any).employee_id || u.id,
             name: u.name || (u.email || '').split('@')[0],
-            department: u.department || 'IT Support',
+            department: u.department || 'Other',
             email: u.email || '',
           }))
         );
@@ -246,13 +254,18 @@ export const AddUserPage: React.FC = () => {
     : (formData.department || '');
 
   const filteredTeamLeads = currentDepartmentName
-    ? teamLeadsFromDb.filter(tl => 
-        tl.department.toLowerCase().includes(currentDepartmentName.toLowerCase()) || 
-        currentDepartmentName.toLowerCase().includes(tl.department.toLowerCase())
-      )
+    ? teamLeadsFromDb.filter(tl => {
+        const tlDept = (tl.department || '').toLowerCase().trim();
+        const curDept = currentDepartmentName.toLowerCase().trim();
+        if (tlDept === curDept) return true;
+        if ((curDept === 'qa team' || curDept === 'qa') && (tlDept === 'qa' || tlDept === 'qa team' || tlDept.includes('qa') || tlDept.includes('quality'))) return true;
+        if (curDept === 'hr' && (tlDept === 'hr' || tlDept.includes('hr') || tlDept.includes('human'))) return true;
+        if ((curDept === 'it support' || curDept === 'it') && (tlDept === 'it' || tlDept.includes('it'))) return true;
+        return tlDept.includes(curDept) || curDept.includes(tlDept);
+      })
     : teamLeadsFromDb;
 
-  const displayTeamLeads = filteredTeamLeads.length > 0 ? filteredTeamLeads : teamLeadsFromDb;
+  const displayTeamLeads = filteredTeamLeads;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

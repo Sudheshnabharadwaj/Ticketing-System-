@@ -26,6 +26,7 @@ import {
   fetchBackendAttachmentsDetailed,
   deleteBackendAttachment,
   getEmployeeSessionUser,
+  isUserChatMessage,
 } from '../services/employeeService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../services/backendAuth';
 import { supabase } from '../services/supabaseClient';
@@ -284,7 +285,7 @@ export const AssignedTicketDetails: React.FC = () => {
 
         if (dbComments && isMounted) {
           const mapped = dbComments
-            .filter((c: any) => c.author_name !== '__attachment__')
+            .filter((c: any) => isUserChatMessage(c))
             .map((c: any) => ({
               id: c.id,
               ticketId: c.ticket_id,
