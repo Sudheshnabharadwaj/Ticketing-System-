@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, ArrowLeft, CheckCircle, Mail, ExternalLink, AlertCircle, Check, X } from 'lucide-react';
 import { EmployeeService } from '../services/employeeService';
@@ -298,8 +298,11 @@ export const CreateTicket: React.FC = () => {
   );
   }
 
-  const activeDepartments = selectedDepartments.map((dept) =>
-    dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+  const activeDepartments = useMemo(
+    () => selectedDepartments.map((dept) =>
+      dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+    ),
+    [selectedDepartments, customDepartment]
   );
 
   return (

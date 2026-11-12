@@ -131,8 +131,11 @@ export const AdminCreateTicketPage: React.FC = () => {
     }
   };
 
-  const activeDepartments = selectedDepartments.map((dept) =>
-    dept === 'Other' ? (customDepartment.trim() || 'Other') : dept
+  const activeDepartments = React.useMemo(
+    () => selectedDepartments.map((dept) =>
+      dept === 'Other' ? (customDepartment.trim() || 'Other') : dept
+    ),
+    [selectedDepartments, customDepartment]
   );
 
   return (

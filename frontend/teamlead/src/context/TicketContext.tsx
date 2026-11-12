@@ -81,13 +81,10 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setEscalations(loaded || []);
   }, []);
 
-  const refresh = useCallback(async (silent = false, force = true) => {
+  const refresh = useCallback(async (silent = false, force = false) => {
     const hasCache = !!ticketService.getCachedTickets() && ticketService.getCachedTickets()!.length > 0;
     if (!silent && !hasCache) {
       setIsLoading(true);
-    }
-    if (force) {
-      ticketService.invalidateCache();
     }
     const result = await ticketService.getTicketsDetailed(force);
     if (result.error) {
@@ -125,15 +122,15 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .channel(`teamlead-realtime-${userId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
         ticketService.invalidateCache();
-        void refresh(true);
+        void refresh(true, false);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_activities' }, () => {
         ticketService.invalidateCache();
-        void refresh(true);
+        void refresh(true, false);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_comments' }, () => {
         ticketService.invalidateCache();
-        void refresh(true);
+        void refresh(true, false);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_notifications' }, () => {
         void loadNotifications();
@@ -143,18 +140,24 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 2. Controlled Polling Fallback (8 seconds, non-destructive background sync)
     const pollInterval = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void refresh(true);
+        void refresh(true, false);
       }
     }, 8000);
 
-    // 3. Local/Cross-tab update listener
+    // 3. Local/Cross-tab update listener with debounce protection
+    let debounceTimer: number | null = null;
     const handleTicketUpdated = () => {
-      void refresh(true);
+      if (debounceTimer) return;
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = null;
+        void refresh(true, false);
+      }, 500);
     };
     window.addEventListener('ticket-updated', handleTicketUpdated);
     window.addEventListener('storage', handleTicketUpdated);
 
     return () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
       window.clearInterval(pollInterval);
       window.removeEventListener('ticket-updated', handleTicketUpdated);
       window.removeEventListener('storage', handleTicketUpdated);

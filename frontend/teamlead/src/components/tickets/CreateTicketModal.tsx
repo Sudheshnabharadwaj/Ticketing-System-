@@ -92,8 +92,11 @@ const CreateTicketModalContent: React.FC<{
   const isOtherDeptSelected = selectedDepartments.includes('Other');
 
   // Compute active department list and routing leads
-  const activeDepartments = selectedDepartments.map((dept) =>
-    dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+  const activeDepartments = useMemo(
+    () => selectedDepartments.map((dept) =>
+      dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+    ),
+    [selectedDepartments, customDepartment]
   );
 
   const [fileAttachments, setFileAttachments] = useState<FileAttachmentItem[]>([]);

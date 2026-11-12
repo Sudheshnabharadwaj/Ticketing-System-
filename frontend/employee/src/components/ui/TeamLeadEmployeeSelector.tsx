@@ -101,11 +101,14 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
 
   // Ensure selected Team Leads strictly belong to active selected departments
   useEffect(() => {
-    if (role === 'teamlead') return;
+    if (role === 'teamlead' || selectedDepartments.length === 0) return;
     const validLeadIds: string[] = [];
     selectedDepartments.forEach((dept) => {
       const leads = OrganizationService.getTeamLeadsByDepartment(dept);
-      leads.forEach((l) => validLeadIds.push(l.id));
+      leads.forEach((l) => {
+        if (l.id) validLeadIds.push(l.id);
+        if (l.employeeId) validLeadIds.push(l.employeeId);
+      });
     });
     const validLeadIdSet = new Set(validLeadIds);
 
@@ -116,16 +119,18 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
       const leads = OrganizationService.getTeamLeadsByDepartment(dept);
       if (leads.length === 1) {
         const singleLead = leads[0];
-        if (!currentSelected.includes(singleLead.id)) {
-          currentSelected = [...currentSelected, singleLead.id];
+        const targetId = singleLead.id || singleLead.employeeId;
+        if (targetId && !currentSelected.includes(targetId) && !currentSelected.includes(singleLead.employeeId)) {
+          currentSelected = [...currentSelected, targetId];
         }
       }
     });
 
-    if (
+    const isDifferent =
       currentSelected.length !== selectedTeamLeadIds.length ||
-      currentSelected.some((id, idx) => id !== selectedTeamLeadIds[idx])
-    ) {
+      currentSelected.some((id, idx) => id !== selectedTeamLeadIds[idx]);
+
+    if (isDifferent) {
       const updatedObjs = currentSelected
         .map((id) => OrganizationService.getTeamLeadById(id))
         .filter((l): l is TeamLeadItem => !!l);
