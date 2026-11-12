@@ -105,9 +105,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'attachments'>('conversation');
   const [newComment, setNewComment] = useState('');
-  const [isInternalNote, setIsInternalNote] = useState(false);
   const [escalationModalOpen, setEscalationModalOpen] = useState(false);
   const [selectedTeamLead, setSelectedTeamLead] = useState('');
   const [escalationReasonInput, setEscalationReasonInput] = useState('Lack of Knowledge');
@@ -208,7 +207,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
       user.name,
       role,
       newComment.trim(),
-      isInternalNote
+      false
     );
 
     setNewComment('');
@@ -302,17 +301,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                 Conversation & Notes ({ticket.comments?.length || 0})
               </button>
               <button
-                onClick={() => setActiveTab('history')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                  activeTab === 'history'
-                    ? 'bg-sky-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <History className="w-4 h-4" />
-                Audit History ({ticket.activities?.length || 0})
-              </button>
-              <button
                 onClick={() => setActiveTab('attachments')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                   activeTab === 'attachments'
@@ -344,9 +332,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                       <div
                         key={comment.id}
                         className={`p-3.5 rounded-xl border text-xs ${
-                          comment.isInternal
-                            ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                            : comment.authorRole === 'employee'
+                          comment.authorRole === 'employee'
                             ? 'bg-sky-50/50 border-sky-200 text-slate-800'
                             : 'bg-white border-slate-200 text-slate-800'
                         }`}
@@ -357,11 +343,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                             <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
                               {comment.authorRole}
                             </span>
-                            {comment.isInternal && (
-                              <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
-                                <Lock className="w-3 h-3 mr-1" /> Internal Note
-                              </span>
-                            )}
                           </div>
                           <span className="text-[10px] text-slate-400">{formatDate(comment.createdAt)}</span>
                         </div>
@@ -424,22 +405,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               </div>
             )}
 
-            {/* Tab 2: Audit History */}
-            {activeTab === 'history' && (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {ticket.activities?.map((act) => (
-                  <div key={act.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-slate-800">{act.user}</span>
-                      <span className="text-slate-600 ml-2">{act.action}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400">{formatDate(act.timestamp)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Tab 3: Attachments */}
+            {/* Tab 2: Attachments */}
             {activeTab === 'attachments' && (
               <div className="space-y-4">
                 {/* Existing Attachments List */}

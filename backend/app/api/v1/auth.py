@@ -108,8 +108,9 @@ def login(payload: LoginRequest) -> dict[str, Any]:
     row = _find_by_email(email)
     if not row:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-    if str(row.get("status") or "").strip().lower() == "inactive":
-        raise HTTPException(status_code=403, detail="This account has been deactivated.")
+    status_lower = str(row.get("status") or "").strip().lower()
+    if status_lower in ("inactive", "deleted"):
+        raise HTTPException(status_code=403, detail="This account has been deactivated or deleted.")
     valid = verify_user_credentials(row, password)
     if not valid:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -119,7 +120,7 @@ def login(payload: LoginRequest) -> dict[str, Any]:
     # Upgrade legacy plaintext passwords and activate invited accounts.
     if not is_hashed(row.get("password_hash") or row.get("password")):
         updates["password_hash"] = hash_password(password)
-    if str(row.get("status") or "").strip() not in ("Active", "Inactive"):
+    if str(row.get("status") or "").strip() not in ("Active", "Inactive", "Deleted"):
         updates["status"] = "Active"
 
     if has_service_role_key():

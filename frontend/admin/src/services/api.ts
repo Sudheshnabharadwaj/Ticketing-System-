@@ -163,6 +163,49 @@ function mapSlaStatus(raw?: string): SLAStatus {
   return 'Normal';
 }
 
+export function computeTicketSla(t: {
+  status?: string;
+  dueDate?: string;
+  createdAt?: string;
+  priority?: string;
+  sla_due_at?: string;
+  sla_status?: string;
+}): SLAStatus {
+  const rawSla = t.sla_status;
+  if (rawSla) {
+    const s = String(rawSla).toLowerCase();
+    if (s.includes('breach')) return 'SLA Breached';
+    if (s.includes('risk')) return 'SLA Risk';
+  }
+
+  const status = (t.status || '').toLowerCase();
+  if (status === 'resolved' || status === 'closed') return 'Normal';
+
+  const dueStr = t.dueDate || t.sla_due_at || calculateSLADeadline(t.createdAt, t.priority);
+  if (!dueStr) return 'Normal';
+
+  const clean = dueStr.includes(' ') && !dueStr.includes('T') ? dueStr.replace(' ', 'T') : dueStr;
+  const dueTime = new Date(clean).getTime();
+  if (isNaN(dueTime)) return 'Normal';
+
+  const remainingMs = dueTime - Date.now();
+  if (remainingMs <= 0) return 'SLA Breached';
+
+  const prio = (t.priority || 'medium').toLowerCase();
+  let totalHours = 24;
+  if (prio === 'critical' || prio === 'urgent') totalHours = 4;
+  else if (prio === 'high') totalHours = 8;
+  else if (prio === 'medium') totalHours = 24;
+  else if (prio === 'low') totalHours = 48;
+
+  const totalMs = totalHours * 60 * 60 * 1000;
+  if (remainingMs <= 2 * 60 * 60 * 1000 || remainingMs <= totalMs * 0.25) {
+    return 'SLA Risk';
+  }
+
+  return 'Normal';
+}
+
 export function calculateSLADeadline(
   createdAtStr?: string,
   priority?: string,
@@ -322,6 +365,28 @@ function deduplicateUsers(users: User[]): User[] {
 }
 
 function mapBackendTicket(t: BackendTicket): Ticket {
+  const calculatedDueDate = calculateSLADeadline(t.created_at, t.priority, t.sla_due_at);
+  const computedSla = computeTicketSla({
+    status: t.status,
+    dueDate: calculatedDueDate,
+    createdAt: t.created_at,
+    priority: t.priority,
+    sla_due_at: t.sla_due_at,
+    sla_status: t.sla_status,
+  });
+
+  const normalizedAttachments: string[] = Array.isArray(t.attachments)
+    ? t.attachments.map((a: any) => {
+        if (typeof a === 'string') return a;
+        if (a && typeof a === 'object') {
+          const name = a.name || a.filename || a.original_name || a.id || 'attachment';
+          const size = a.size && a.size !== 'N/A' ? ` (${a.size})` : '';
+          return `${name}${size}`;
+        }
+        return String(a || '');
+      })
+    : [];
+
   return {
     id: t.id,
     ticketNumber: t.id,
@@ -338,11 +403,11 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     status: (t.status || 'Open') as Ticket['status'],
     escalationReason: (t as any).escalation_reason || (t as any).escalationReason || undefined,
     escalationNotes: (t as any).escalation_notes || (t as any).escalationNotes || undefined,
-    slaStatus: mapSlaStatus(t.sla_status),
+    slaStatus: computedSla,
     createdAt: formatDateTime(t.created_at),
     updatedAt: formatDateTime(t.updated_at || t.created_at),
-    dueDate: calculateSLADeadline(t.created_at, t.priority, t.sla_due_at),
-    attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    dueDate: calculatedDueDate,
+    attachments: normalizedAttachments,
     comments: Array.isArray(t.comments)
       ? t.comments.map((c: any) => ({
           id: c.id,
@@ -793,10 +858,22 @@ export const AdminApiService = {
       return mapped.filter((t) => isActive(t) && isEscalated(t));
     }
     if (filterType === 'sla-risk') {
-      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk')));
+      return mapped.filter(
+        (t) =>
+          isActive(t) &&
+          (t.slaStatus === 'SLA Risk' ||
+            (t.slaStatus || '').toLowerCase().includes('risk') ||
+            computeTicketSla(t) === 'SLA Risk')
+      );
     }
     if (filterType === 'sla-breached') {
-      return mapped.filter((t) => isActive(t) && (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach')));
+      return mapped.filter(
+        (t) =>
+          isActive(t) &&
+          (t.slaStatus === 'SLA Breached' ||
+            (t.slaStatus || '').toLowerCase().includes('breach') ||
+            computeTicketSla(t) === 'SLA Breached')
+      );
     }
     if (filterType === 'resolved') {
       return mapped.filter((t) => !isActive(t));

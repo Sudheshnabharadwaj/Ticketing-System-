@@ -938,7 +938,7 @@ export const TicketManagementPage: React.FC = () => {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Add an internal note or comment..."
+                    placeholder="Type a reply or comment..."
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}

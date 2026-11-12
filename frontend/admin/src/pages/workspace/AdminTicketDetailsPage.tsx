@@ -45,7 +45,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(() => !cachedTicket);
   const [newComment, setNewComment] = useState('');
   const [commentAttachedFiles, setCommentAttachedFiles] = useState<AttachedFile[]>([]);
-  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'attachments'>('conversation');
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('In Progress');
@@ -187,10 +187,10 @@ export const AdminTicketDetailsPage: React.FC = () => {
           setTicket((prev) => {
             if (!prev) return prev;
             const currentComments = prev.comments || [];
-            const prevIds = currentComments.map((c: any) => c.id).filter((cid: string) => !cid.startsWith('temp-')).join(',');
-            const newIds = mapped.map((c: any) => c.id).join(',');
+            const prevIds = currentComments.map((c: any) => String(c?.id || '')).filter((cid: string) => !cid.startsWith('temp-')).join(',');
+            const newIds = mapped.map((c: any) => String(c?.id || '')).join(',');
             if (prevIds !== newIds) {
-              const pendingOptimistic = currentComments.filter((c: any) => c.id.startsWith('temp-'));
+              const pendingOptimistic = currentComments.filter((c: any) => String(c?.id || '').startsWith('temp-'));
               return { ...prev, comments: [...mapped, ...pendingOptimistic] };
             }
             return prev;
@@ -231,8 +231,25 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   };
 
-  const handleDownloadAttachment = async (file: string) => {
-    const rawName = file.includes(' (') ? file.split(' (')[0] : file;
+  const getAttachmentRawName = (file: any): string => {
+    if (!file) return '';
+    if (typeof file === 'string') {
+      return file.includes(' (') ? file.split(' (')[0] : file;
+    }
+    return file.name || file.filename || file.id || '';
+  };
+
+  const getAttachmentDisplayName = (file: any): string => {
+    if (!file) return '';
+    if (typeof file === 'string') return file;
+    if (file.name) {
+      return file.size && file.size !== 'N/A' ? `${file.name} (${file.size})` : file.name;
+    }
+    return String(file);
+  };
+
+  const handleDownloadAttachment = async (file: any) => {
+    const rawName = getAttachmentRawName(file);
     const ticketId = ticket?.ticketNumber || id;
     try {
       await ensureBackendSession();
@@ -255,8 +272,8 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteAttachment = async (file: string) => {
-    const rawName = file.includes(' (') ? file.split(' (')[0] : file;
+  const handleDeleteAttachment = async (file: any) => {
+    const rawName = getAttachmentRawName(file);
     const ticketId = ticket?.ticketNumber || id;
     if (!ticketId) return;
     if (!window.confirm(`Are you sure you want to delete attachment "${rawName}"? This action cannot be undone.`)) {
@@ -268,7 +285,10 @@ export const AdminTicketDetailsPage: React.FC = () => {
         ? {
             ...prev,
             attachments: (prev.attachments || []).filter(
-              (f) => !(f === file || f.startsWith(rawName) || f.includes(rawName))
+              (f) => {
+                const fName = getAttachmentRawName(f);
+                return !(f === file || fName === rawName || fName.includes(rawName));
+              }
             ),
           }
         : prev
@@ -314,8 +334,8 @@ export const AdminTicketDetailsPage: React.FC = () => {
     }
   };
 
-  const handleViewAttachment = async (file: string) => {
-    const rawName = file.includes(' (') ? file.split(' (')[0] : file;
+  const handleViewAttachment = async (file: any) => {
+    const rawName = getAttachmentRawName(file);
     const ticketId = ticket?.ticketNumber || id;
     await ensureBackendSession();
     const url = withAccessToken(`${API_BASE}/tickets/${ticketId}/attachments/${encodeURIComponent(rawName)}/view`);
@@ -395,7 +415,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
   );
   const isWorkMode = searchParams.get('mode') === 'work';
   const isMyTickets = fromSource === 'my-tickets' || isCreatedByMe;
-  const canReply = Boolean(isMyTickets || isWorkMode || isAssignedToMe);
+  const canReply = true;
 
   const handleStatusUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -759,213 +779,16 @@ export const AdminTicketDetailsPage: React.FC = () => {
             </div>
           ) : ticket.attachments && ticket.attachments.length > 0 ? (
             <div className="flex flex-wrap gap-3">
-              {ticket.attachments.map((file, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs text-slate-700 font-medium hover:border-[#0284C7] transition-all"
-                >
-                  <div className="flex items-center gap-2 max-w-[200px] truncate">
-                    <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
-                    <span className="truncate">{file}</span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <button
-                      type="button"
-                      onClick={() => handleViewAttachment(file)}
-                      className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
-                      title="View Attachment"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadAttachment(file)}
-                      className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
-                      title="Download Attachment"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteAttachment(file)}
-                      className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-                      title="Delete Attachment"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
-          )}
-        </div>
-      </div>
-
-      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
-        {/* Tab Headers */}
-        <div className="flex space-x-2 border-b border-slate-200 pb-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('conversation')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'conversation'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            Conversation & Notes ({ticket.comments?.length || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            Audit History ({ticket.history?.length || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('attachments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'attachments'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Paperclip className="w-4 h-4" />
-            Attachments ({ticket.attachments?.length || 0})
-          </button>
-        </div>
-
-        {/* Tab 1: Conversation & Notes */}
-        {activeTab === 'conversation' && (
-          <div className="space-y-4">
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-              {!ticket.comments || ticket.comments.length === 0 ? (
-                <p className="text-center text-xs text-slate-400 py-6">
-                  No replies recorded yet. Post a message or internal note below.
-                </p>
-              ) : (
-                ticket.comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className={`p-3.5 rounded-xl border text-xs ${
-                      comment.isInternal
-                        ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-slate-900">{comment.authorName}</span>
-                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
-                          {comment.authorRole}
-                        </span>
-                        {comment.isInternal && (
-                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded-md">
-                            <Lock className="w-3 h-3 mr-1" /> Internal Note
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-medium">{comment.createdAt}</span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Chat/Reply access: for creator and assigned user working on the ticket */}
-            {canReply && (
-              <form onSubmit={handleAddCommentSubmit} className="pt-3 border-t border-slate-100 space-y-3">
-                <textarea
-                  rows={3}
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Type response or update..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
-                />
-
-                <div className="flex items-center justify-between pt-1">
-                  <AttachmentFilePicker
-                    files={commentAttachedFiles}
-                    onFilesChange={setCommentAttachedFiles}
-                    label=""
-                    buttonText="Attach Local File"
-                    compact
-                  />
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    disabled={!newComment.trim()}
-                    className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
-                  >
-                    <Send className="w-3.5 h-3.5 mr-1.5" />
-                    Post Reply
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-        )}
-
-        {/* Tab 2: Audit History */}
-        {activeTab === 'history' && (
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            {ticket.history && ticket.history.length > 0 ? (
-              ticket.history.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 text-xs">
-                  <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-100 text-[#0284C7] flex items-center justify-center font-bold shrink-0 mt-0.5">
-                    {item.author.charAt(0)}
-                  </div>
-                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-slate-800">{item.author}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
-                    </div>
-                    <p className="text-slate-700 leading-relaxed">{item.text}</p>
-                    {item.attachment && (
-                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
-                        <Paperclip className="w-3 h-3" />
-                        {item.attachment}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 italic text-center py-6">No activity recorded yet.</p>
-            )}
-          </div>
-        )}
-
-        {/* Tab 3: Attachments */}
-        {activeTab === 'attachments' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Attached Files ({ticket.attachments?.length || 0})
-              </span>
-            </div>
-            {ticket.attachments && ticket.attachments.length > 0 ? (
-              <div className="flex flex-wrap gap-3">
-                {ticket.attachments.map((file, idx) => (
+              {ticket.attachments.map((file, idx) => {
+                const displayName = getAttachmentDisplayName(file);
+                return (
                   <div
                     key={idx}
                     className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs text-slate-700 font-medium hover:border-[#0284C7] transition-all"
                   >
                     <div className="flex items-center gap-2 max-w-[200px] truncate">
                       <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
-                      <span className="truncate">{file}</span>
+                      <span className="truncate">{displayName}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0 ml-2">
                       <button
@@ -994,7 +817,159 @@ export const AdminTicketDetailsPage: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>
+          )}
+        </div>
+      </div>
+
+      {/* 2 Main Sections: Conversation & Notes, Attachments */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
+        {/* Tab Headers */}
+        <div className="flex space-x-2 border-b border-slate-200 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('conversation')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'conversation'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Conversation & Notes ({ticket.comments?.length || 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('attachments')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
+              activeTab === 'attachments'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Paperclip className="w-4 h-4" />
+            Attachments ({ticket.attachments?.length || 0})
+          </button>
+        </div>
+
+        {/* Tab 1: Conversation & Notes */}
+        {activeTab === 'conversation' && (
+          <div className="space-y-4">
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {!ticket.comments || ticket.comments.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-6">
+                  No replies recorded yet. Post a message below.
+                </p>
+              ) : (
+                ticket.comments.map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="p-3.5 rounded-xl border text-xs bg-slate-50 border-slate-200 text-slate-800"
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900">{comment.authorName}</span>
+                        <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-200 text-slate-700">
+                          {comment.authorRole}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">{comment.createdAt}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-slate-700 leading-relaxed">{comment.message}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Chat/Reply access: for creator and assigned user working on the ticket */}
+            {canReply && (
+              <form onSubmit={handleAddCommentSubmit} className="pt-3 border-t border-slate-100 space-y-3">
+                <textarea
+                  rows={3}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Type a reply or message..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
+                />
+
+                <div className="flex items-center justify-between pt-1">
+                  <AttachmentFilePicker
+                    files={commentAttachedFiles}
+                    onFilesChange={setCommentAttachedFiles}
+                    label=""
+                    buttonText="Attach Local File"
+                    compact
+                  />
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newComment.trim()}
+                    className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    Post Reply
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Attachments */}
+        {activeTab === 'attachments' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Attached Files ({ticket.attachments?.length || 0})
+              </span>
+            </div>
+            {ticket.attachments && ticket.attachments.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {ticket.attachments.map((file, idx) => {
+                  const displayName = getAttachmentDisplayName(file);
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs text-slate-700 font-medium hover:border-[#0284C7] transition-all"
+                    >
+                      <div className="flex items-center gap-2 max-w-[200px] truncate">
+                        <FileText className="w-4 h-4 text-[#0284C7] shrink-0" />
+                        <span className="truncate">{displayName}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => handleViewAttachment(file)}
+                          className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
+                          title="View Attachment"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(file)}
+                          className="p-1 hover:bg-slate-200/80 rounded text-slate-500 hover:text-[#0284C7] transition-colors cursor-pointer"
+                          title="Download Attachment"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(file)}
+                          className="p-1 hover:bg-rose-100 rounded text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
+                          title="Delete Attachment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic">No attachments uploaded yet.</p>

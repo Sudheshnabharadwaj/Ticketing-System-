@@ -76,9 +76,8 @@ export const TicketDetailsPage: React.FC = () => {
   const [escalatePriority, setEscalatePriority] = useState<TicketPriority>('High');
   const [resolutionSummaryInput, setResolutionSummaryInput] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<FileAttachmentItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'attachments'>('conversation');
   const [newComment, setNewComment] = useState('');
-  const [isInternalNote, setIsInternalNote] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{ name: string; size?: string; viewUrl?: string; downloadUrl?: string } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentRecord[]>([]);
@@ -426,7 +425,7 @@ export const TicketDetailsPage: React.FC = () => {
       authorRole: (role || 'teamlead').toUpperCase(),
       message: commentText,
       createdAt: nowIso,
-      isInternal: isInternalNote,
+      isInternal: false,
     };
 
     setTicketData((prev) => {
@@ -440,7 +439,7 @@ export const TicketDetailsPage: React.FC = () => {
 
     // 2. Persist in database in background
     try {
-      const ok = await ticketService.addComment(ticket.id, user.name, role, commentText, isInternalNote);
+      const ok = await ticketService.addComment(ticket.id, user.name, role, commentText, false);
       if (!ok) {
         await supabase.from('ticket_comments').insert({
           id: `comm-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`,
@@ -449,7 +448,7 @@ export const TicketDetailsPage: React.FC = () => {
           author_name: user.name || 'Team Lead',
           author_role: role || 'teamlead',
           message: commentText,
-          is_internal: isInternalNote,
+          is_internal: false,
           created_at: nowIso,
         });
       }
@@ -463,7 +462,7 @@ export const TicketDetailsPage: React.FC = () => {
           author_name: user.name || 'Team Lead',
           author_role: role || 'teamlead',
           message: commentText,
-          is_internal: isInternalNote,
+          is_internal: false,
           created_at: nowIso,
         });
       } catch { }
@@ -839,7 +838,7 @@ export const TicketDetailsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
+      {/* 2 Main Sections: Conversation & Notes, Attachments */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Tab Headers */}
         <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
@@ -853,17 +852,6 @@ export const TicketDetailsPage: React.FC = () => {
           >
             <MessageSquare className="w-4 h-4" />
             Conversation & Notes ({ticket.comments?.length || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'history'
-              ? 'bg-[#0284C7] text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100'
-              }`}
-          >
-            <Activity className="w-4 h-4" />
-            Audit History ({ticket.activities?.length || (ticket as any).history?.length || 0})
           </button>
           <button
             type="button"
@@ -890,10 +878,7 @@ export const TicketDetailsPage: React.FC = () => {
                 ticket.comments.map((comment: TicketComment) => (
                   <div
                     key={comment.id}
-                    className={`p-3.5 rounded-xl border text-xs mb-3 ${comment.isInternal
-                      ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                      : 'bg-white border-slate-200/80 text-slate-800'
-                      }`}
+                    className="p-3.5 rounded-xl border text-xs mb-3 bg-white border-slate-200/80 text-slate-800"
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">
@@ -901,11 +886,6 @@ export const TicketDetailsPage: React.FC = () => {
                         <span className="px-2 py-0.5 text-[10px] uppercase font-bold rounded-md bg-slate-100 text-slate-600">
                           {comment.authorRole}
                         </span>
-                        {comment.isInternal && (
-                          <span className="inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md">
-                            <Lock className="w-3 h-3 mr-1" /> Internal Note
-                          </span>
-                        )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-medium">{formatDate(comment.createdAt)}</span>
                     </div>
@@ -935,7 +915,7 @@ export const TicketDetailsPage: React.FC = () => {
                     className="px-4 py-2 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{isInternalNote ? 'Post Internal Note' : 'Send Reply'}</span>
+                    <span>Send Reply</span>
                   </button>
                 </div>
               </form>
@@ -943,31 +923,7 @@ export const TicketDetailsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 2: Audit History */}
-        {activeTab === 'history' && (
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            {ticket.activities && ticket.activities.length > 0 ? (
-              ticket.activities.map((item: TicketActivity) => (
-                <div key={item.id} className="flex items-start gap-3 text-xs">
-                  <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-100 text-[#0284C7] flex items-center justify-center font-bold shrink-0 mt-0.5">
-                    {item.user.charAt(0)}
-                  </div>
-                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-slate-900">{item.user}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">{formatDate(item.timestamp)}</span>
-                    </div>
-                    <p className="text-slate-700">{item.action}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-center text-xs text-slate-400 py-6">No audit activities recorded for this ticket.</p>
-            )}
-          </div>
-        )}
-
-        {/* Tab 3: Attachments */}
+        {/* Tab 2: Attachments */}
         {activeTab === 'attachments' && (
           <div className="space-y-3">
             {attachmentsLoading ? (

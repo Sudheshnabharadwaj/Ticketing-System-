@@ -313,6 +313,8 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
         uid = str(u.get("id") or "").strip()
         if uid == tl_id:
             continue
+        if str(u.get("status") or "").strip().lower() in ("deleted", "inactive"):
+            continue
         urole = normalize_role(u.get("role"))
         if urole in (ROLE_ADMIN, ROLE_TEAMLEAD):
             continue
@@ -546,21 +548,6 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         # Tagged member is on the team
         if member_ids and any(m_id in member_ids for m_id in tagged):
             return True
-
-        # 7. Unassigned department queue: Team lead can see and triage/assign unassigned tickets in their department
-        tl_dept = str(user.get("department") or payload.get("department") or "").strip().lower()
-        ticket_dept = str(ticket.get("department") or "").strip().lower()
-        ticket_depts = [str(d).strip().lower() for d in (ticket.get("departments") or []) if d]
-        agent_raw = str(ticket.get("assigned_agent") or "").strip().lower()
-        is_unassigned = (
-            ticket.get("is_unassigned") is True
-            or agent_raw in ("", "unassigned", "none", "null")
-            or str(ticket.get("assigned_to_type") or "").lower() == "unassigned"
-            or not ticket.get("assigned_agent_id")
-        )
-        if tl_dept and (tl_dept == ticket_dept or tl_dept in ticket_depts or _scopes_overlap(tl_dept, ticket_dept)):
-            if is_unassigned or str(ticket.get("status") or "").lower() not in ("closed", "resolved"):
-                return True
 
         return False
 

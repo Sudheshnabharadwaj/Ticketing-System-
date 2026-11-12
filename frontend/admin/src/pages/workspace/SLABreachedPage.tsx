@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
 import type { Ticket, User } from '../../types';
-import { AdminApiService } from '../../services/api';
+import { AdminApiService, computeTicketSla } from '../../services/api';
 import { ShieldAlert, CheckCircle2, UserCheck, Bell, AlertOctagon, Eye } from 'lucide-react';
 
 export const SLABreachedPage: React.FC = () => {
@@ -15,7 +15,13 @@ export const SLABreachedPage: React.FC = () => {
   const [tickets, setTickets] = useState<Ticket[]>(() => {
     const cached = AdminApiService.getCachedTickets();
     if (!cached || cached.length === 0) return [];
-    return cached.filter((t) => t.slaStatus === 'SLA Breached' || (t as any).is_breached);
+    return cached.filter(
+      (t) =>
+        !['resolved', 'closed'].includes((t.status || '').toLowerCase()) &&
+        (t.slaStatus === 'SLA Breached' ||
+          (t.slaStatus || '').toLowerCase().includes('breach') ||
+          computeTicketSla(t) === 'SLA Breached')
+    );
   });
   const [users, setUsers] = useState<User[]>(() => AdminApiService.getCachedUsers() || []);
   const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
@@ -48,7 +54,7 @@ export const SLABreachedPage: React.FC = () => {
   };
 
   useEffect(() => {
-    void loadData();
+    void loadData(true);
     const handleUpdate = () => {
       void loadData(true);
     };

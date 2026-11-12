@@ -7,7 +7,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Table, type Column } from '../components/ui/Table';
 import type { Ticket, DashboardStats } from '../types';
-import { AdminApiService } from '../services/api';
+import { AdminApiService, computeTicketSla } from '../services/api';
 import { AttachmentFilePicker, type AttachedFile } from '../components/ui/AttachmentFilePicker';
 import { TeamLeadEmployeeSelector } from '../components/ui/TeamLeadEmployeeSelector';
 import { OrganizationService, type TeamLeadItem, type EmployeeItem } from '../services/organizationService';
@@ -271,10 +271,14 @@ export const DashboardPage: React.FC = () => {
   const isTicketActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());
   const isSlaBreached = (t: Ticket) =>
     isTicketActive(t) &&
-    (t.slaStatus === 'SLA Breached' || (t.slaStatus || '').toLowerCase().includes('breach'));
+    (t.slaStatus === 'SLA Breached' ||
+      (t.slaStatus || '').toLowerCase().includes('breach') ||
+      computeTicketSla(t) === 'SLA Breached');
   const isSlaRisk = (t: Ticket) =>
     isTicketActive(t) &&
-    (t.slaStatus === 'SLA Risk' || (t.slaStatus || '').toLowerCase().includes('risk'));
+    (t.slaStatus === 'SLA Risk' ||
+      (t.slaStatus || '').toLowerCase().includes('risk') ||
+      computeTicketSla(t) === 'SLA Risk');
 
   const slaRiskCount = stats?.slaRiskCount ?? tickets.filter(isSlaRisk).length;
   const slaBreachedCount = stats?.slaBreachedCount ?? tickets.filter(isSlaBreached).length;

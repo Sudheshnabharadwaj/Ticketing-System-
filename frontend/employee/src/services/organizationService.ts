@@ -44,17 +44,13 @@ export const DEPARTMENTS: DepartmentItem[] = [
 export const INITIAL_TEAM_LEADS: TeamLeadItem[] = [
   { id: 'OKL003', employeeId: 'OKL003', name: 'Kotesh', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'k.ananthu@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL015', employeeId: 'OKL015', name: 'Manikanta', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'm.nisankam@oklut.com', team: 'Team Beta' } as any,
-  { id: 'OKL013', employeeId: 'OKL013', name: 'soniya', role: 'HR Team Lead', departmentId: 'D002', departmentName: 'HR', email: 'soni@gmail.com', team: 'HR Team' } as any,
-  { id: 'OKL101', employeeId: 'OKL101', name: 'pavan', role: 'QA Team Lead', departmentId: 'D005', departmentName: 'QA Team', email: 'pavan.qa@oklut.com', team: 'QA Team' } as any,
 ];
 
 export const INITIAL_EMPLOYEES: EmployeeItem[] = [
   { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com', team: 'Team Beta' } as any,
-  { id: 'OKL014', employeeId: 'OKL014', name: 'Ramya', role: 'Team Member', teamLeadId: 'OKL013', departmentId: 'D002', departmentName: 'HR', email: 'ramya@gmail.com', team: 'HR Team' } as any,
-  { id: 'OKL0006', employeeId: 'OKL0006', name: 'kumar', role: 'QA Engineer', teamLeadId: 'OKL101', departmentId: 'D005', departmentName: 'QA Team', email: 'kumar.qa@oklut.com', team: 'QA Team' } as any,
-  { id: 'OKL040', employeeId: 'OKL040', name: 'mounika', role: 'QA Analyst', teamLeadId: 'OKL101', departmentId: 'D005', departmentName: 'QA Team', email: 'mounika.qa@oklut.com', team: 'QA Team' } as any,
+  { id: 'okl00', employeeId: 'okl00', name: 'mounika', role: 'QA Analyst', teamLeadId: '', departmentId: 'D005', departmentName: 'QA Team', email: 'mounika.qa@oklut.com', team: 'QA Team' } as any,
 ];
 
 export const TEAM_LEADS: TeamLeadItem[] = [...INITIAL_TEAM_LEADS];
@@ -64,8 +60,6 @@ export const EMPLOYEES: EmployeeItem[] = [...INITIAL_EMPLOYEES];
 const _leadEmployeesCache = new Map<string, EmployeeItem[]>([
   ['OKL003', [INITIAL_EMPLOYEES[0], INITIAL_EMPLOYEES[1]]],
   ['OKL015', [INITIAL_EMPLOYEES[2]]],
-  ['OKL013', [INITIAL_EMPLOYEES[3]]],
-  ['OKL101', [INITIAL_EMPLOYEES[4], INITIAL_EMPLOYEES[5]]],
 ]);
 
 let _syncInflight: Promise<void> | null = null;
@@ -106,18 +100,6 @@ export const OrganizationService = {
       }
     }
     if (deduped.length > 0) return deduped;
-
-    // Safety fallback for HR: ensure Soniya is returned
-    if (norm === 'hr' || norm === 'hr operations' || norm.includes('hr')) {
-      const soniya = INITIAL_TEAM_LEADS.find(tl => tl.employeeId === 'OKL013' || tl.name.toLowerCase() === 'soniya');
-      if (soniya) {
-        if (!TEAM_LEADS.some(tl => tl.employeeId === soniya.employeeId)) {
-          TEAM_LEADS.push(soniya);
-        }
-        return [soniya];
-      }
-    }
-
     return [];
   },
 
@@ -351,11 +333,21 @@ export const OrganizationService = {
           }
         }
 
-        if (dbUsers.length === 0) return;
+        const activeUsers = dbUsers.filter((u: any) => {
+          const st = String(u.status || '').trim().toLowerCase();
+          return st !== 'deleted' && st !== 'inactive';
+        });
+
+        if (activeUsers.length === 0) return;
+
+        // Clear existing so deleted users do not persist
+        TEAM_LEADS.length = 0;
+        EMPLOYEES.length = 0;
+        _leadEmployeesCache.clear();
 
         const leads: any[] = [];
         const nonLeads: any[] = [];
-        for (const u of dbUsers) {
+        for (const u of activeUsers) {
           const roleLower = (u.role || '').toLowerCase();
           if (roleLower === 'teamlead' || roleLower === 'team lead') {
             leads.push(u);
@@ -404,19 +396,6 @@ export const OrganizationService = {
               TEAM_LEADS.push(leadItem);
             }
           }
-        }
-
-        // Always guarantee HR Team Lead exists
-        if (!TEAM_LEADS.some(tl => tl.departmentName.toLowerCase() === 'hr')) {
-          TEAM_LEADS.push({
-            id: 'OKL013',
-            employeeId: 'OKL013',
-            name: 'soniya',
-            role: 'HR Team Lead',
-            departmentId: 'D003',
-            departmentName: 'HR',
-            email: 'soni@gmail.com',
-          });
         }
 
         if (nonLeads.length > 0) {

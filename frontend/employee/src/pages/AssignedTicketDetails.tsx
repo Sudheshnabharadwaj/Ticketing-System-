@@ -57,7 +57,7 @@ export const AssignedTicketDetails: React.FC = () => {
   const [ticket, setTicket] = useState<EmployeeTicket | null>(() => (id ? EmployeeService.getTicketById(id) || null : null));
   const [newComment, setNewComment] = useState('');
   const [commentAttachedFiles, setCommentAttachedFiles] = useState<AttachedFile[]>([]);
-  const [activeTab, setActiveTab] = useState<'conversation' | 'history' | 'attachments'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'attachments'>('conversation');
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus>('In Progress');
   const [statusNote, setStatusNote] = useState('');
@@ -108,8 +108,33 @@ export const AssignedTicketDetails: React.FC = () => {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleDownloadAttachment = async (fileName: string) => {
-    const cleanName = fileName.split(' (')[0] || fileName;
+  const getAttachmentRawName = (file: any): string => {
+    if (!file) return '';
+    if (typeof file === 'string') {
+      return file.includes(' (') ? file.split(' (')[0] : file;
+    }
+    return file.name || file.filename || file.id || '';
+  };
+
+  const getAttachmentDisplayName = (file: any): string => {
+    if (!file) return '';
+    if (typeof file === 'string') return file;
+    if (file.name) {
+      return file.size && file.size !== 'N/A' ? `${file.name} (${file.size})` : file.name;
+    }
+    return String(file);
+  };
+
+  const getAttachmentSize = (file: any): string => {
+    if (!file) return 'N/A';
+    if (typeof file === 'string') {
+      return file.includes('(') ? file.split('(')[1].replace(')', '') : 'N/A';
+    }
+    return file.size && file.size !== 'N/A' ? String(file.size) : 'N/A';
+  };
+
+  const handleDownloadAttachment = async (fileName: any) => {
+    const cleanName = getAttachmentRawName(fileName);
     const ticketId = ticket?.ticketNumber || ticket?.id;
     try {
       await ensureBackendSession();
@@ -135,8 +160,8 @@ export const AssignedTicketDetails: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleDeleteAttachment = async (fileName: string) => {
-    const rawName = fileName.includes(' (') ? fileName.split(' (')[0] : fileName;
+  const handleDeleteAttachment = async (fileName: any) => {
+    const rawName = getAttachmentRawName(fileName);
     const ticketId = (ticket as any)?.ticketNumber || (ticket as any)?.id || id;
     if (!ticketId) return;
     if (!canDeleteAttachment) {
@@ -151,9 +176,10 @@ export const AssignedTicketDetails: React.FC = () => {
       prev
         ? {
             ...prev,
-            attachments: (prev.attachments || []).filter(
-              (f) => !(f === fileName || f.startsWith(rawName) || f.includes(rawName))
-            ),
+            attachments: (prev.attachments || []).filter((f) => {
+              const fName = getAttachmentRawName(f);
+              return !(f === fileName || fName === rawName || fName.includes(rawName));
+            }),
           }
         : prev
     );
@@ -168,9 +194,9 @@ export const AssignedTicketDetails: React.FC = () => {
     }
   };
 
-  const handleViewAttachment = async (fileName: string) => {
-    const cleanName = fileName.split(' (')[0] || fileName;
-    const size = fileName.includes('(') ? fileName.split('(')[1].replace(')', '') : 'N/A';
+  const handleViewAttachment = async (fileName: any) => {
+    const cleanName = getAttachmentRawName(fileName);
+    const size = getAttachmentSize(fileName);
     await ensureBackendSession();
     const ticketId = ticket?.ticketNumber || ticket?.id;
     const viewUrl = withAccessToken(
@@ -810,8 +836,8 @@ export const AssignedTicketDetails: React.FC = () => {
           ) : ticket.attachments && ticket.attachments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {ticket.attachments.map((file, idx) => {
-                const cleanName = file.split(' (')[0] || file;
-                const size = file.includes('(') ? file.split('(')[1].replace(')', '') : 'N/A';
+                const cleanName = getAttachmentRawName(file);
+                const size = getAttachmentSize(file);
                 return (
                   <div
                     key={idx}
@@ -862,7 +888,7 @@ export const AssignedTicketDetails: React.FC = () => {
         </div>
       </div>
 
-      {/* 3 Main Sections: Conversation & Notes, Audit History, Attachments */}
+      {/* 2 Main Sections: Conversation & Notes, Attachments */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
         {/* Tab Headers */}
         <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
@@ -877,18 +903,6 @@ export const AssignedTicketDetails: React.FC = () => {
           >
             <MessageSquare className="w-4 h-4" />
             Conversation & Notes ({ticket.comments?.length || 0})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-[#0284C7] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            Audit History ({ticket.history?.length || 0})
           </button>
           <button
             type="button"
@@ -961,37 +975,7 @@ export const AssignedTicketDetails: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 2: Audit History */}
-        {activeTab === 'history' && (
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            {ticket.history && ticket.history.length > 0 ? (
-              ticket.history.map((item) => (
-                <div key={item.id} className="flex items-start gap-3 text-xs">
-                  <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center font-bold shrink-0 mt-0.5">
-                    {item.author.charAt(0)}
-                  </div>
-                  <div className="flex-1 bg-slate-50/80 border border-slate-200/70 rounded-xl p-3.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-slate-800">{item.author}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">{item.timestamp}</span>
-                    </div>
-                    <p className="text-slate-700 leading-relaxed">{item.text}</p>
-                    {item.attachment && (
-                      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-semibold text-[#0284C7]">
-                        <Paperclip className="w-3 h-3" />
-                        {item.attachment}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 italic text-center py-6">No activity logged yet.</p>
-            )}
-          </div>
-        )}
-
-        {/* Tab 3: Attachments */}
+        {/* Tab 2: Attachments */}
         {activeTab === 'attachments' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -1032,8 +1016,8 @@ export const AssignedTicketDetails: React.FC = () => {
             ) : ticket.attachments && ticket.attachments.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {ticket.attachments.map((file, idx) => {
-                  const cleanName = file.split(' (')[0] || file;
-                  const size = file.includes('(') ? file.split('(')[1].replace(')', '') : 'N/A';
+                  const cleanName = getAttachmentRawName(file);
+                  const size = getAttachmentSize(file);
                   return (
                     <div
                       key={idx}
