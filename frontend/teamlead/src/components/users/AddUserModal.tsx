@@ -23,9 +23,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
   const [employeeId, setEmployeeId] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [department, setDepartment] = useState('');
+  const [department, setDepartment] = useState('IT Support');
+  const [customDepartment, setCustomDepartment] = useState('');
   const [role] = useState<UserRole>('employee');
-  const [status, setStatus] = useState<UserStatus>('Active');
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -74,7 +74,14 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
     } else if (!validateEmail(email.trim())) {
       newErrors.email = 'Please enter a valid email address (e.g. user@company.com).';
     }
-    if (!department.trim()) newErrors.department = 'Department is required.';
+    const finalDept = department === 'Other' ? customDepartment.trim() : department.trim();
+    if (!finalDept) {
+      if (department === 'Other') {
+        newErrors.customDepartment = 'Custom department name is required.';
+      } else {
+        newErrors.department = 'Department is required.';
+      }
+    }
 
     if (phone && phone.trim().length > 0 && phone.trim().length !== 10) {
       newErrors.phone = 'Phone number must be exactly 10 digits.';
@@ -101,16 +108,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
 
     setIsSubmitting(true);
     try {
-      // Add user to Supabase with verification token and custom password
+      // Add user to backend & Supabase with custom password
       const inviteToken = `inv-${Math.random().toString(36).substring(2, 10)}`;
       const result: any = await addUser({
         id: employeeId.trim(),
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
-        department: department.trim(),
+        department: finalDept,
         role: 'employee',
-        status: 'Pending Invitation',
+        status: 'Active',
         invite_token: inviteToken,
         password: password.trim(),
       } as any);
@@ -130,7 +137,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
       setCreatedEmployee({
         name: name.trim(),
         email: email.trim(),
-        department: department.trim(),
+        department: finalDept,
         role: 'Employee',
         invitationLink: realInviteLink,
       });
@@ -157,7 +164,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
     setDepartment('');
     setPassword('');
     setConfirmPassword('');
-    setStatus('Active');
     setErrors({});
     setGlobalError('');
     setCreatedEmployee(null);
@@ -272,22 +278,46 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                   {errors.phone && <p className="text-[10px] text-rose-500 mt-1">{errors.phone}</p>}
                 </div>
 
-                {/* Department */}
+                {/* Department Dropdown */}
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     Department <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="IT Support, DevOps, Engineering..."
-                    className={`w-full px-3 py-2 text-xs bg-slate-50 border rounded-xl focus:outline-none focus:bg-white text-slate-800 ${
+                    className={`w-full px-3 py-2 text-xs bg-slate-50 border rounded-xl focus:outline-none focus:bg-white text-slate-800 font-medium ${
                       errors.department ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-sky-500'
                     }`}
-                  />
+                  >
+                    <option value="IT Support">IT Support</option>
+                    <option value="HR">HR</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Development">Development</option>
+                    <option value="QA Team">QA Team</option>
+                    <option value="Other">Other</option>
+                  </select>
                   {errors.department && <p className="text-[10px] text-rose-500 mt-1">{errors.department}</p>}
                 </div>
+
+                {/* Custom Department (when Other is selected) */}
+                {department === 'Other' && (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Custom Department <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={customDepartment}
+                      onChange={(e) => setCustomDepartment(e.target.value)}
+                      placeholder="e.g. Facilities, DevOps, Legal..."
+                      className={`w-full px-3 py-2 text-xs bg-slate-50 border rounded-xl focus:outline-none focus:bg-white text-slate-800 ${
+                        errors.customDepartment ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-sky-500'
+                      }`}
+                    />
+                    {errors.customDepartment && <p className="text-[10px] text-rose-500 mt-1">{errors.customDepartment}</p>}
+                  </div>
+                )}
 
                 {/* System Role (Fixed to Employee) */}
                 <div>
@@ -353,19 +383,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                     </button>
                   </div>
                   {errors.confirmPassword && <p className="text-[10px] text-rose-500 mt-1">{errors.confirmPassword}</p>}
-                </div>
-
-                {/* Status */}
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Initial Status</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as UserStatus)}
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white text-slate-800 font-medium"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
                 </div>
               </div>
 

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { User, UserRole, UserStatus } from '../types/user';
+import { supabase } from '../services/supabaseClient';
 import {
   apiRequest,
   apiRequestSafe,
@@ -299,7 +300,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const createdUser = mapUser(created);
       setUsers((prev) => [createdUser, ...prev.filter((u) => u.id !== createdUser.id)]);
       return { success: true, inviteToken: userData.invite_token };
-    } catch (err) {
+    } catch (err: any) {
+      console.warn('Backend /team/users failed, trying direct Supabase fallback:', err);
+      try {
+        const cleanRow = {
+          id: cleanId || `usr-${Date.now()}`,
+          employee_id: cleanId || undefined,
+          name: userData.name.trim(),
+          email: cleanEmail,
+          phone: userData.phone || '',
+          department: userData.department,
+          role: 'employee',
+          status: 'Active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const { data: supaUser, error: supaErr } = await supabase
+          .from('users')
+          .insert([cleanRow])
+          .select()
+          .single();
+        if (!supaErr && supaUser) {
+          const createdUser = mapUser(supaUser);
+          setUsers((prev) => [createdUser, ...prev.filter((u) => u.id !== createdUser.id)]);
+          return { success: true, inviteToken: userData.invite_token };
+        }
+      } catch (fallbackErr) {
+        console.warn('Supabase fallback user creation error:', fallbackErr);
+      }
       return {
         success: false,
         error: err instanceof Error ? err.message : 'Could not create the user.',

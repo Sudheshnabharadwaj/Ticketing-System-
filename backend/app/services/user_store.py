@@ -300,6 +300,9 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
                 emp_id = str(row.get("employee_id") or "").lower()
                 if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
                     return None
+                local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
+                if not row.get("avatar") and local_match.get("avatar"):
+                    row["avatar"] = local_match["avatar"]
                 return row
         except Exception as exc:
             print(f"[user_store] Supabase lookup error for {clean}: {exc}")
@@ -337,8 +340,14 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
             rows = res.data or []
             if rows and isinstance(rows[0], dict) and rows[0].get("id"):
                 row = dict(rows[0])
-                if str(row.get("id") or "").lower() in _DELETED_USERS_SET or str(row.get("email") or "").lower() in _DELETED_USERS_SET:
+                uid = str(row.get("id") or "").lower()
+                em = str(row.get("email") or "").lower()
+                emp_id = str(row.get("employee_id") or "").lower()
+                if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
                     return None
+                local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
+                if not row.get("avatar") and local_match.get("avatar"):
+                    row["avatar"] = local_match["avatar"]
                 return row
         except Exception:
             pass
