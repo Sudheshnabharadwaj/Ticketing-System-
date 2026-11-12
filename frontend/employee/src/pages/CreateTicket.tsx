@@ -44,6 +44,13 @@ export const CreateTicket: React.FC = () => {
   const [createdTicketId, setCreatedTicketId] = useState('');
   const [sentEmailLogs, setSentEmailLogs] = useState<SentEmailNotification[]>([]);
 
+  const activeDepartments = useMemo(
+    () => selectedDepartments.map((dept) =>
+      dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
+    ),
+    [selectedDepartments, customDepartment]
+  );
+
   useEffect(() => {
     OrganizationService.syncFromDatabase().then(() => {
       const depts = OrganizationService.getDepartments();
@@ -297,13 +304,6 @@ export const CreateTicket: React.FC = () => {
     </div>
   );
   }
-
-  const activeDepartments = useMemo(
-    () => selectedDepartments.map((dept) =>
-      dept === 'Other' ? (customDepartment.trim() || 'Other Department') : dept
-    ),
-    [selectedDepartments, customDepartment]
-  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">

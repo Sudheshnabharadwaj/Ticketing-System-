@@ -108,6 +108,17 @@ export const SLABreachedPage: React.FC = () => {
     }))
   ];
 
+  const formatOverdue = (dateStr?: string) => {
+    if (!dateStr) return 'Overdue';
+    const dueTime = new Date(dateStr).getTime();
+    if (isNaN(dueTime)) return dateStr;
+    const diffMs = Date.now() - dueTime;
+    const absDiff = Math.abs(diffMs);
+    const hours = Math.floor(absDiff / (1000 * 60 * 60));
+    const minutes = Math.floor((absDiff % (1000 * 60 * 60)) / (1000 * 60));
+    return `Overdue by ${hours}h ${minutes}m`;
+  };
+
   const columns: Column<Ticket>[] = [
     {
       header: 'Ticket ID',
@@ -128,7 +139,12 @@ export const SLABreachedPage: React.FC = () => {
     },
     {
       header: 'Overview Deadline',
-      cell: (row) => <span className="text-[12.5px] text-red-600 font-mono font-bold">{row.dueDate}</span>
+      cell: (row) => (
+        <div>
+          <span className="text-[12.5px] text-red-600 font-mono font-bold block">{row.dueDate || 'Passed Deadline'}</span>
+          <span className="text-[11px] text-red-500 font-semibold">{formatOverdue(row.dueDate)}</span>
+        </div>
+      )
     },
     {
       header: 'Status',

@@ -10,7 +10,7 @@ import { SearchBar } from '../../components/common/SearchBar';
 import { EmptyState } from '../../components/common/EmptyState';
 import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom';
 import { Ticket } from '../../types/ticket';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Inbox } from 'lucide-react';
 
 export const TeamTickets: React.FC = () => {
   const navigate = useNavigate();
@@ -294,18 +294,26 @@ export const TeamTickets: React.FC = () => {
 
       {/* Tickets Table & Pagination */}
       {filteredTickets.length === 0 ? (
-        <EmptyState
-          title="No matching tickets found"
-          description="Try adjusting your search criteria or resetting filters."
-          action={
-            <button
-              onClick={handleResetFilters}
-              className="px-4 py-2 bg-[#0284C7] text-white font-medium text-xs rounded-lg hover:bg-[#0369a1] transition-colors cursor-pointer"
-            >
-              Reset Filters
-            </button>
-          }
-        />
+        tickets.length === 0 ? (
+          <EmptyState
+            icon={<Inbox className="w-10 h-10 text-[#0284C7]" />}
+            title="No tickets assigned to your team"
+            description="Your team queue is completely clear. Newly created or routed tickets will appear here automatically."
+          />
+        ) : (
+          <EmptyState
+            title="No matching tickets found"
+            description="Try adjusting your search criteria or resetting filters."
+            action={
+              <button
+                onClick={handleResetFilters}
+                className="px-4 py-2 bg-[#0284C7] text-white font-medium text-xs rounded-lg hover:bg-[#0369a1] transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            }
+          />
+        )
       ) : (
         <div className="space-y-4">
           <TicketTable

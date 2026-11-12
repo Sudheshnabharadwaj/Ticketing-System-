@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-11-12T13:53:34.580Z",
+  "target": "https://sudheshnabharadwaj.github.io/Ticketing-System-/",
+  "summary": {
+    "totalTests": 19,
+    "passed": 19,
+    "failed": 0,
+    "bugsFound": 0
+  },
+  "portals": {
+    "admin": {
+      "passed": [
+        "Admin Login & Dashboard Route",
+        "Dashboard Summary KPI Cards Rendered",
+        "TopNav Notifications Dropdown Open/Close",
+        "Notifications \"Mark all as read\" Action",
+        "TopNav Profile Dropdown Menu",
+        "User Management Directory Loaded",
+        "Dummy User (admin@platform.local) Cleanly Removed from User Management",
+        "Add User Page Form Loaded",
+        "Add User Custom Department Input on \"Other\" Selection",
+        "Admin Profile Page Layout Matching Reference Design (2-Card Split)"
+      ],
+      "failed": [],
+      "bugs": []
+    },
+    "teamlead": {
+      "passed": [
+        "Team Lead Login & Dashboard Route",
+        "Team Tickets Directory Loaded",
+        "Team Lead Profile Layout Matching Reference Design (2-Card Split)"
+      ],
+      "failed": [],
+      "bugs": []
+    },
+    "employee": {
+      "passed": [
+        "Employee Login & Dashboard Route",
+        "Employee My Tickets Directory Loaded",
+        "Employee Assigned Tickets Directory Loaded",
+        "Employee Knowledge Base Page Loaded",
+        "Employee Notifications Page Loaded",
+        "Employee Profile Page Loaded with Correct 2-Card Structure"
+      ],
+      "failed": [],
+      "bugs": []
+    }
+  },
+  "discoveredBugs": []
+}

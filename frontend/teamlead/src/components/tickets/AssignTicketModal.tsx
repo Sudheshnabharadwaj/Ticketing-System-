@@ -17,8 +17,6 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
   onClose,
   onSuccessToast,
 }) => {
-  if (!isOpen || !ticket) return null;
-
   const { user, users } = useAuth();
   const { assignAgent, changePriority } = useTickets();
 
@@ -43,7 +41,7 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
         isSelf: false,
       });
     }
-    if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+    if (ticket && ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
       const exists = list.some((u) => u.name.toLowerCase().trim() === ticket.assignedAgent!.toLowerCase().trim());
       if (!exists) {
         list.push({
@@ -55,10 +53,10 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
       }
     }
     return list;
-  }, [user, users, ticket.assignedAgent, ticket.assignedAgentId, ticket.department]);
+  }, [user, users, ticket?.assignedAgent, ticket?.assignedAgentId, ticket?.department]);
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(() => {
-    if (ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+    if (ticket && ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
       const match = candidateAssignees.find(
         (c) => (ticket.assignedAgentId && c.id === ticket.assignedAgentId) ||
                c.name.toLowerCase() === ticket.assignedAgent!.toLowerCase()
@@ -67,7 +65,7 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
     }
     return candidateAssignees[0]?.id || '';
   });
-  const [priority, setPriority] = useState<TicketPriority>(ticket.priority || 'Medium');
+  const [priority, setPriority] = useState<TicketPriority>(ticket?.priority || 'Medium');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -86,6 +84,8 @@ export const AssignTicketModal: React.FC<AssignTicketModalProps> = ({
       setError('');
     }
   }, [ticket, isOpen, candidateAssignees]);
+
+  if (!isOpen || !ticket) return null;
 
   const isReassign = ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned';
 

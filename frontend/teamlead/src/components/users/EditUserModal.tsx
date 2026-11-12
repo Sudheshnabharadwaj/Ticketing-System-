@@ -10,28 +10,30 @@ interface EditUserModalProps {
 }
 
 export const EditUserModal: React.FC<EditUserModalProps> = ({ userToEdit, onClose, onSuccess }) => {
-  if (!userToEdit) return null;
-
   const { updateUser } = useAuth();
 
-  const [name, setName] = useState(userToEdit.name);
-  const [email, setEmail] = useState(userToEdit.email);
-  const [phone, setPhone] = useState(userToEdit.phone || '');
-  const [department, setDepartment] = useState(userToEdit.department || '');
-  const [role, setRole] = useState<UserRole>(userToEdit.role);
-  const [status, setStatus] = useState<UserStatus>(userToEdit.status);
+  const [name, setName] = useState(userToEdit?.name || '');
+  const [email, setEmail] = useState(userToEdit?.email || '');
+  const [phone, setPhone] = useState(userToEdit?.phone || '');
+  const [department, setDepartment] = useState(userToEdit?.department || '');
+  const [role, setRole] = useState<UserRole>(userToEdit?.role || 'employee');
+  const [status, setStatus] = useState<UserStatus>(userToEdit?.status || 'Active');
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [globalError, setGlobalError] = useState('');
 
   useEffect(() => {
-    setName(userToEdit.name);
-    setEmail(userToEdit.email);
-    setPhone(userToEdit.phone || '');
-    setDepartment(userToEdit.department || '');
-    setRole(userToEdit.role);
-    setStatus(userToEdit.status);
+    if (userToEdit) {
+      setName(userToEdit.name);
+      setEmail(userToEdit.email);
+      setPhone(userToEdit.phone || '');
+      setDepartment(userToEdit.department || '');
+      setRole(userToEdit.role);
+      setStatus(userToEdit.status);
+    }
   }, [userToEdit]);
+
+  if (!userToEdit) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

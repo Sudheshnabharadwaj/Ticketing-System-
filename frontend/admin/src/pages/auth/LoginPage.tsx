@@ -9,7 +9,17 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // If already authenticated, redirect directly to user's dashboard
+  const stateData = location.state as { registeredEmail?: string; registrationSuccess?: string } | null;
+  const [email, setEmail] = useState(stateData?.registeredEmail || '');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; auth?: string }>({});
+  const [successBanner, setSuccessBanner] = useState<string | null>(
+    stateData?.registrationSuccess || null
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // If already authenticated, redirect directly to user's dashboard (after all hooks)
   const currentUser = getCurrentSessionUser();
   if (currentUser) {
     if (currentUser.role === 'teamlead') {
@@ -20,16 +30,6 @@ export const LoginPage: React.FC = () => {
     }
     return <Navigate to="/admin/dashboard" replace />;
   }
-
-  const stateData = location.state as { registeredEmail?: string; registrationSuccess?: string } | null;
-  const [email, setEmail] = useState(stateData?.registeredEmail || '');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; auth?: string }>({});
-  const [successBanner, setSuccessBanner] = useState<string | null>(
-    stateData?.registrationSuccess || null
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleQuickFill = (roleEmail: string) => {
     setEmail(roleEmail);

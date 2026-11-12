@@ -35,14 +35,30 @@ interface TicketDetailsModalProps {
   onWorkOnTicket?: (ticket: Ticket) => void;
 }
 
+const EMPTY_FALLBACK_TICKET: Ticket = {
+  id: '',
+  ticketNumber: '',
+  subject: '',
+  description: '',
+  employee: '',
+  employeeId: '',
+  employeeEmail: '',
+  department: '',
+  category: 'Other',
+  priority: 'Medium',
+  status: 'Open',
+  assignedAgent: 'Unassigned',
+  slaStatus: 'Within SLA',
+  slaRemaining: '',
+  createdAt: '',
+};
+
 export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
   ticket,
   onClose,
   isReadOnly = true,
   onWorkOnTicket,
 }) => {
-  if (!ticket) return null;
-
   const { role, user, users } = useAuth();
   const [isReadOnlyMode, setIsReadOnlyMode] = useState<boolean>(isReadOnly);
   const {
@@ -55,8 +71,12 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     setSelectedTicket,
   } = useTickets();
 
-  const [currentTicket, setCurrentTicket] = useState<Ticket>(ticket);
+  const [currentTicket, setCurrentTicket] = useState<Ticket>(ticket || EMPTY_FALLBACK_TICKET);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ticket) setCurrentTicket(ticket);
+  }, [ticket]);
 
   useEffect(() => {
     let active = true;
@@ -98,7 +118,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     viewUrl?: string;
     downloadUrl?: string;
   } | null>(null);
-  const [modalAttachments, setModalAttachments] = useState<any[]>(ticket.attachments || []);
+  const [modalAttachments, setModalAttachments] = useState<any[]>(ticket?.attachments || []);
 
   const loadLiveAttachments = async (tid: string) => {
     try {
@@ -113,7 +133,7 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
   useEffect(() => {
     let active = true;
-    if (currentTicket.id) {
+    if (currentTicket?.id) {
       ticketService.getAttachmentsDetailed(currentTicket.id).then((res) => {
         if (active && res.attachments && res.attachments.length > 0) {
           setModalAttachments(res.attachments);
@@ -123,7 +143,9 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     return () => {
       active = false;
     };
-  }, [currentTicket.id]);
+  }, [currentTicket?.id]);
+
+  if (!ticket) return null;
 
   const handleViewAttachment = (att: any) => {
     const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;

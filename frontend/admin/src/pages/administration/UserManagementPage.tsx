@@ -54,7 +54,7 @@ export const UserManagementPage: React.FC = () => {
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const loadData = async (force = false) => {
+  const loadData = async (force = false, showToast = false) => {
     if (force) {
       setIsRefreshing(true);
       AdminApiService.invalidateCache();
@@ -65,7 +65,7 @@ export const UserManagementPage: React.FC = () => {
       const userData = await AdminApiService.getUsers(force);
       setUsers(userData);
       setFilteredUsers(userData);
-      if (force) {
+      if (showToast) {
         setToastMessage({ text: `Refreshed ${userData.length} users from database.`, type: 'success' });
       }
     } catch (e) {
@@ -77,9 +77,9 @@ export const UserManagementPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(true, false);
     const handleUpdate = () => {
-      loadData(true);
+      loadData(true, false);
     };
     window.addEventListener('ticket-updated', handleUpdate);
     window.addEventListener('user-updated', handleUpdate);
@@ -360,7 +360,7 @@ export const UserManagementPage: React.FC = () => {
           <Button
             variant="outline"
             size="md"
-            onClick={() => loadData(true)}
+            onClick={() => loadData(true, true)}
             disabled={isRefreshing}
             icon={<RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
             className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold px-3 py-2 rounded-xl shadow-xs cursor-pointer"

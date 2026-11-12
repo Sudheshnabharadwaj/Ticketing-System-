@@ -75,10 +75,10 @@ export const PasswordStrengthValidator: React.FC<PasswordStrengthValidatorProps>
   };
 
   return (
-    <div className="space-y-2 mt-2 font-sans">
+    <div className="space-y-2 mt-2 font-sans overflow-x-hidden">
       {/* Strength Bar & Badge */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex-1 flex gap-1 h-1.5 rounded-full overflow-hidden bg-slate-100">
+      <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex-1 min-w-[140px] flex gap-1 h-1.5 rounded-full overflow-hidden bg-slate-100">
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -87,7 +87,7 @@ export const PasswordStrengthValidator: React.FC<PasswordStrengthValidatorProps>
           ))}
         </div>
         <span
-          className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider flex items-center gap-1 ${getStrengthBadgeColor()}`}
+          className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider flex items-center gap-1 shrink-0 ${getStrengthBadgeColor()}`}
         >
           {result.isValid ? (
             <ShieldCheck className="w-3 h-3 text-emerald-600 inline" />
@@ -100,7 +100,7 @@ export const PasswordStrengthValidator: React.FC<PasswordStrengthValidatorProps>
 
       {/* Criteria Checklist */}
       {showRequirements && (
-        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1 text-xs">
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1.5 text-xs overflow-x-hidden">
           <div className="font-bold text-slate-700 mb-1">Password Requirements:</div>
           <RequirementItem label="Minimum 8 characters" met={result.hasMinLength} />
           <RequirementItem label="At least 1 uppercase letter (A-Z)" met={result.hasUppercase} />
@@ -114,16 +114,16 @@ export const PasswordStrengthValidator: React.FC<PasswordStrengthValidatorProps>
 };
 
 const RequirementItem: React.FC<{ label: string; met: boolean }> = ({ label, met }) => (
-  <div className={`flex items-center gap-2 text-[11.5px] ${met ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+  <div className={`flex items-start gap-2 text-[11.5px] break-words overflow-hidden ${met ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
     {met ? (
-      <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+      <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
         <Check className="w-3 h-3 stroke-[3]" />
       </div>
     ) : (
-      <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center shrink-0">
+      <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center shrink-0 mt-0.5">
         <X className="w-2.5 h-2.5 stroke-[3]" />
       </div>
     )}
-    <span>{label}</span>
+    <span className="break-words leading-tight flex-1">{label}</span>
   </div>
 );

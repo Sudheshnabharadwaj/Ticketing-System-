@@ -113,7 +113,9 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
       if (cancelled) return;
       if (result.error || !Array.isArray(result.data)) {
         // Keep the last known list, but never display a fabricated badge.
-        setUnreadCount(0);
+        React.startTransition(() => {
+          setUnreadCount(0);
+        });
         return;
       }
       const mapped: NotificationItem[] = result.data.map((n: any) => ({
@@ -132,15 +134,17 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
         type: n.type || 'info',
         isRead: !!n.read,
       }));
-      setNotifications(mapped);
 
       const countResult = await apiRequestSafe<{ count: number }>('/notifications/unread-count');
       if (cancelled) return;
-      setUnreadCount(
-        countResult.data && typeof countResult.data.count === 'number'
-          ? countResult.data.count
-          : mapped.filter((n) => !n.isRead).length
-      );
+      React.startTransition(() => {
+        setNotifications(mapped);
+        setUnreadCount(
+          countResult.data && typeof countResult.data.count === 'number'
+            ? countResult.data.count
+            : mapped.filter((n) => !n.isRead).length
+        );
+      });
     };
 
     fetchAdminNotifications();
@@ -158,16 +162,20 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
 
   const handleMarkAllAsRead = async () => {
     await apiRequestSafe('/notifications/read-all', { method: 'POST' });
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
+    React.startTransition(() => {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    });
     if (onMarkAllAsRead) onMarkAllAsRead();
   };
 
   const handleNotificationClick = async (n: NotificationItem) => {
     if (!n.isRead) {
       await apiRequestSafe(`/notifications/${encodeURIComponent(n.id)}/read`, { method: 'POST' });
-      setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
-      setUnreadCount((count) => Math.max(0, count - 1));
+      React.startTransition(() => {
+        setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+        setUnreadCount((count) => Math.max(0, count - 1));
+      });
     }
     setShowNotifications(false);
     if (n.ticketId) {

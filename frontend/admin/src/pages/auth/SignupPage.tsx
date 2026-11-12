@@ -99,18 +99,6 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // If already authenticated and explicit redirect flag is provided, redirect to dashboard
-  const currentUser = getCurrentSessionUser();
-  if (currentUser && location.search.includes('redirect_authenticated=true')) {
-    if (currentUser.role === 'teamlead') {
-      return <Navigate to="/teamlead/dashboard" replace />;
-    }
-    if (currentUser.role === 'employee') {
-      return <Navigate to="/employee/dashboard" replace />;
-    }
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
   // Public self-service signup is restricted to Admin. Team Lead & Employee accounts are provisioned by Administrator.
   const determineInitialPortal = (): UserRoleType => {
     const params = new URLSearchParams(location.search);
@@ -401,6 +389,18 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
       }, 700);
     }, 400);
   };
+
+  // If already authenticated and explicit redirect flag is provided, redirect to dashboard (after all hooks)
+  const currentUser = getCurrentSessionUser();
+  if (currentUser && location.search.includes('redirect_authenticated=true')) {
+    if (currentUser.role === 'teamlead') {
+      return <Navigate to="/teamlead/dashboard" replace />;
+    }
+    if (currentUser.role === 'employee') {
+      return <Navigate to="/employee/dashboard" replace />;
+    }
+    return <Navigate to="/admin/dashboard" replace />;
+  }
 
   const currentConfig = PORTAL_CONFIGS[activePortal];
 
