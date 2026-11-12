@@ -1147,7 +1147,14 @@ def notification_matches_scope(
         return True
     if is_admin(payload):
         return True
+    # Explicit user-directed notifications are always delivered to that user
+    raw_target = str(notification.get("for_role") or notification.get("user_id") or "").strip().lower()
+    if raw_target.startswith("user:"):
+        return True
     if visible_ticket_ids is not None:
         return ticket_id in visible_ticket_ids
     # Fallback to cached scoped_tickets instead of WAN N+1 calls
-    return ticket_id in {str(t.get("id")) for t in scoped_tickets(payload, user) if t.get("id")}
+    sc = scoped_tickets(payload, user)
+    all_tids = {str(t.get("id")) for t in sc if t.get("id")}
+    all_tids |= {str(t.get("ticket_number")) for t in sc if t.get("ticket_number")}
+    return ticket_id in all_tids

@@ -135,14 +135,17 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ticketService.invalidateCache();
         void refresh(true);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'portal_notifications' }, () => {
+        void loadNotifications();
+      })
       .subscribe();
 
-    // 2. Controlled Polling Fallback (15 seconds, non-destructive background sync)
+    // 2. Controlled Polling Fallback (8 seconds, non-destructive background sync)
     const pollInterval = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         void refresh(true);
       }
-    }, 15000);
+    }, 8000);
 
     // 3. Local/Cross-tab update listener
     const handleTicketUpdated = () => {

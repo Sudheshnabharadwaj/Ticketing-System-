@@ -33,15 +33,39 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const updateLocalState = async () => {
       setProfile(EmployeeService.getProfile());
       const notifs = await EmployeeService.fetchNotifications();
-      setNotifications(notifs);
+      if (!cancelled) {
+        setNotifications(notifs);
+      }
     };
     updateLocalState();
+    const interval = setInterval(updateLocalState, 8000);
+    const onTicketUpdated = () => updateLocalState();
     window.addEventListener('storage', updateLocalState);
-    return () => window.removeEventListener('storage', updateLocalState);
+    window.addEventListener('ticket-updated', onTicketUpdated);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener('storage', updateLocalState);
+      window.removeEventListener('ticket-updated', onTicketUpdated);
+    };
   }, []);
+
+  const handleNotificationClick = async (n: EmployeeNotificationItem) => {
+    if (!n.isRead) {
+      await EmployeeService.markNotificationAsRead(n.id);
+      setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item)));
+    }
+    setShowNotifications(false);
+    if (n.ticketId) {
+      navigate(`/employee/assigned-tickets/${encodeURIComponent(n.ticketId)}`);
+    } else {
+      navigate('/notifications');
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -114,10 +138,7 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
                 {notifications.map((n) => (
                   <div
                     key={n.id}
-                    onClick={() => {
-                      setShowNotifications(false);
-                      navigate('/notifications');
-                    }}
+                    onClick={() => handleNotificationClick(n)}
                     className={`p-3 hover:bg-slate-50 transition-colors cursor-pointer ${
                       !n.isRead ? 'bg-sky-50/40' : ''
                     }`}

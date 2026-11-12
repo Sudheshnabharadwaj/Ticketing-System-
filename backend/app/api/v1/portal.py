@@ -316,7 +316,9 @@ def _visible_notifications(payload: dict[str, Any], user: dict[str, Any]) -> lis
     rows = _notification_rows()
     if is_admin(payload):
         return [n for n in rows if notification_visible(payload, user, n)]
-    visible_tids = {str(t.get("id")) for t in scoped_tickets(payload, user) if t.get("id")}
+    sc = scoped_tickets(payload, user)
+    visible_tids = {str(t.get("id")) for t in sc if t.get("id")}
+    visible_tids |= {str(t.get("ticket_number")) for t in sc if t.get("ticket_number")}
     return [
         n
         for n in rows
@@ -364,16 +366,20 @@ def mark_all_read(
 ) -> dict[str, Any]:
     payload, user = context
     ids = [str(n.get("id")) for n in _visible_notifications(payload, user) if not n.get("read")]
+    if not ids:
+        return {"success": True, "updated": 0}
     sb = get_supabase_admin_client()
-    updated = 0
-    for notif_id in ids:
-        try:
-            sb.table("portal_notifications").update({"read": True}).eq("id", notif_id).execute()
-            updated += 1
-        except Exception as exc:
-            print(f"[notifications] could not mark {notif_id} read: {exc}")
+    try:
+        sb.table("portal_notifications").update({"read": True}).in_("id", ids).execute()
+    except Exception as exc:
+        print(f"[notifications] batch mark read fallback: {exc}")
+        for notif_id in ids:
+            try:
+                sb.table("portal_notifications").update({"read": True}).eq("id", notif_id).execute()
+            except Exception:
+                pass
     invalidate_notifications_cache()
-    return {"success": True, "updated": updated}
+    return {"success": True, "updated": len(ids)}
 
 
 class NotificationCreate(BaseModel):

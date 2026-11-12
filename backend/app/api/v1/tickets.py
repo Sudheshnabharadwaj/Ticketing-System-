@@ -1100,31 +1100,58 @@ def _notify_ticket_change(
     user: dict[str, Any],
     changed: str,
 ) -> None:
-    """Notify the requester, assignee and department queue about a change."""
+    """Notify the requester, assignee, tagged members, department queue and admin about a change."""
     actor = _actor_name(user)
+    notifs: list[dict[str, Any]] = []
+    cur_uids = {
+        str(user.get("id") or "").strip().lower(),
+        str(user.get("employee_id") or "").strip().lower(),
+        str(user.get("email") or "").strip().lower(),
+    }
+
     recipients: set[str] = set()
-    if ticket.get("employee_id"):
-        recipients.add(f"user:{ticket['employee_id']}")
-    if ticket.get("assigned_agent_id"):
-        recipients.add(f"user:{ticket['assigned_agent_id']}")
-    for target in recipients:
-        if target == f"user:{user.get('id')}":
-            continue
-        _notify(
-            title=f"Ticket Updated: {ticket_id}",
-            message=f"{actor} updated {changed or 'the ticket'} on \"{ticket.get('subject')}\".",
-            for_role=target,
-            ticket_id=ticket_id,
-            kind="info",
-        )
-    if ticket.get("department"):
-        _notify(
-            title=f"Ticket Updated: {ticket_id}",
-            message=f"{actor} updated {changed or 'the ticket'} (status: {ticket.get('status')}).",
-            for_role=f"dept:{ticket['department']}",
-            ticket_id=ticket_id,
-            kind="info",
-        )
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or "").strip()
+    if creator_id and creator_id.lower() not in cur_uids:
+        recipients.add(creator_id)
+    agent_id = str(ticket.get("assigned_agent_id") or "").strip()
+    if agent_id and agent_id.lower() not in cur_uids:
+        recipients.add(agent_id)
+    for tl_id in (ticket.get("team_lead_ids") or []):
+        if tl_id and str(tl_id).strip().lower() not in cur_uids:
+            recipients.add(str(tl_id).strip())
+    for emp_id in (ticket.get("tagged_employee_ids") or []):
+        if emp_id and str(emp_id).strip().lower() not in cur_uids:
+            recipients.add(str(emp_id).strip())
+
+    for target_uid in recipients:
+        notifs.append({
+            "title": f"Ticket Updated: {ticket_id}",
+            "message": f"{actor} updated {changed or 'the ticket'} on \"{ticket.get('subject')}\" (status: {ticket.get('status')}).",
+            "for_role": f"user:{target_uid}",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    dept = ticket.get("department")
+    if dept:
+        notifs.append({
+            "title": f"Ticket Updated: {ticket_id}",
+            "message": f"{actor} updated {changed or 'the ticket'} on \"{ticket.get('subject')}\" (status: {ticket.get('status')}).",
+            "for_role": f"dept:{dept}",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    if not is_admin(payload):
+        notifs.append({
+            "title": f"Ticket Updated: {ticket_id}",
+            "message": f"{actor} updated {changed or 'the ticket'} on \"{ticket.get('subject')}\" (status: {ticket.get('status')}).",
+            "for_role": "admin",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    _notify_batch(notifs)
 
 
 @router.delete("/{ticket_id}", summary="Delete a ticket")
@@ -1253,13 +1280,57 @@ def assign_ticket(
     if body.priority and body.priority.strip().lower() != str(ticket.get("priority") or "").lower():
         _log_activity(ticket_id, actor, f"Priority changed to {body.priority.strip()}", user_id=str(user.get("id") or ""), ticket=ticket)
         _notify_ticket_change(ticket_id, updated_row, payload, user, "priority")
-    _notify(
-        title=f"Ticket Assigned: {ticket_id}",
-        message=f"{actor} assigned \"{ticket.get('subject')}\" to {agent_name}.",
-        for_role=f"user:{agent_id}" if agent_id else f"dept:{ticket.get('department') or 'all'}",
-        ticket_id=ticket_id,
-        kind="warning",
-    )
+
+    assign_notifs: list[dict[str, Any]] = []
+    cur_uids = {
+        str(user.get("id") or "").strip().lower(),
+        str(user.get("employee_id") or "").strip().lower(),
+        str(user.get("email") or "").strip().lower(),
+    }
+
+    # 1. Notify the assigned agent
+    if agent_id and str(agent_id).lower() not in cur_uids:
+        assign_notifs.append({
+            "title": f"Ticket Assigned: {ticket_id}",
+            "message": f"You were assigned \"{ticket.get('subject')}\" by {actor}.",
+            "for_role": f"user:{agent_id}",
+            "ticket_id": ticket_id,
+            "kind": "warning",
+        })
+
+    # 2. Notify the ticket creator
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or "").strip()
+    if creator_id and creator_id.lower() not in cur_uids and creator_id.lower() != str(agent_id or "").lower():
+        assign_notifs.append({
+            "title": f"Ticket Assigned: {ticket_id}",
+            "message": f"Your ticket \"{ticket.get('subject')}\" was assigned to {agent_name}.",
+            "for_role": f"user:{creator_id}",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    # 3. Notify department
+    dept = ticket.get("department")
+    if dept:
+        assign_notifs.append({
+            "title": f"Ticket Assigned: {ticket_id}",
+            "message": f"{actor} assigned \"{ticket.get('subject')}\" to {agent_name}.",
+            "for_role": f"dept:{dept}",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    # 4. Notify admin
+    if not is_admin(payload):
+        assign_notifs.append({
+            "title": f"Ticket Assigned: {ticket_id}",
+            "message": f"{actor} assigned \"{ticket.get('subject')}\" to {agent_name}.",
+            "for_role": "admin",
+            "ticket_id": ticket_id,
+            "kind": "info",
+        })
+
+    _notify_batch(assign_notifs)
     if body.note:
         _log_activity(ticket_id, actor, body.note, user_id=str(user.get("id") or ""), ticket=ticket)
     ret = serialize_ticket(updated_row, payload=payload, user=user)
@@ -1336,27 +1407,38 @@ def escalate_ticket(
     invalidate_tickets_cache()
     actor = _actor_name(user)
     _log_activity(ticket_id, actor, f"Escalated ticket: {body.reason}", user_id=str(user.get("id") or ""), ticket=ticket)
-    _notify(
-        title=f"Ticket Escalated: {ticket_id}",
-        message=f"{actor} escalated \"{ticket.get('subject')}\": {body.reason}",
-        for_role="teamlead",
-        ticket_id=ticket_id,
-        kind="error",
-    )
-    _notify(
-        title=f"Ticket Escalated: {ticket_id}",
-        message=f"Your ticket \"{ticket.get('subject')}\" was escalated.",
-        for_role=f"user:{ticket.get('employee_id')}" if ticket.get("employee_id") else "employee",
-        ticket_id=ticket_id,
-        kind="warning",
-    )
-    _notify(
-        title=f"Ticket Escalated: {ticket_id}",
-        message=f"{actor} escalated \"{ticket.get('subject')}\": {body.reason}",
-        for_role="admin",
-        ticket_id=ticket_id,
-        kind="error",
-    )
+    esc_notifs: list[dict[str, Any]] = [
+        {
+            "title": f"Ticket Escalated: {ticket_id}",
+            "message": f"{actor} escalated \"{ticket.get('subject')}\": {body.reason}",
+            "for_role": "teamlead",
+            "ticket_id": ticket_id,
+            "kind": "error",
+        },
+        {
+            "title": f"Ticket Escalated: {ticket_id}",
+            "message": f"Your ticket \"{ticket.get('subject')}\" was escalated.",
+            "for_role": f"user:{ticket.get('employee_id')}" if ticket.get("employee_id") else "employee",
+            "ticket_id": ticket_id,
+            "kind": "warning",
+        },
+        {
+            "title": f"Ticket Escalated: {ticket_id}",
+            "message": f"{actor} escalated \"{ticket.get('subject')}\": {body.reason}",
+            "for_role": "admin",
+            "ticket_id": ticket_id,
+            "kind": "error",
+        },
+    ]
+    if ticket.get("department"):
+        esc_notifs.append({
+            "title": f"Ticket Escalated: {ticket_id}",
+            "message": f"{actor} escalated \"{ticket.get('subject')}\": {body.reason}",
+            "for_role": f"dept:{ticket['department']}",
+            "ticket_id": ticket_id,
+            "kind": "error",
+        })
+    _notify_batch(esc_notifs)
     return serialize_ticket({**updated_row, "escalation_reason": body.reason}, payload=payload, user=user)
 
 
@@ -1379,13 +1461,40 @@ def resolve_ticket(
     invalidate_tickets_cache()
     actor = _actor_name(user)
     _log_activity(ticket_id, actor, f"Marked ticket as Resolved. Resolution: {summary}", user_id=str(user.get("id") or ""), ticket=ticket)
-    _notify(
-        title=f"Ticket Resolved: {ticket_id}",
-        message=f"Your ticket \"{ticket.get('subject')}\" was resolved by {actor}.",
-        for_role=f"user:{ticket.get('employee_id')}" if ticket.get("employee_id") else "employee",
-        ticket_id=ticket_id,
-        kind="success",
-    )
+
+    resolve_notifs: list[dict[str, Any]] = []
+    cur_uids = {
+        str(user.get("id") or "").strip().lower(),
+        str(user.get("employee_id") or "").strip().lower(),
+        str(user.get("email") or "").strip().lower(),
+    }
+    creator_id = str(ticket.get("employee_id") or ticket.get("requester_id") or "").strip()
+    if creator_id and creator_id.lower() not in cur_uids:
+        resolve_notifs.append({
+            "title": f"Ticket Resolved: {ticket_id}",
+            "message": f"Your ticket \"{ticket.get('subject')}\" was resolved by {actor}.",
+            "for_role": f"user:{creator_id}",
+            "ticket_id": ticket_id,
+            "kind": "success",
+        })
+    agent_id = str(ticket.get("assigned_agent_id") or "").strip()
+    if agent_id and agent_id.lower() not in cur_uids and agent_id.lower() != creator_id.lower():
+        resolve_notifs.append({
+            "title": f"Ticket Resolved: {ticket_id}",
+            "message": f"Ticket \"{ticket.get('subject')}\" was resolved by {actor}.",
+            "for_role": f"user:{agent_id}",
+            "ticket_id": ticket_id,
+            "kind": "success",
+        })
+    if not is_admin(payload):
+        resolve_notifs.append({
+            "title": f"Ticket Resolved: {ticket_id}",
+            "message": f"Ticket \"{ticket.get('subject')}\" was resolved by {actor}.",
+            "for_role": "admin",
+            "ticket_id": ticket_id,
+            "kind": "success",
+        })
+    _notify_batch(resolve_notifs)
     return serialize_ticket(updated_row, payload=payload, user=user)
 
 

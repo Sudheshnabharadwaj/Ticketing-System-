@@ -32,6 +32,16 @@ export const Notifications: React.FC = () => {
     setNotifications(updated);
   };
 
+  const handleItemClick = async (item: EmployeeNotificationItem) => {
+    if (!item.isRead) {
+      await EmployeeService.markNotificationAsRead(item.id);
+      setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)));
+    }
+    if (item.ticketId) {
+      navigate(`/employee/assigned-tickets/${item.ticketId}`);
+    }
+  };
+
   const getCategoryIcon = (category: EmployeeNotificationItem['category']) => {
     switch (category) {
       case 'New ticket assigned':
@@ -116,7 +126,7 @@ export const Notifications: React.FC = () => {
           notifications.map((item) => (
             <div
               key={item.id}
-              onClick={() => navigate(`/employee/assigned-tickets/${item.ticketId}`)}
+              onClick={() => handleItemClick(item)}
               className={`p-5 transition-colors cursor-pointer hover:bg-slate-50 flex items-start justify-between gap-4 ${
                 !item.isRead ? 'bg-sky-50/30' : ''
               }`}

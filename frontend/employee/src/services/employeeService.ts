@@ -608,6 +608,17 @@ export const EmployeeService = {
     return notificationsCache;
   },
 
+  async markNotificationAsRead(id: string): Promise<boolean> {
+    try {
+      await apiRequestSafe(`/notifications/${encodeURIComponent(id)}/read`, jsonInit('POST'));
+      notificationsCache = notificationsCache.map((n) => (n.id === id ? { ...n, isRead: true } : n));
+      return true;
+    } catch (e) {
+      console.warn('Error marking notification read:', e);
+      return false;
+    }
+  },
+
   getProfile(): EmployeeProfile {
     const user = getEmployeeSessionUser();
     return {
