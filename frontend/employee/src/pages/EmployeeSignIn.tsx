@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Input';
 
 import { loginBackend } from '../services/backendAuth';
 import { EmployeeService } from '../services/employeeService';
+import kivoLogo from '../assets/kivo-logo.png';
 
 export const EmployeeSignIn: React.FC = () => {
   const navigate = useNavigate();
@@ -103,14 +104,14 @@ export const EmployeeSignIn: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-        <div className="w-12 h-12 rounded-xl bg-[#0284C7] flex items-center justify-center text-white mx-auto shadow-sm">
-          <Ticket className="w-7 h-7" />
+        <div className="h-14 w-28 rounded-xl bg-white p-1.5 flex items-center justify-center mx-auto shadow-sm border border-slate-200 overflow-hidden">
+          <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
         </div>
         <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Employee Portal Sign In
+          KIVO
         </h2>
         <p className="text-xs text-slate-500">
-          Enter your employee credentials to access your support dashboard.
+          Employee Portal Sign In
         </p>
       </div>
 

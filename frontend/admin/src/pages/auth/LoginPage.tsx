@@ -4,6 +4,7 @@ import { Ticket, Mail, Lock, ArrowRight, ShieldCheck, CheckCircle2, Eye, EyeOff 
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { loginUser, getCurrentSessionUser } from '../../services/unifiedAuth';
+import kivoLogo from '../../assets/kivo-logo.png';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -85,16 +86,16 @@ export const LoginPage: React.FC = () => {
       {/* Top Global Navigation Bar */}
       <header className="w-full bg-white border-b border-slate-200 py-3 px-4 sm:px-8 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#0284C7] flex items-center justify-center text-white shadow-xs">
-              <Ticket className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-20 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs border border-slate-200 shrink-0 overflow-hidden">
+              <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div>
               <span className="font-extrabold text-sm text-slate-900 tracking-tight block leading-none">
-                Enterprise ITSM Platform
+                KIVO
               </span>
               <span className="text-[10px] text-slate-500 font-medium">
-                Unified Portal Workspace
+                Track. Manage. Resolve.
               </span>
             </div>
           </div>
@@ -104,8 +105,8 @@ export const LoginPage: React.FC = () => {
 
       <div className="flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-          <div className="w-12 h-12 rounded-xl bg-[#0284C7] flex items-center justify-center text-white mx-auto shadow-sm">
-            <Ticket className="w-7 h-7" />
+          <div className="h-14 w-28 rounded-xl bg-white p-1.5 flex items-center justify-center mx-auto shadow-sm border border-slate-200 overflow-hidden">
+            <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Sign In to Workspace

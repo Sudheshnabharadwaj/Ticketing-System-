@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { ShieldCheck, Eye, EyeOff, Lock, Mail, ArrowRight, CheckCircle2 } from 'lucide-react';
+import kivoLogo from '../assets/kivo-logo.png';
 
 export const Login: React.FC = () => {
   const { login, isAuthenticated } = useAuth();
@@ -56,12 +57,12 @@ export const Login: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-sky-600 text-white shadow-md mb-3">
-            <ShieldCheck className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center h-14 w-28 rounded-xl bg-white p-1.5 shadow-md border border-slate-200 mb-3 overflow-hidden">
+            <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Team Lead Portal Login</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1.5">
-            Enter your credentials to manage your ITSM workspace.
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">KIVO</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Team Lead Workspace Sign In
           </p>
         </div>
 

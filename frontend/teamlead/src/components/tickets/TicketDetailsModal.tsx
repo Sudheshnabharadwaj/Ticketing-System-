@@ -293,22 +293,20 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
             <div className="flex space-x-1 border-b border-slate-200 mb-4 pb-2">
               <button
                 onClick={() => setActiveTab('conversation')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                  activeTab === 'conversation'
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${activeTab === 'conversation'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-slate-600 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 <MessageSquare className="w-4 h-4" />
                 Conversation & Notes ({visibleComments.length})
               </button>
               <button
                 onClick={() => setActiveTab('attachments')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                  activeTab === 'attachments'
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${activeTab === 'attachments'
                     ? 'bg-sky-600 text-white shadow-xs'
                     : 'text-slate-600 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 <Paperclip className="w-4 h-4" />
                 Attachments ({modalAttachments.length})
@@ -333,11 +331,10 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                     visibleComments.map((comment) => (
                       <div
                         key={comment.id}
-                        className={`p-3.5 rounded-xl border text-xs ${
-                          comment.authorRole === 'employee'
+                        className={`p-3.5 rounded-xl border text-xs ${comment.authorRole === 'employee'
                             ? 'bg-sky-50/50 border-sky-200 text-slate-800'
                             : 'bg-white border-slate-200 text-slate-800'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center space-x-2">

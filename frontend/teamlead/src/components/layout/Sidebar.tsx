@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { UserAvatar } from '../common/UserAvatar';
+import kivoLogo from '../../assets/kivo-logo.png';
 import {
   LayoutDashboard,
   Ticket,
@@ -83,19 +84,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Header Branding */}
           <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A] shrink-0">
             <div className="flex items-center space-x-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-[#0284C7] flex items-center justify-center text-white shadow-xs shrink-0">
-                <Ticket className="w-4 h-4" />
+              <div className="h-9 w-16 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs shrink-0 border border-slate-200/20 overflow-hidden">
+                <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
               </div>
               {(!collapsed || mobileOpen) && (
                 <div className="truncate">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-white tracking-tight leading-none block">{APP_NAME}</span>
+                    <span className="text-xs font-bold text-white tracking-tight leading-none block">KIVO</span>
                     <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-[#38BDF8] border border-sky-800/60 uppercase">
                       Team Lead
                     </span>
                   </div>
                   <span className="block text-[9px] text-[#38BDF8] font-bold uppercase tracking-wider mt-0.5">
-                    IT SERVICE MANAGEMENT
+                    Track. Manage. Resolve.
                   </span>
                 </div>
               )}

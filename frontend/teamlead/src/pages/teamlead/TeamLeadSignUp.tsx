@@ -3,6 +3,7 @@ import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Eye, EyeOff, Lock, Mail, User, Users, Briefcase, ArrowRight } from 'lucide-react';
 import { registerBackend } from '../../services/backendAuth';
+import kivoLogo from '../../assets/kivo-logo.png';
 
 export const TeamLeadSignUp: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -83,12 +84,12 @@ export const TeamLeadSignUp: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-600 text-white shadow-md mb-3">
-            <Users className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center h-14 w-28 rounded-xl bg-white p-1.5 shadow-md border border-slate-200 mb-3 overflow-hidden">
+            <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Team Lead Registration</h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1.5">
-            Create your Team Lead account to manage queues, employees, and SLAs.
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">KIVO</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Team Lead Registration & Workspace Setup
           </p>
         </div>
 

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { clearBackendSession } from '../../services/backendAuth';
 import { EmployeeService } from '../../services/employeeService';
+import kivoLogo from '../../assets/kivo-logo.png';
 
 interface EmployeeSidebarProps {
   isOpen?: boolean;
@@ -98,20 +99,20 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
         {/* Top Branding Section */}
         <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between gap-3 bg-[#0F172A] shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#0284C7] flex items-center justify-center text-white shadow-xs shrink-0">
-              <Ticket className="w-4 h-4" />
+            <div className="h-9 w-16 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs shrink-0 border border-slate-200/20 overflow-hidden">
+              <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-xs font-bold text-white tracking-tight leading-none m-0">
-                  Ticketing Portal
+                  KIVO
                 </h1>
                 <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-[#38BDF8] border border-sky-800/60 uppercase">
                   Employee
                 </span>
               </div>
               <p className="text-[9px] text-[#38BDF8] font-bold uppercase tracking-wider block mt-0.5 m-0">
-                Self Service & Assigned Work
+                Track. Manage. Resolve.
               </p>
             </div>
           </div>
