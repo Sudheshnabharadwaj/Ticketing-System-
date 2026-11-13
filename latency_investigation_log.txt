@@ -1,0 +1,73 @@
+================================================================================
+                  API & FRONTEND LATENCY INVESTIGATION LOG                      
+================================================================================
+Date / Timestamp: 2026-11-13T05:32:00.000Z
+Target Backend: https://ticketing-api-1zjd.onrender.com (Render Free Tier Deployment)
+Database: Remote Supabase PostgreSQL
+Authenticated Test Account: sudheshna@gmail.com (Admin / Employee)
+
+--------------------------------------------------------------------------------
+ 1. REAL API TRANSACTION TRACE & LATENCY BENCHMARKS
+--------------------------------------------------------------------------------
+Step 1: POST /api/v1/auth/login
+        - Status: 200 OK
+        - Latency: 1,195 ms
+        - Payload: { email: "sudheshna@gmail.com" }
+        - Result: JWT session token returned
+
+Step 2: POST /api/v1/tickets (Create Ticket)
+        - Status: 201 Created
+        - Latency: 2,233 ms
+        - Created Ticket ID: TKT-8974 (ticket_number: TKT-8974)
+        - Execution Flow:
+            * Auth token verification & user profile resolution
+            * Department & agent assignment validation
+            * Supabase INSERT into `tickets` table
+            * Initial activity log insertion
+        - Observation: ~2.2 seconds just to insert and create the single record.
+
+Step 3: GET /api/v1/tickets/TKT-8974 (View Ticket Details)
+        - Status: 200 OK
+        - Latency: 1,795 ms (Isolated repeat test: 2,251 ms)
+        - Execution Flow:
+            * Query `tickets` row
+            * Query `ticket_comments` table
+            * Query `ticket_activities` / audit history table
+            * Query `escalations` table
+            * Query attachments disk records
+        - Observation: User experiences ~1.8 - 2.2 seconds of spinner buffering when clicking "View Ticket".
+
+Step 4: GET /api/v1/tickets/TKT-8974/attachments (Secondary Sequential Call)
+        - Status: 200 OK
+        - Latency: 1,691 ms
+        - Frontend Impact:
+            * The frontend view page (`AssignedTicketDetails.tsx` / `AdminTicketDetailsPage.tsx`) executes this AFTER step 3 finishes instead of concurrently.
+            * Total view-page loading time = 1,795 ms + 1,691 ms = 3,486 ms (~3.5 seconds) of visible page buffering.
+
+Step 5: GET /api/v1/tickets (List All Workspace Tickets)
+        - Status: 200 OK
+        - Latency: 5,360 ms (Isolated repeat test: 5,207 ms, 8,877 ms cold)
+        - Volume: 22 ticket records returned
+        - Root Cause:
+            * N+1 query cascade in backend: `serialize_ticket()` fires an independent Supabase SQL query to the `escalations` table for EACH of the 22 tickets individually (22 separate remote network trips).
+            * 22 round-trips * ~220ms per query = ~4.8 seconds spent just waiting for escalation table queries!
+
+Total End-to-End Waterfall: 12,274 ms (~12.3 seconds)
+
+--------------------------------------------------------------------------------
+ 2. SUMMARY OF ROOT CAUSES BEHIND THE LATENCY & BUFFERING
+--------------------------------------------------------------------------------
+1. Backend N+1 Query Anti-Pattern:
+   In `backend/app/services/access.py` (lines 893-911), every ticket serialized makes an individual query:
+   `sb.table("escalations").select(...).eq("ticket_id", tid).limit(1).execute()`
+   For 22 tickets, this executes 22 separate remote HTTP requests to Supabase in sequence, causing GET /api/v1/tickets to take over 5 seconds.
+
+2. Frontend Sequential Waterfalls in View Ticket Pages:
+   In `AssignedTicketDetails.tsx` (lines 220-239), the component awaits `getTicketByIdAsync(id)` first, and only after it resolves does it await `fetchBackendAttachmentsDetailed(id)`. This doubles the perceived loading time from ~1.8s to ~3.5s.
+
+3. Redundant Cache Invalidation & Synchronous Refetches:
+   After creating or updating a ticket, the frontend calls `this.clearCache()` followed immediately by `await this.fetchTickets(true)`. Because `fetchTickets(true)` triggers the 5.3-second `/api/v1/tickets` endpoint, the entire UI freezes/buffers until all 22 tickets are reloaded from scratch.
+
+4. Hosting Infrastructure Latency:
+   The backend is hosted on Render free tier (`https://ticketing-api-1zjd.onrender.com`), which runs on low-spec container instances and communicates over the public internet to a remote Supabase PostgreSQL database with inherent network latency per round-trip.
+================================================================================

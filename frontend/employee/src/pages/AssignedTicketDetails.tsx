@@ -216,25 +216,30 @@ export const AssignedTicketDetails: React.FC = () => {
     setAttachmentsLoading(true);
     setAttachmentsError(null);
 
-    // Always fetch fresh ticket data directly from backend
-    const found = await EmployeeService.getTicketByIdAsync(id);
+    // Parallel fetch: retrieve ticket data and attachments concurrently
+    const [found, attachmentResult] = await Promise.all([
+      EmployeeService.getTicketByIdAsync(id),
+      fetchBackendAttachmentsDetailed(id),
+    ]);
+
     if (found) {
-      setTicket({ ...found });
+      const mergedAttachments = attachmentResult.attachments.length > 0 
+        ? attachmentResult.attachments 
+        : found.attachments || [];
+      setTicket({ ...found, attachments: mergedAttachments });
       setSelectedStatus(found.status);
     } else {
       const cached = EmployeeService.getTicketById(id);
       if (cached) {
-        setTicket({ ...cached });
+        const mergedAttachments = attachmentResult.attachments.length > 0 
+          ? attachmentResult.attachments 
+          : cached.attachments || [];
+        setTicket({ ...cached, attachments: mergedAttachments });
         setSelectedStatus(cached.status);
       }
     }
 
-    const attachmentResult = await fetchBackendAttachmentsDetailed(id);
     setAttachmentsError(attachmentResult.error);
-    setTicket((prev) =>
-      prev ? { ...prev, attachments: attachmentResult.attachments } : prev,
-    );
-
     setAttachmentsLoading(false);
     setIsLoading(false);
   };

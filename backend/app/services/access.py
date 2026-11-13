@@ -893,10 +893,9 @@ def serialize_ticket(
     tid = str(ticket.get("id") or "")
     if tid and (not result.get("escalation_reason") or not result.get("escalated_to")):
         try:
-            sb = get_supabase_admin_client()
-            esc_rows = sb.table("escalations").select("reason, notes, escalated_by, escalated_to, created_at").eq("ticket_id", tid).order("created_at", desc=True).limit(1).execute().data
-            if esc_rows:
-                esc = esc_rows[0]
+            esc_map = fetch_all_escalations_cached()
+            esc = esc_map.get(tid)
+            if esc:
                 result["escalation_reason"] = esc.get("reason") or result.get("escalation_reason") or "Ticket escalated for senior review"
                 result["escalation_notes"] = esc.get("notes") or ""
                 result["escalated_by"] = esc.get("escalated_by") or ""
@@ -943,6 +942,37 @@ def is_active(ticket: dict[str, Any]) -> bool:
 _RAW_TICKETS_CACHE: tuple[float, list[dict[str, Any]]] | None = None
 _RAW_TICKETS_TTL = 30.0  # seconds
 
+_RAW_ESCALATIONS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
+_RAW_ESCALATIONS_TTL = 30.0  # seconds
+
+
+def fetch_all_escalations_cached() -> dict[str, dict[str, Any]]:
+    """Batch-fetch all latest escalations mapped by ticket_id to avoid N+1 remote round-trips."""
+    global _RAW_ESCALATIONS_CACHE
+    now = time.time()
+    if _RAW_ESCALATIONS_CACHE and (now - _RAW_ESCALATIONS_CACHE[0]) < _RAW_ESCALATIONS_TTL:
+        return _RAW_ESCALATIONS_CACHE[1]
+
+    try:
+        sb = get_supabase_admin_client()
+        res = (
+            sb.table("escalations")
+            .select("ticket_id, reason, notes, escalated_by, escalated_to, created_at")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        data = res.data or []
+        latest_by_ticket: dict[str, dict[str, Any]] = {}
+        for row in data:
+            tid = str(row.get("ticket_id") or "").strip()
+            if tid and tid not in latest_by_ticket:
+                latest_by_ticket[tid] = row
+        _RAW_ESCALATIONS_CACHE = (now, latest_by_ticket)
+        return latest_by_ticket
+    except Exception as exc:
+        print(f"[fetch_all_escalations_cached] error: {exc}")
+        return _RAW_ESCALATIONS_CACHE[1] if _RAW_ESCALATIONS_CACHE else {}
+
 # Per-caller result of the visibility filter. ``/tickets``, ``/tickets/stats``
 # and ``/notifications`` all need the same scoped list, so the filtered rows
 # are computed once per caller instead of once per endpoint.
@@ -951,8 +981,9 @@ _SCOPED_TICKETS_TTL = 30.0  # seconds
 
 
 def invalidate_tickets_cache() -> None:
-    global _RAW_TICKETS_CACHE
+    global _RAW_TICKETS_CACHE, _RAW_ESCALATIONS_CACHE
     _RAW_TICKETS_CACHE = None
+    _RAW_ESCALATIONS_CACHE = None
     _SCOPED_TICKETS_CACHE.clear()
 
 
