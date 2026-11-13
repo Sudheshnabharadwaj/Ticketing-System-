@@ -105,7 +105,7 @@ export const LoginPage: React.FC = () => {
 
       <div className="flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-          <div className="h-14 w-28 rounded-xl bg-white p-1.5 flex items-center justify-center mx-auto shadow-sm border border-slate-200 overflow-hidden">
+          <div className="h-16 w-48 flex items-center justify-center mx-auto mb-2">
             <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">

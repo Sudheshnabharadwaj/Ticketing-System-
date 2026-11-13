@@ -99,7 +99,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
         {/* Top Branding Section */}
         <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between gap-3 bg-[#0F172A] shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-16 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs shrink-0 border border-slate-200/20 overflow-hidden">
+            <div className="h-8 w-[76px] rounded-md bg-white flex items-center justify-center shrink-0 overflow-hidden">
               <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div>
