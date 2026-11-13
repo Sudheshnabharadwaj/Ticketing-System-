@@ -17,6 +17,7 @@ import {
   authenticatedFetch,
   jsonInit,
 } from './backendAuth';
+import { OrganizationService } from './organizationService';
 
 /**
  * Base backend origin (no /api/v1 suffix). Kept for pages that build
@@ -671,10 +672,13 @@ export const AdminApiService = {
     const mappedRole = mapRoleToBackend(data.role);
     const inviteToken = `inv-${Math.random().toString(36).substring(2, 12)}`;
     const cleanEmail = data.email.trim().toLowerCase();
+    const rawLead = data.teamLead || '';
+    const leadEmpId = rawLead.includes('(') ? rawLead.split('(')[1].replace(')', '').trim() : rawLead;
     const resolvedTeam = (data as any).team ||
       (data.teamLead?.toLowerCase().includes('kotesh') || data.teamLead === 'OKL003' ? 'Team Alpha' :
        data.teamLead?.toLowerCase().includes('mani') || data.teamLead === 'OKL015' ? 'Team Beta' :
-       data.teamLead?.toLowerCase().includes('soni') || data.teamLead === 'OKL013' ? 'HR Team' : data.teamLead || undefined);
+       data.teamLead?.toLowerCase().includes('soni') || data.teamLead === 'OKL013' ? 'HR Team' :
+       data.teamLead?.toLowerCase().includes('pavan') || data.teamLead === 'OKL101' ? 'QA Team' : data.teamLead || undefined);
 
     let created: BackendUserRow;
     try {
@@ -688,6 +692,8 @@ export const AdminApiService = {
           department: data.department || 'IT Support',
           role: mappedRole,
           team: resolvedTeam,
+          team_lead: rawLead || undefined,
+          team_lead_id: leadEmpId || undefined,
           password: data.password || undefined,
           status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
           send_email_invite: data.sendEmailInvite,
@@ -705,6 +711,8 @@ export const AdminApiService = {
         department: data.department || 'IT Support',
         role: mappedRole,
         team: resolvedTeam,
+        team_lead: rawLead || null,
+        team_lead_id: leadEmpId || null,
         status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
         created_at: now,
         updated_at: now,
@@ -831,10 +839,14 @@ export const AdminApiService = {
       const { error: supaErr } = await supabase
         .from('users')
         .delete()
-        .eq('id', userId);
+        .or(`id.eq.${userId},employee_id.eq.${userId}`);
       if (supaErr) throw apiErr;
     }
     invalidateAdminCache();
+    // Also invalidate organization service cache across the platform
+    OrganizationService.invalidateCache();
+    window.dispatchEvent(new CustomEvent('user-deleted', { detail: { id: userId } }));
+    window.dispatchEvent(new CustomEvent('ticket-updated'));
     return { success: true };
   },
 

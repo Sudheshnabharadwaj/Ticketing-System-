@@ -413,6 +413,22 @@ export const AddUserPage: React.FC = () => {
                 icon={<Phone className="w-4 h-4" />}
               />
 
+              {/* Role */}
+              <Select
+                label="System Role *"
+                value={formData.role}
+                onChange={(e) => {
+                  setFormData({ ...formData, role: e.target.value });
+                  if (errors.role) setErrors({ ...errors, role: undefined });
+                }}
+                error={errors.role}
+                options={[
+                  { value: '', label: 'Select Role', disabled: true, hidden: true },
+                  { value: 'Employee', label: 'Employee' },
+                  { value: 'Team Lead', label: 'Team Lead' },
+                ]}
+              />
+
               {/* Department */}
               <Select
                 label="Department *"
@@ -449,22 +465,6 @@ export const AddUserPage: React.FC = () => {
                 />
               )}
 
-              {/* Role */}
-              <Select
-                label="System Role *"
-                value={formData.role}
-                onChange={(e) => {
-                  setFormData({ ...formData, role: e.target.value });
-                  if (errors.role) setErrors({ ...errors, role: undefined });
-                }}
-                error={errors.role}
-                options={[
-                  { value: '', label: 'Select Role', disabled: true, hidden: true },
-                  { value: 'Employee', label: 'Employee' },
-                  { value: 'Team Lead', label: 'Team Lead' },
-                ]}
-              />
-
               {/* Team Lead Selection (Visible when Employee role selected) */}
               {formData.role === 'Employee' && (
                 <Select
@@ -476,12 +476,19 @@ export const AddUserPage: React.FC = () => {
                   }}
                   error={errors.teamLead}
                   options={[
-                    { value: '', label: 'Select Team Lead', disabled: true, hidden: true },
+                    { value: '', label: formData.department ? 'Select Team Lead' : 'Select Department First', disabled: true, hidden: true },
                     ...displayTeamLeads.map((tl) => ({
                       value: `${tl.name} (${tl.id})`,
                       label: `${tl.name} — ${tl.id} (${tl.department})`,
                     })),
                   ]}
+                  helperText={
+                    !formData.department 
+                      ? 'Please select a department to see matching Team Leads' 
+                      : displayTeamLeads.length === 0 
+                      ? `No active Team Leads found in ${formData.department}` 
+                      : undefined
+                  }
                 />
               )}
 

@@ -328,6 +328,14 @@ export const OrganizationService = {
     return TEAM_LEADS;
   },
 
+  invalidateCache(): void {
+    _lastSyncAt = 0;
+    _syncInflight = null;
+    TEAM_LEADS.length = 0;
+    EMPLOYEES.length = 0;
+    _leadEmployeesCache.clear();
+  },
+
   getAllEmployees(): EmployeeItem[] {
     return EMPLOYEES;
   },

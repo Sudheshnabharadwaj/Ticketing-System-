@@ -504,6 +504,8 @@ class UserCreate(BaseModel):
     department: str | None = None
     designation: str | None = None
     team: str | None = None
+    team_lead: str | None = None
+    team_lead_id: str | None = None
     status: str = "Active"
     password: str | None = Field(default=None, min_length=6, max_length=128)
     employee_id: str | None = None
@@ -528,16 +530,48 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
 
     user_id = (body.employee_id or "").strip() or f"usr-{int(time.time() * 1000)}"
     now = datetime.now(timezone.utc).isoformat()
+    norm_role = normalize_role(body.role)
+
+    # Resolve team lead and team relationships
+    resolved_team = body.team
+    resolved_tl_id = body.team_lead_id
+    resolved_tl_name = body.team_lead
+
+    if norm_role == "employee" and (body.team_lead or body.team_lead_id or body.team):
+        all_u = fetch_all_users_cached()
+        for cand in (body.team_lead_id, body.team_lead, body.team):
+            if not cand:
+                continue
+            cand_str = str(cand).strip()
+            # Strip '(OKL...)' if formatted as 'Name (ID)'
+            clean_cand = cand_str.split('(')[-1].replace(')', '').strip() if '(' in cand_str else cand_str
+            for u in all_u:
+                if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                    if (
+                        str(u.get("id") or "").lower() == clean_cand.lower()
+                        or str(u.get("employee_id") or "").lower() == clean_cand.lower()
+                        or str(u.get("name") or "").lower() == clean_cand.lower()
+                        or (clean_cand.lower() in str(u.get("name") or "").lower())
+                    ):
+                        resolved_tl_id = str(u.get("id") or u.get("employee_id"))
+                        resolved_tl_name = str(u.get("name"))
+                        resolved_team = u.get("team") or resolved_team
+                        break
+            if resolved_tl_id:
+                break
+
     row = {
         "id": user_id,
         "employee_id": (body.employee_id or "").strip() or user_id,
         "name": body.name.strip(),
         "email": email,
         "phone": (body.phone or "").strip(),
-        "role": normalize_role(body.role),
+        "role": norm_role,
         "department": body.department or "IT Support",
         "designation": body.designation,
-        "team": body.team,
+        "team": resolved_team,
+        "team_lead": resolved_tl_name,
+        "team_lead_id": resolved_tl_id,
         "status": body.status or "Active",
         "password": hash_password(body.password or "Password123"),
         "password_hash": hash_password(body.password or "Password123"),
@@ -669,14 +703,20 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
         except Exception as auth_exc:
             print(f"[portal] auth user deletion notice: {auth_exc}")
 
-    # 7. Delete user from users table
+    # 7. Delete user from users table (permanent delete by id, employee_id, and email)
     try:
         sb.table("users").delete().eq("id", canonical_id).execute()
     except Exception as exc:
-        if user_email:
+        print(f"[portal] delete user by id note: {exc}")
+    try:
+        sb.table("users").delete().eq("employee_id", canonical_id).execute()
+    except Exception:
+        pass
+    if user_email:
+        try:
             sb.table("users").delete().eq("email", user_email).execute()
-        else:
-            raise exc
+        except Exception:
+            pass
 
     # 8. Invalidate all caches so user disappears immediately from every dashboard
     delete_user_from_store(canonical_id)

@@ -145,6 +145,16 @@ export const EscalatedTicketsPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Page Heading */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-[24px] font-bold text-slate-900 tracking-tight leading-snug">Escalated Tickets</h1>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Monitor and resolve escalated tickets requiring senior attention and escalation reasoning.
+          </p>
+        </div>
+      </div>
+
       {/* Toast Notification */}
       {toast && (
         <div className="flex items-center justify-between p-4 rounded-xl border bg-emerald-50 border-emerald-200 text-emerald-800 shadow-sm animate-fadeIn">

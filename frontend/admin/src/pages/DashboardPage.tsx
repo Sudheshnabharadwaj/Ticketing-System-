@@ -720,6 +720,12 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Filter and Search Toolbar */}
+      {statusFilter === 'escalated' && (
+        <div className="flex items-center gap-2 px-1">
+          <AlertTriangle className="w-5 h-5 text-orange-600" />
+          <h2 className="text-[20px] font-bold text-slate-900 tracking-tight">Escalated Tickets</h2>
+        </div>
+      )}
       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className={`w-full ${statusFilter === 'escalated' ? 'sm:flex-1' : 'sm:w-72'}`}>
           <Input
