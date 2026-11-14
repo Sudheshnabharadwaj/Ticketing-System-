@@ -45,20 +45,6 @@ DEFAULT_USERS: list[dict[str, Any]] = [
         "status": "Active",
         "passwords": ["Shruthi@123", "Password123"],
     },
-    {
-        "id": "usr-admin-1791222872974",
-        "employee_id": "ADM-002",
-        "name": "Sudheshna Bharadwaj",
-        "email": "sudheshna@gmail.com",
-        "role": "admin",
-        "department": "IT Support",
-        "designation": "Platform Administrator",
-        "team": "Core IT",
-        "phone": "+1 (555) 000-0001",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Admin@123"],
-    },
     # ── Team Lead Users ──────────────────────────────────────────────────────
     {
         "id": "OKL003",
@@ -363,7 +349,7 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
         return True
     if email == "ramya@gmail.com" and candidate_password in ("Password123", "Ramya@123"):
         return True
-    if email in ("sudheshna@gmail.com", "admin@platform.local") and candidate_password in ("Password123", "Admin@123"):
+    if email == "admin@platform.local" and candidate_password in ("Password123", "Admin@123"):
         return True
 
     return False
@@ -386,8 +372,8 @@ def get_all_users() -> list[dict[str, Any]]:
                 if isinstance(row, dict) and row.get("email"):
                     ek = str(row["email"]).strip().lower()
                     uid = str(row.get("id") or "").strip().lower()
-                    dept = str(row.get("department") or "").strip().lower()
-                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or dept in _DELETED_DEPTS_SET:
+                    emp_id = str(row.get("employee_id") or "").strip().lower()
+                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
                         continue
                     local_match = _LOCAL_USERS_MAP.get(ek) or _LOCAL_USERS_MAP.get(f"id:{uid}") or {}
                     merged_row = {**local_match, **row}
@@ -404,8 +390,8 @@ def get_all_users() -> list[dict[str, Any]]:
                 continue
             ek = str(u.get("email") or "").strip().lower()
             uid = str(u.get("id") or "").strip().lower()
-            dept = str(u.get("department") or "").strip().lower()
-            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or dept in _DELETED_DEPTS_SET:
+            emp_id = str(u.get("employee_id") or "").strip().lower()
+            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
                 continue
             if ek and ek not in all_map:
                 all_map[ek] = dict(u)
@@ -441,12 +427,22 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
             _DELETED_USERS_SET.discard(clean_email)
             if user_id:
                 _DELETED_USERS_SET.discard(user_id.lower())
+            emp_id = str(user_data.get("employee_id") or "").strip().lower()
+            if emp_id:
+                _DELETED_USERS_SET.discard(emp_id)
             existing = _LOCAL_USERS_MAP.get(clean_email, {})
             merged = {**existing, **user_data}
             _LOCAL_USERS_MAP[clean_email] = merged
             if user_id:
                 _LOCAL_USERS_MAP[f"id:{user_id.lower()}"] = merged
+            if emp_id:
+                _LOCAL_USERS_MAP[f"id:{emp_id}"] = merged
         _save_persisted()
+        try:
+            _DELETED_USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _DELETED_USERS_FILE.write_text(json.dumps(sorted(list(_DELETED_USERS_SET)), indent=2), encoding="utf-8")
+        except Exception as exc:
+            print(f"[user_store] error saving {_DELETED_USERS_FILE}: {exc}")
 
     if has_service_role_key():
         try:
@@ -522,6 +518,11 @@ def delete_user_from_store(user_id_or_email: str) -> None:
             and str(u.get("employee_id") or "").lower() not in _DELETED_USERS_SET
         ]
         _save_persisted()
+        try:
+            _DELETED_USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _DELETED_USERS_FILE.write_text(json.dumps(sorted(list(_DELETED_USERS_SET)), indent=2), encoding="utf-8")
+        except Exception as exc:
+            print(f"[user_store] error saving {_DELETED_USERS_FILE}: {exc}")
 
     # Permanently delete from Supabase
     if has_service_role_key():
