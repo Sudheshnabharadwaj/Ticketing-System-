@@ -84,7 +84,7 @@ export const TeamLeadSignUp: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center h-14 w-28 rounded-xl bg-white p-1.5 shadow-md border border-slate-200 mb-3 overflow-hidden">
+          <div className="inline-flex items-center justify-center h-16 w-48 mb-2">
             <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">KIVO</h1>

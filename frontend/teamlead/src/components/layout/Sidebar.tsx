@@ -84,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Header Branding */}
           <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A] shrink-0">
             <div className="flex items-center space-x-2.5 overflow-hidden">
-              <div className="h-8 w-[76px] rounded-md bg-white flex items-center justify-center shrink-0 overflow-hidden">
+              <div className="h-8 w-[76px] flex items-center justify-center shrink-0 overflow-hidden">
                 <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
               </div>
               {(!collapsed || mobileOpen) && (

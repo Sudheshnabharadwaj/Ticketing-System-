@@ -411,7 +411,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
       <header className="w-full bg-white border-b border-slate-200 py-3 px-4 sm:px-8 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-20 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs border border-slate-200 shrink-0 overflow-hidden">
+            <div className="h-10 w-24 flex items-center justify-center shrink-0 overflow-hidden">
               <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div>
@@ -440,7 +440,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ defaultPortal }) => {
 
       <div className="flex-1 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center space-y-2">
-          <div className="h-14 w-28 rounded-xl bg-white p-1.5 flex items-center justify-center mx-auto shadow-sm border border-slate-200 overflow-hidden">
+          <div className="h-16 w-48 flex items-center justify-center mx-auto mb-2">
             <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">

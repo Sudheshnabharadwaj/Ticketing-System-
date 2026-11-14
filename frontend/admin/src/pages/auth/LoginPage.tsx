@@ -87,7 +87,7 @@ export const LoginPage: React.FC = () => {
       <header className="w-full bg-white border-b border-slate-200 py-3 px-4 sm:px-8 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-20 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs border border-slate-200 shrink-0 overflow-hidden">
+            <div className="h-10 w-24 flex items-center justify-center shrink-0 overflow-hidden">
               <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div>
