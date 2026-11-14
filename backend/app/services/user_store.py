@@ -26,6 +26,8 @@ _STORE_LOCK = threading.Lock()
 _PERSISTENCE_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "users_store.json"
 _DELETED_USERS_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "deleted_users.json"
 _DELETED_USERS_SET: set[str] = set()
+_DELETED_DEPTS_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "deleted_departments.json"
+_DELETED_DEPTS_SET: set[str] = {"hr", "qa team", "qa"}
 
 DEFAULT_USERS: list[dict[str, Any]] = [
     # ── Admin Users ─────────────────────────────────────────────────────────
@@ -87,34 +89,6 @@ DEFAULT_USERS: list[dict[str, Any]] = [
         "status": "Active",
         "passwords": ["Password123", "Manikanta@123"],
     },
-    {
-        "id": "OKL013",
-        "employee_id": "OKL013",
-        "name": "soniya",
-        "email": "soni@gmail.com",
-        "role": "teamlead",
-        "department": "HR",
-        "designation": "HR Team Lead",
-        "team": "HR Team",
-        "phone": "+1 (555) 000-0013",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Soniya@123"],
-    },
-    {
-        "id": "OKL101",
-        "employee_id": "OKL101",
-        "name": "pavan",
-        "email": "pavan.qa@oklut.com",
-        "role": "teamlead",
-        "department": "QA Team",
-        "designation": "QA Team Lead",
-        "team": "QA Team",
-        "phone": "+1 (555) 000-0101",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Pavan@123"],
-    },
     # ── Employee Users ───────────────────────────────────────────────────────
     {
         "id": "OKL002",
@@ -158,48 +132,6 @@ DEFAULT_USERS: list[dict[str, Any]] = [
         "status": "Active",
         "passwords": ["Password123", "Sudha@123"],
     },
-    {
-        "id": "OKL014",
-        "employee_id": "OKL014",
-        "name": "Ramya",
-        "email": "ramya@gmail.com",
-        "role": "employee",
-        "department": "HR",
-        "designation": "HR Associate",
-        "team": "HR Team",
-        "phone": "+1 (555) 000-0014",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Ramya@123"],
-    },
-    {
-        "id": "OKL0006",
-        "employee_id": "OKL0006",
-        "name": "kumar",
-        "email": "kumar.qa@oklut.com",
-        "role": "employee",
-        "department": "QA Team",
-        "designation": "QA Engineer",
-        "team": "QA Team",
-        "phone": "+1 (555) 000-0006",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Kumar@123"],
-    },
-    {
-        "id": "OKL040",
-        "employee_id": "OKL040",
-        "name": "mounika",
-        "email": "mounika.qa@oklut.com",
-        "role": "employee",
-        "department": "QA Team",
-        "designation": "QA Analyst",
-        "team": "QA Team",
-        "phone": "+1 (555) 000-0040",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Mounika@123"],
-    },
 ]
 
 # In-memory overlay cache
@@ -221,6 +153,15 @@ def _load_persisted() -> None:
                     _DELETED_USERS_SET.update(str(x).strip().lower() for x in del_data if x)
         except Exception as exc:
             print(f"[user_store] error loading {_DELETED_USERS_FILE}: {exc}")
+
+        # Load deleted departments
+        try:
+            if _DELETED_DEPTS_FILE.exists():
+                depts_data = json.loads(_DELETED_DEPTS_FILE.read_text(encoding="utf-8"))
+                if isinstance(depts_data, list):
+                    _DELETED_DEPTS_SET.update(str(x).strip().lower() for x in depts_data if x)
+        except Exception as exc:
+            print(f"[user_store] error loading {_DELETED_DEPTS_FILE}: {exc}")
 
         # Load defaults first (skipping deleted)
         for u in DEFAULT_USERS:
@@ -445,7 +386,8 @@ def get_all_users() -> list[dict[str, Any]]:
                 if isinstance(row, dict) and row.get("email"):
                     ek = str(row["email"]).strip().lower()
                     uid = str(row.get("id") or "").strip().lower()
-                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET:
+                    dept = str(row.get("department") or "").strip().lower()
+                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or dept in _DELETED_DEPTS_SET:
                         continue
                     local_match = _LOCAL_USERS_MAP.get(ek) or _LOCAL_USERS_MAP.get(f"id:{uid}") or {}
                     merged_row = {**local_match, **row}
@@ -462,7 +404,8 @@ def get_all_users() -> list[dict[str, Any]]:
                 continue
             ek = str(u.get("email") or "").strip().lower()
             uid = str(u.get("id") or "").strip().lower()
-            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET:
+            dept = str(u.get("department") or "").strip().lower()
+            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or dept in _DELETED_DEPTS_SET:
                 continue
             if ek and ek not in all_map:
                 all_map[ek] = dict(u)
@@ -587,7 +530,42 @@ def delete_user_from_store(user_id_or_email: str) -> None:
             for key in {clean, matched_id, matched_email}:
                 if key:
                     sb.table("users").delete().eq("id", key).execute()
+                    sb.table("users").delete().eq("employee_id", key).execute()
                     sb.table("users").delete().eq("email", key).execute()
         except Exception as exc:
             print(f"[user_store] Supabase delete note for {clean}: {exc}")
+
+
+def is_department_deleted(dept_name: str) -> bool:
+    """Check if a department has been deleted permanently."""
+    _load_persisted()
+    clean = (dept_name or "").strip().lower()
+    return clean in _DELETED_DEPTS_SET
+
+
+def delete_department_permanently(dept_name: str) -> None:
+    """Permanently delete a department, persist tombstone, and remove associated users."""
+    _load_persisted()
+    clean = (dept_name or "").strip().lower()
+    if not clean:
+        return
+    with _STORE_LOCK:
+        _DELETED_DEPTS_SET.add(clean)
+        try:
+            _DELETED_DEPTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _DELETED_DEPTS_FILE.write_text(json.dumps(sorted(list(_DELETED_DEPTS_SET)), indent=2), encoding="utf-8")
+        except Exception as exc:
+            print(f"[user_store] error saving {_DELETED_DEPTS_FILE}: {exc}")
+
+        # Remove all users belonging to this department from local map
+        to_del_uids = []
+        for k, u in list(_LOCAL_USERS_MAP.items()):
+            u_dept = str(u.get("department") or "").strip().lower()
+            if u_dept == clean:
+                to_del_uids.append(str(u.get("id") or u.get("email") or ""))
+
+        for uid in to_del_uids:
+            if uid:
+                delete_user_from_store(uid)
+
 

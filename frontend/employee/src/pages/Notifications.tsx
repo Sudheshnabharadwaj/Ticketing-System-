@@ -38,7 +38,7 @@ export const Notifications: React.FC = () => {
       setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)));
     }
     if (item.ticketId) {
-      navigate(`/employee/assigned-tickets/${item.ticketId}`);
+      navigate(`/assigned-tickets/${item.ticketId}`);
     }
   };
 

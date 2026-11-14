@@ -445,10 +445,8 @@ export const AddUserPage: React.FC = () => {
                 options={[
                   { value: '', label: 'Select Department', disabled: true, hidden: true },
                   { value: 'IT Support', label: 'IT Support' },
-                  { value: 'HR', label: 'HR' },
                   { value: 'Finance', label: 'Finance' },
                   { value: 'Development', label: 'Development' },
-                  { value: 'QA Team', label: 'QA Team' },
                   { value: 'Others', label: 'Other' },
                 ]}
               />

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTickets } from '../../hooks/useTickets';
 import { TicketCategory, TicketPriority } from '../../types/ticket';
 import { CATEGORIES, PRIORITIES } from '../../utils/constants';
-import { X, PlusCircle, AlertCircle, CheckCircle2, Check } from 'lucide-react';
+import { X, PlusCircle, AlertCircle, CheckCircle2, Check, ExternalLink } from 'lucide-react';
 import { AttachmentPicker, FileAttachmentItem } from '../common/AttachmentPicker';
 import { TeamLeadEmployeeSelector } from './TeamLeadEmployeeSelector';
 import { useAuth } from '../../hooks/useAuth';
@@ -19,10 +20,8 @@ interface CreateTicketModalProps {
 
 const DEPARTMENT_OPTIONS = [
   'IT Support',
-  'HR',
   'Finance',
   'Development',
-  'QA Team',
   'Other',
 ];
 
@@ -42,6 +41,7 @@ const CreateTicketModalContent: React.FC<{
   onClose: () => void;
   onSuccess?: (msg: string) => void;
 }> = ({ onClose, onSuccess }) => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { createTicket } = useTickets();
 
@@ -103,6 +103,7 @@ const CreateTicketModalContent: React.FC<{
   const [error, setError] = useState('');
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdTicketData, setCreatedTicketData] = useState<any | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,33 +204,105 @@ const CreateTicketModalContent: React.FC<{
           .filter((f): f is File => !!f),
       });
 
-      const successMsg = `Ticket ${newTicket.id} created successfully.`;
-      setSuccessToast(successMsg);
+      setCreatedTicketData(newTicket);
+      setIsSubmitting(false);
 
       if (onSuccess) {
-        onSuccess(successMsg);
+        onSuccess(`Ticket ${newTicket.id} created successfully.`);
       }
-
-      // Reset and close after brief toast feedback
-      setTimeout(() => {
-        setSubject('');
-        setDescription('');
-        setCategory('Access Issue');
-        setCustomCategory('');
-        setPriority('Medium');
-        setSelectedEmployeeIds([]);
-        setSelectedEmployeeObjs([]);
-        setFileAttachments([]);
-        setError('');
-        setSuccessToast(null);
-        setIsSubmitting(false);
-        onClose();
-      }, 700);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the ticket. Please try again.');
       setIsSubmitting(false);
     }
   };
+
+  if (createdTicketData) {
+    const assignedPerson = createdTicketData.assignedAgent || createdTicketData.assigned_agent || (selectedEmployeeObjs.length > 0 ? selectedEmployeeObjs[0].name : (selectedTeamLeadObjs.length > 0 ? selectedTeamLeadObjs[0].name : 'Assigned Specialist'));
+    const assignedRole = selectedEmployeeObjs.length > 0 ? 'Assigned Employee' : (selectedTeamLeadObjs.length > 0 ? 'Assigned Team Lead' : 'Assignee');
+
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+        <div className="max-w-xl w-full mx-auto space-y-5 font-sans my-4 max-h-[92vh] overflow-y-auto">
+          <div className="bg-white p-7 rounded-2xl border border-slate-200/90 shadow-xl text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Ticket Created Successfully</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Your ticket has been registered in the system and routed to the assigned personnel.
+              </p>
+            </div>
+
+            {/* Ticket Summary Card */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-5 text-left space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ticket ID</span>
+                  <span className="text-sm font-mono font-bold text-sky-600">{createdTicketData.id || createdTicketData.ticketNumber}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Priority</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">
+                    {priority}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Subject</span>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">{subject}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200/80">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department</span>
+                  <span className="text-xs font-semibold text-slate-800">{activeDepartments.join(', ') || userDept}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category</span>
+                  <span className="text-xs font-semibold text-slate-800">{category === 'Other' ? (customCategory.trim() || 'Other') : category}</span>
+                </div>
+              </div>
+
+              {/* Assigned Person Highlight */}
+              <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
+                  <span className="text-xs font-bold text-slate-900">{assignedPerson}</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                  Assigned
+                </span>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate(`/teamlead/assigned-tickets/${createdTicketData.id || createdTicketData.ticketNumber}`);
+                }}
+                className="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold shadow-xs cursor-pointer inline-flex items-center justify-center"
+              >
+                <ExternalLink className="w-4 h-4 mr-1.5" />
+                Open Ticket Details
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">

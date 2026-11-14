@@ -61,7 +61,7 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
     }
     setShowNotifications(false);
     if (n.ticketId) {
-      navigate(`/employee/assigned-tickets/${encodeURIComponent(n.ticketId)}`);
+      navigate(`/assigned-tickets/${encodeURIComponent(n.ticketId)}`);
     } else {
       navigate('/notifications');
     }

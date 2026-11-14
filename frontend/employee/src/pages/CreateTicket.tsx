@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusCircle, ArrowLeft, CheckCircle, Mail, ExternalLink, AlertCircle, Check, X } from 'lucide-react';
 import { EmployeeService } from '../services/employeeService';
 import { EmailService, type SentEmailNotification } from '../services/emailService';
-import type { TicketPriority } from '../types';
+import type { TicketPriority, EmployeeTicket } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -14,10 +14,8 @@ import { OrganizationService, type TeamLeadItem, type EmployeeItem } from '../se
 
 const DEFAULT_DEPARTMENT_OPTIONS = [
   'IT Support',
-  'HR',
   'Finance',
   'Development',
-  'QA Team',
   'Other',
 ];
 
@@ -42,6 +40,7 @@ export const CreateTicket: React.FC = () => {
 
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdTicketId, setCreatedTicketId] = useState('');
+  const [createdTicketData, setCreatedTicketData] = useState<EmployeeTicket | null>(null);
   const [sentEmailLogs, setSentEmailLogs] = useState<SentEmailNotification[]>([]);
 
   const activeDepartments = useMemo(
@@ -154,6 +153,7 @@ export const CreateTicket: React.FC = () => {
       const emails = recentEmails.filter((em) => em.ticketId === newTicket.id);
 
       setCreatedTicketId(newTicket.id);
+      setCreatedTicketData(newTicket);
       setSentEmailLogs(emails);
       setIsSuccess(true);
     } catch (err: any) {
@@ -164,145 +164,87 @@ export const CreateTicket: React.FC = () => {
   };
 
   if (isSuccess) {
-    const isEmailsSent = sentEmailLogs.length > 0;
+    const assignedPerson = (createdTicketData as any)?.assigned_agent || (createdTicketData as any)?.assignedAgent || (selectedEmployeeObjs.length > 0 ? selectedEmployeeObjs[0].name : (selectedTeamLeadObjs.length > 0 ? selectedTeamLeadObjs[0].name : 'Assigned Specialist'));
+    const assignedRole = selectedEmployeeObjs.length > 0 ? 'Assigned Employee' : (selectedTeamLeadObjs.length > 0 ? 'Assigned Team Lead' : 'Assignee');
 
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-        <div className="max-w-2xl w-full mx-auto space-y-6 font-sans my-4 max-h-[92vh] overflow-y-auto">
+        <div className="max-w-xl w-full mx-auto space-y-5 font-sans my-4 max-h-[92vh] overflow-y-auto">
           {/* Ticket Created Status Card */}
-          <div className="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xl text-center space-y-4">
-          {isEmailsSent ? (
-            <>
-              <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
-                <CheckCircle className="w-8 h-8" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900">Ticket created successfully.</h2>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <Mail className="w-3.5 h-3.5" />
-                Email sent successfully.
-              </div>
-              <p className="text-xs text-slate-600 max-w-md mx-auto">
-                Email notifications have been delivered to all assigned department Team Leads and tagged employees:
+          <div className="bg-white p-7 rounded-2xl border border-slate-200/90 shadow-xl text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Ticket Created Successfully</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Your ticket has been registered in the system and routed to the assigned personnel.
               </p>
-              <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3 text-xs text-left max-w-md mx-auto space-y-1.5">
-                {sentEmailLogs.map((log) => (
-                  <div key={log.id} className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">
-                      {log.recipientName} ({log.recipientRole})
-                    </span>
-                    <span className="font-mono text-[11px] text-[#0284C7]">{log.recipientEmail}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-8 h-8" />
-              </div>
-              <h2 className="text-xl font-bold text-amber-800">
-                Ticket created, but email notification failed.
-              </h2>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Your ticket was saved successfully in the support queue.
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* Detailed Email Payload Logs */}
-        {sentEmailLogs.map((emailLog) => (
-          <div key={emailLog.id} className="bg-white border border-sky-200 rounded-2xl shadow-md overflow-hidden">
-            <div className="bg-[#0F172A] text-white p-4 px-6 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Mail className="w-4 h-4 text-[#38BDF8]" />
-                <div>
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                    Email Notification: {emailLog.recipientName}
-                  </h3>
-                  <p className="text-[11px] text-slate-300">
-                    Department Team Lead: {emailLog.recipientRole}
-                  </p>
-                </div>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
-                {emailLog.status}
-              </span>
             </div>
 
-            <div className="p-6 space-y-4">
-              <div className="bg-sky-50/70 border border-sky-100 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-[#0284C7] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                    {emailLog.recipientName.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">
-                      To: {emailLog.recipientName} ({emailLog.recipientRole})
-                    </p>
-                    <p className="text-[11px] font-mono font-semibold text-[#0284C7]">
-                      {emailLog.recipientEmail}
-                    </p>
-                  </div>
+            {/* Ticket Summary Card */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-5 text-left space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ticket ID</span>
+                  <span className="text-sm font-mono font-bold text-[#0284C7]">{createdTicketId}</span>
                 </div>
-                <div className="text-[10px] text-slate-400 font-medium">
-                  Sent: {new Date(emailLog.sentAt).toLocaleTimeString()}
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Priority</span>
+                  <Badge priority={priority as any} />
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
-                <div className="border-b border-slate-200 pb-2">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subject</div>
-                  <div className="text-xs font-bold text-slate-900">{emailLog.subject}</div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Subject</span>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">{subject}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200/80">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department</span>
+                  <span className="text-xs font-semibold text-slate-800">{activeDepartments.join(', ') || 'IT Support'}</span>
                 </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-1">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ticket ID</span>
-                    <span className="text-xs font-mono font-bold text-[#0284C7]">{emailLog.ticketNumber}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department</span>
-                    <span className="text-xs font-semibold text-slate-800">{emailLog.department}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category</span>
-                    <span className="text-xs font-semibold text-slate-800">{emailLog.category}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Priority</span>
-                    <Badge priority={emailLog.priority as any} />
-                  </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category</span>
+                  <span className="text-xs font-semibold text-slate-800">{category === 'Other' ? (customCategory.trim() || 'Other') : category}</span>
                 </div>
               </div>
+
+              {/* Assigned Person Highlight */}
+              <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
+                  <span className="text-xs font-bold text-slate-900">{assignedPerson}</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                  Assigned
+                </span>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => navigate('/tickets')}
+                className="w-full sm:w-auto border-slate-200 text-slate-700 font-semibold"
+              >
+                View My Tickets
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => navigate(`/tickets/${createdTicketId}`)}
+                className="w-full sm:w-auto bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+              >
+                <ExternalLink className="w-4 h-4 mr-1.5" />
+                Open Ticket Details
+              </Button>
             </div>
           </div>
-        ))}
-
-        {/* Bottom Actions */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/tickets')}
-            className="w-full sm:w-auto border-slate-200 text-slate-700 font-semibold"
-          >
-            View My Tickets
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => navigate(`/tickets/${createdTicketId}`)}
-            className="w-full sm:w-auto bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
-          >
-            <ExternalLink className="w-4 h-4 mr-1.5" />
-            Open Ticket Details
-          </Button>
         </div>
       </div>
-    </div>
-  );
+    );
   }
 
   return (

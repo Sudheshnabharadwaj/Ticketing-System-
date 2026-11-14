@@ -175,10 +175,6 @@ _DEFAULT_USERS: list[dict[str, Any]] = [
      "email": "s.manikanta@oklut.com", "role": "teamlead", "department": "IT Support",
      "designation": "IT Support Team Lead", "team": "Team Beta",
      "phone": "+1 (555) 000-0015", "location": "Global HQ", "status": "Active"},
-    {"id": "OKL013", "employee_id": "OKL013", "name": "soniya",
-     "email": "soni@gmail.com", "role": "teamlead", "department": "HR",
-     "designation": "HR Team Lead", "team": "HR Team",
-     "phone": "+1 (555) 000-0013", "location": "Global HQ", "status": "Active"},
     # Employee
     {"id": "OKL002", "employee_id": "OKL002", "name": "uday",
      "email": "u.vadlamudi@oklut.com", "role": "employee", "department": "IT Support",
@@ -192,10 +188,6 @@ _DEFAULT_USERS: list[dict[str, Any]] = [
      "email": "sudha@gmail.com", "role": "employee", "department": "IT Support",
      "designation": "Support Engineer", "team": "Team Beta",
      "phone": "+1 (555) 000-0016", "location": "Global HQ", "status": "Active"},
-    {"id": "OKL014", "employee_id": "OKL014", "name": "Ramya",
-     "email": "ramya@gmail.com", "role": "employee", "department": "HR",
-     "designation": "HR Associate", "team": "HR Team",
-     "phone": "+1 (555) 000-0014", "location": "Global HQ", "status": "Active"},
 ]
 
 

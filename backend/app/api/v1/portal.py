@@ -294,29 +294,52 @@ def get_departments(
 ) -> list[dict[str, Any]]:
     global _DEPARTMENTS_CACHE
     now = time.time()
+    from app.services.user_store import is_department_deleted
+
     if _DEPARTMENTS_CACHE and (now - _DEPARTMENTS_CACHE[0]) < _DEPARTMENTS_CACHE_TTL:
-        return _DEPARTMENTS_CACHE[1]
+        filtered = [d for d in _DEPARTMENTS_CACHE[1] if not is_department_deleted(d.get("name") or "")]
+        return filtered
 
     sb = get_supabase_admin_client()
     try:
         res = sb.table("departments").select("id, name, code, display_aliases, description, is_active").eq("is_active", True).order("id").execute()
         rows = res.data or []
         if rows:
-            _DEPARTMENTS_CACHE = (now, rows)
-            return rows
+            valid_rows = [r for r in rows if not is_department_deleted(r.get("name") or "")]
+            _DEPARTMENTS_CACHE = (now, valid_rows)
+            return valid_rows
     except Exception as exc:
         print(f"[portal] departments table fallback: {exc}")
     fallback = [
         {"id": 1, "name": "IT Support", "code": "ITSUPPORT", "display_aliases": ["IT Support", "IT Support Team", "IT"]},
         {"id": 2, "name": "Finance", "code": "FINANCE", "display_aliases": ["Finance", "Finance & Payroll"]},
-        {"id": 3, "name": "HR", "code": "HR", "display_aliases": ["HR", "HR Operations", "HR & Benefits"]},
         {"id": 4, "name": "Operations", "code": "OPS", "display_aliases": ["Operations", "Operations & Logistics"]},
         {"id": 8, "name": "Facilities", "code": "FACILITY", "display_aliases": ["Facilities", "Facilities & Building"]},
         {"id": 9, "name": "General Administration", "code": "GENADMIN", "display_aliases": ["General Administration", "Administration"]},
         {"id": 10, "name": "Other", "code": "OTHER", "display_aliases": ["Other", "Others"]},
     ]
-    _DEPARTMENTS_CACHE = (now, fallback)
-    return fallback
+    valid_fallback = [d for d in fallback if not is_department_deleted(d.get("name") or "")]
+    _DEPARTMENTS_CACHE = (now, valid_fallback)
+    return valid_fallback
+
+
+@router.delete("/departments/{dept_name}", summary="Permanently delete a department")
+def delete_department_endpoint(
+    dept_name: str,
+    payload: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.services.user_store import delete_department_permanently
+    global _DEPARTMENTS_CACHE
+    _DEPARTMENTS_CACHE = None
+    delete_department_permanently(dept_name)
+    try:
+        sb = get_supabase_admin_client()
+        sb.table("departments").update({"is_active": False}).ilike("name", dept_name).execute()
+        sb.table("departments").delete().ilike("name", dept_name).execute()
+    except Exception as exc:
+        print(f"[portal] delete department error in db: {exc}")
+    invalidate_all_users_cache()
+    return {"success": True, "department": dept_name}
 
 
 # ── Notifications ────────────────────────────────────────────────────────────
@@ -580,8 +603,25 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
         "created_at": now,
         "updated_at": now,
     }
+    valid_cols = {
+        "id", "employee_id", "name", "email", "phone", "role",
+        "department", "designation", "team", "team_lead", "team_lead_id", "location", "status",
+        "password_hash", "auth_user_id", "created_at", "updated_at",
+    }
+    clean_row = {k: v for k, v in row.items() if k in valid_cols and v is not None}
+    sb = get_supabase_admin_client()
+    try:
+        sb.table("users").insert(clean_row).execute()
+    except Exception as exc:
+        try:
+            sb.table("users").upsert(clean_row).execute()
+        except Exception:
+            print(f"[portal] admin_create_user Supabase insert notice: {exc}")
+
     saved = save_user(row)
     invalidate_all_users_cache()
+    if resolved_tl_id:
+        invalidate_team_cache(resolved_tl_id)
     return _safe_user(saved)
 
 

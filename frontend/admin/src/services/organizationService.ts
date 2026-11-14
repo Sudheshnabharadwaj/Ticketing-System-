@@ -34,10 +34,8 @@ export interface EmployeeItem {
 
 export const DEPARTMENTS: DepartmentItem[] = [
   { id: 'D001', name: 'IT Support' },
-  { id: 'D002', name: 'HR' },
   { id: 'D003', name: 'Finance' },
   { id: 'D004', name: 'Development' },
-  { id: 'D005', name: 'QA Team' },
   { id: 'D006', name: 'Other' },
 ];
 
@@ -50,7 +48,6 @@ export const INITIAL_EMPLOYEES: EmployeeItem[] = [
   { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com', team: 'Team Alpha' } as any,
   { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com', team: 'Team Beta' } as any,
-  { id: 'okl00', employeeId: 'okl00', name: 'mounika', role: 'QA Analyst', teamLeadId: '', departmentId: 'D005', departmentName: 'QA Team', email: 'mounika.qa@oklut.com', team: 'QA Team' } as any,
 ];
 
 export const TEAM_LEADS: TeamLeadItem[] = [...INITIAL_TEAM_LEADS];

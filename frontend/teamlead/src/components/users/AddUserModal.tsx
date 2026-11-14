@@ -291,10 +291,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onS
                     }`}
                   >
                     <option value="IT Support">IT Support</option>
-                    <option value="HR">HR</option>
                     <option value="Finance">Finance</option>
                     <option value="Development">Development</option>
-                    <option value="QA Team">QA Team</option>
                     <option value="Other">Other</option>
                   </select>
                   {errors.department && <p className="text-[10px] text-rose-500 mt-1">{errors.department}</p>}
