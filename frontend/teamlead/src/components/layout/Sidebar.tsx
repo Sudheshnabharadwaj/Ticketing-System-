@@ -81,8 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
       >
         <div className="flex flex-col min-h-0 flex-1">
-          {/* Header Branding */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800 bg-[#0F172A] shrink-0">
+          {/* Header Branding (White Header matching Top Navbar) */}
+          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/80 bg-white shrink-0">
             <div className="flex items-center space-x-2.5 overflow-hidden">
               <div className="h-8 w-[76px] flex items-center justify-center shrink-0 overflow-hidden">
                 <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
@@ -90,12 +90,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {(!collapsed || mobileOpen) && (
                 <div className="truncate">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-white tracking-tight leading-none block">KIVO</span>
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-[#38BDF8] border border-sky-800/60 uppercase">
+                    <span className="text-xs font-bold text-slate-900 tracking-tight leading-none block">KIVO</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-[#0284C7] border border-sky-200 uppercase">
                       Team Lead
                     </span>
                   </div>
-                  <span className="block text-[9px] text-[#38BDF8] font-bold uppercase tracking-wider mt-0.5">
+                  <span className="block text-[9px] text-[#0284C7] font-bold uppercase tracking-wider mt-0.5">
                     Track. Manage. Resolve.
                   </span>
                 </div>
@@ -106,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => setCollapsed(!collapsed)}
-              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              className="hidden lg:flex p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
               title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             >
               {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

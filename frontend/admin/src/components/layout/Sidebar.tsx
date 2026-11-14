@@ -160,27 +160,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Top Branding Section (Continuous Dark Navy #0F172A) */}
-        <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between gap-3 bg-[#0F172A] shrink-0">
+        {/* Top Branding Section (White Header matching TopNavigation) */}
+        <div className="h-16 px-4 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-white shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-8 w-[76px] flex items-center justify-center shrink-0 overflow-hidden">
               <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
             </div>
             <div className="truncate">
               <div className="flex items-center gap-1.5">
-                <h1 className="text-xs font-bold text-white tracking-tight leading-none m-0">KIVO</h1>
-                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-[#38BDF8] border border-sky-800/60 uppercase">
+                <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none m-0">KIVO</h1>
+                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-[#0284C7] border border-sky-200 uppercase">
                   Admin
                 </span>
               </div>
-              <p className="text-[9px] text-[#38BDF8] font-bold uppercase tracking-wider block mt-0.5 m-0">Track. Manage. Resolve.</p>
+              <p className="text-[9px] text-[#0284C7] font-bold uppercase tracking-wider block mt-0.5 m-0">Track. Manage. Resolve.</p>
             </div>
           </div>
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="lg:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 cursor-pointer"
+              className="lg:hidden text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100 cursor-pointer"
               title="Close menu"
             >
               <X className="w-4 h-4" />

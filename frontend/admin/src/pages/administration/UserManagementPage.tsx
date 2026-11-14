@@ -112,7 +112,7 @@ export const UserManagementPage: React.FC = () => {
 
   const handleOpenEdit = (user: User) => {
     setEditingUser(user);
-    const standardDepts = ['IT Support', 'Finance', 'Development'];
+    const standardDepts = ['IT Support', 'HR', 'Finance', 'Development', 'QA Team'];
     const isStandard = standardDepts.includes(user.department);
     setEditFormData({
       name: user.name,
@@ -445,8 +445,10 @@ export const UserManagementPage: React.FC = () => {
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-[#0284C7] bg-white"
               >
                 <option value="IT Support">IT Support</option>
+                <option value="HR">HR</option>
                 <option value="Finance">Finance</option>
                 <option value="Development">Development</option>
+                <option value="QA Team">QA Team</option>
                 <option value="Other">Other</option>
               </select>
             </div>

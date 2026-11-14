@@ -14,8 +14,10 @@ import { OrganizationService, type TeamLeadItem, type EmployeeItem } from '../se
 
 const DEFAULT_DEPARTMENT_OPTIONS = [
   'IT Support',
+  'HR',
   'Finance',
   'Development',
+  'QA Team',
   'Other',
 ];
 

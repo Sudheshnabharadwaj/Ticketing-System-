@@ -313,7 +313,10 @@ def get_departments(
     fallback = [
         {"id": 1, "name": "IT Support", "code": "ITSUPPORT", "display_aliases": ["IT Support", "IT Support Team", "IT"]},
         {"id": 2, "name": "Finance", "code": "FINANCE", "display_aliases": ["Finance", "Finance & Payroll"]},
-        {"id": 4, "name": "Operations", "code": "OPS", "display_aliases": ["Operations", "Operations & Logistics"]},
+        {"id": 3, "name": "HR", "code": "HR", "display_aliases": ["HR", "HR Operations", "HR & Benefits"]},
+        {"id": 4, "name": "QA Team", "code": "QATEAM", "display_aliases": ["QA Team", "QA", "Quality Assurance"]},
+        {"id": 5, "name": "Development", "code": "DEV", "display_aliases": ["Development", "Dev", "Engineering"]},
+        {"id": 6, "name": "Operations", "code": "OPS", "display_aliases": ["Operations", "Operations & Logistics"]},
         {"id": 8, "name": "Facilities", "code": "FACILITY", "display_aliases": ["Facilities", "Facilities & Building"]},
         {"id": 9, "name": "General Administration", "code": "GENADMIN", "display_aliases": ["General Administration", "Administration"]},
         {"id": 10, "name": "Other", "code": "OTHER", "display_aliases": ["Other", "Others"]},

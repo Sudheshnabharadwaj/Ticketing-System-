@@ -27,7 +27,7 @@ _PERSISTENCE_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / 
 _DELETED_USERS_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "deleted_users.json"
 _DELETED_USERS_SET: set[str] = set()
 _DELETED_DEPTS_FILE = Path(__file__).resolve().parent.parent.parent / "uploads" / "deleted_departments.json"
-_DELETED_DEPTS_SET: set[str] = {"hr", "qa team", "qa"}
+_DELETED_DEPTS_SET: set[str] = set()
 
 DEFAULT_USERS: list[dict[str, Any]] = [
     # ── Admin Users ─────────────────────────────────────────────────────────

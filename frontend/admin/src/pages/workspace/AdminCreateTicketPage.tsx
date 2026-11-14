@@ -12,8 +12,10 @@ import { TeamLeadEmployeeSelector } from '../../components/ui/TeamLeadEmployeeSe
 
 const DEFAULT_DEPARTMENT_OPTIONS = [
   'IT Support',
+  'HR',
   'Finance',
   'Development',
+  'QA Team',
   'Other',
 ];
 
