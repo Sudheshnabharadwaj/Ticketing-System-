@@ -82,9 +82,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="flex flex-col min-h-0 flex-1">
           {/* Header Branding (White Header matching Top Navbar) */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200/80 bg-white shrink-0">
+          <div className="h-16 px-4 flex items-center justify-between border-t-0 border-b border-slate-200/80 bg-white shrink-0">
             <div className="flex items-center space-x-2.5 overflow-hidden">
-              <div className="h-8 w-[76px] flex items-center justify-center shrink-0 overflow-hidden">
+              <div className="h-9 w-[86px] flex items-center justify-center shrink-0 overflow-hidden">
                 <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
               </div>
               {(!collapsed || mobileOpen) && (
