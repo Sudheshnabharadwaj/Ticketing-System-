@@ -630,32 +630,36 @@ export const AdminApiService = {
     }
     _adminUsersInflight = (async () => {
       try {
+        const collectedUsers: User[] = [];
+
+        // 1. Fetch from Render backend API
         const resultPromise = apiRequestSafe<BackendUserRow[]>('/admin/users');
         const timeoutPromise = new Promise<{ data: null; error: string; status: number }>((resolve) =>
           setTimeout(() => resolve({ data: null, error: 'timeout', status: 408 }), 4000)
         );
         const result = await Promise.race([resultPromise, timeoutPromise]);
         if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
-          const mapped = deduplicateUsers(result.data.map(mapBackendUser));
-          _adminUsersCache = mapped;
-          _lastUsersFetchTime = Date.now();
-          return mapped;
+          collectedUsers.push(...result.data.map(mapBackendUser));
         }
 
-        // Fast Supabase direct fallback
+        // 2. Fetch directly from Supabase (live cloud database) and merge
         try {
           const { data: supaUsers, error: supaErr } = await supabase
             .from('users')
             .select('*')
             .order('created_at', { ascending: false });
           if (!supaErr && Array.isArray(supaUsers) && supaUsers.length > 0) {
-            const mapped = deduplicateUsers(supaUsers.map(mapBackendUser));
-            _adminUsersCache = mapped;
-            _lastUsersFetchTime = Date.now();
-            return mapped;
+            collectedUsers.push(...supaUsers.map(mapBackendUser));
           }
         } catch (supaErr) {
-          console.warn('Fallback Supabase users query error:', supaErr);
+          console.warn('Supabase users query warning:', supaErr);
+        }
+
+        if (collectedUsers.length > 0) {
+          const mapped = deduplicateUsers(collectedUsers);
+          _adminUsersCache = mapped;
+          _lastUsersFetchTime = Date.now();
+          return mapped;
         }
 
         return _adminUsersCache || [];
@@ -680,7 +684,10 @@ export const AdminApiService = {
        data.teamLead?.toLowerCase().includes('soni') || data.teamLead === 'OKL013' ? 'HR Team' :
        data.teamLead?.toLowerCase().includes('pavan') || data.teamLead === 'OKL101' ? 'QA Team' : data.teamLead || undefined);
 
-    let created: BackendUserRow;
+    let created: BackendUserRow | null = null;
+    let createError: any = null;
+
+    // 1. Try Render backend first
     try {
       created = await apiRequest<BackendUserRow>(
         '/admin/users',
@@ -701,32 +708,50 @@ export const AdminApiService = {
         })
       );
     } catch (apiErr: any) {
+      createError = apiErr;
       console.warn('Backend /admin/users failed, provisioning in Supabase:', apiErr);
-      const now = new Date().toISOString();
-      const insertRow: Record<string, any> = {
-        id: cleanEmpId,
-        name: data.name.trim(),
-        email: cleanEmail,
-        phone: data.phone || '',
-        department: data.department || 'IT Support',
-        role: mappedRole,
-        team: resolvedTeam,
-        team_lead: rawLead || null,
-        team_lead_id: leadEmpId || null,
-        status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
-        created_at: now,
-        updated_at: now,
-      };
+    }
+
+    // 2. Dual write / guarantee persistence directly in Supabase
+    const now = new Date().toISOString();
+    const insertRow: Record<string, any> = {
+      id: cleanEmpId,
+      employee_id: cleanEmpId,
+      name: data.name.trim(),
+      email: cleanEmail,
+      phone: data.phone || '',
+      department: data.department || 'IT Support',
+      role: mappedRole,
+      team: resolvedTeam,
+      team_lead: rawLead || null,
+      team_lead_id: leadEmpId || null,
+      status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
+      created_at: now,
+      updated_at: now,
+    };
+
+    try {
       const { data: supaInserted, error: supaErr } = await supabase
         .from('users')
-        .insert([insertRow])
+        .upsert([insertRow], { onConflict: 'email' })
         .select()
         .single();
-      if (supaErr) {
-        throw new Error(apiErr.message || supaErr.message || 'Failed to create user');
+      if (!created && supaInserted) {
+        created = supaInserted as BackendUserRow;
       }
-      created = supaInserted as BackendUserRow;
+    } catch (supaErr: any) {
+      console.warn('Direct Supabase upsert error:', supaErr);
+      if (!created && createError) {
+        throw new Error(createError.message || supaErr.message || 'Failed to create user');
+      }
     }
+
+    if (!created) {
+      if (createError) throw createError;
+      throw new Error('Failed to create user');
+    }
+
+    OrganizationService.invalidateCache();
 
     if (data.sendEmailInvite) {
       let targetPortalUrl = `http://localhost:3000/#/signup?token=${inviteToken}&email=${encodeURIComponent(cleanEmail)}&role=${mappedRole}`;
