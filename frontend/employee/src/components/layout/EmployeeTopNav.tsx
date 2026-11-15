@@ -88,7 +88,7 @@ export const EmployeeTopNav: React.FC<EmployeeTopNavProps> = ({
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   return (
-    <header className="h-16 border-t-0 border-b border-slate-200/80 bg-white sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 font-sans">
+    <header className="h-16 border-t-0 border-b border-white bg-white sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-3 shrink-0 font-sans">
       {/* Mobile Hamburger Button */}
       <div className="flex items-center gap-3">
         {onToggleMobileSidebar && (
