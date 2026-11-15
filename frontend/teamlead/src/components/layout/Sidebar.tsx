@@ -9,8 +9,6 @@ import {
   Users,
   AlertTriangle,
   BookOpen,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
   TicketCheck,
 } from 'lucide-react';
@@ -76,41 +74,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Dark Navy Sidebar Container */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-[#0F172A] border-r border-slate-800 text-slate-300 flex flex-col justify-between shrink-0 h-full shadow-2xl transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
-          collapsed && !mobileOpen ? 'w-20' : 'w-64'
-        } ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#0F172A] border-r border-slate-800 text-slate-300 flex flex-col justify-between shrink-0 h-full shadow-2xl transition-all duration-300 ease-in-out lg:static lg:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
       >
         <div className="flex flex-col min-h-0 flex-1">
           {/* Header Branding (White Header matching Top Navbar) */}
-          <div className="h-16 px-4 flex items-center justify-between border-t-0 border-b border-slate-200/80 bg-white shrink-0">
+          <div className="h-16 px-4 flex items-center justify-between border-t-0 border-b border-white bg-white shrink-0">
             <div className="flex items-center space-x-2.5 overflow-hidden">
               <div className="h-9 w-[86px] flex items-center justify-center shrink-0 overflow-hidden">
                 <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
               </div>
-              {(!collapsed || mobileOpen) && (
-                <div className="truncate">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-slate-900 tracking-tight leading-none block">KIVO</span>
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-[#0284C7] border border-sky-200 uppercase">
-                      Team Lead
-                    </span>
-                  </div>
-                  <span className="block text-[9px] text-[#0284C7] font-bold uppercase tracking-wider mt-0.5">
-                    Track. Manage. Resolve.
+              <div className="truncate">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-900 tracking-tight leading-none block">KIVO</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-[#0284C7] border border-sky-200 uppercase">
+                    Team Lead
                   </span>
                 </div>
-              )}
+                <span className="block text-[9px] text-[#0284C7] font-bold uppercase tracking-wider mt-0.5">
+                  Track. Manage. Resolve.
+                </span>
+              </div>
             </div>
-
-            {/* Collapse Button Desktop */}
-            <button
-              type="button"
-              onClick={() => setCollapsed(!collapsed)}
-              className="hidden lg:flex p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-            >
-              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
           </div>
 
           {/* Navigation Items */}
@@ -132,9 +118,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-105" />
-                    {(!collapsed || mobileOpen) && <span className="truncate">{item.label}</span>}
+                    <span className="truncate">{item.label}</span>
                   </div>
-                  {(!collapsed || mobileOpen) && item.badge !== undefined && item.badge > 0 && (
+                  {item.badge !== undefined && item.badge > 0 && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
                       {item.badge}
                     </span>
@@ -147,34 +133,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Sidebar Footer */}
         <div className="p-3 border-t border-slate-800 text-slate-400 text-xs bg-[#0F172A] shrink-0">
-          {(!collapsed || mobileOpen) ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5 overflow-hidden">
-                <UserAvatar name={user.name} avatar={user.avatar} size="md" />
-                <div className="truncate">
-                  <p className="font-semibold text-white leading-tight truncate text-xs">{user.name}</p>
-                  <p className="text-[10px] text-[#38BDF8] font-semibold truncate tracking-wider">TEAM LEAD</p>
-                </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 overflow-hidden">
+              <UserAvatar name={user.name} avatar={user.avatar} size="md" />
+              <div className="truncate">
+                <p className="font-semibold text-white leading-tight truncate text-xs">{user.name}</p>
+                <p className="text-[10px] text-[#38BDF8] font-semibold truncate tracking-wider">TEAM LEAD</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsLogoutModalOpen(true)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
             </div>
-          ) : (
             <button
               type="button"
               onClick={() => setIsLogoutModalOpen(true)}
-              className="w-full flex justify-center p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
       </aside>
 

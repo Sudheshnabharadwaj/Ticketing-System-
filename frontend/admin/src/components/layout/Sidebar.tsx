@@ -161,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
         }`}
       >
         {/* Top Branding Section (White Header matching TopNavigation) */}
-        <div className="h-16 px-4 border-t-0 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-white shrink-0">
+        <div className="h-16 px-4 border-t-0 border-b border-white flex items-center justify-between gap-3 bg-white shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-9 w-[86px] flex items-center justify-center shrink-0 overflow-hidden">
               <img src={kivoLogo} alt="KIVO" className="w-full h-full object-contain" />
