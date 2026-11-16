@@ -256,25 +256,24 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
                 return None
             return dict(u)
 
-    # 2. Try Supabase if privileged
-    if has_service_role_key():
-        try:
-            sb = get_supabase_admin_client()
-            res = sb.table("users").select("*").eq("email", clean).limit(1).execute()
-            rows = res.data or []
-            if rows and isinstance(rows[0], dict) and rows[0].get("id"):
-                row = dict(rows[0])
-                uid = str(row.get("id") or "").lower()
-                em = str(row.get("email") or "").lower()
-                emp_id = str(row.get("employee_id") or "").lower()
-                if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                    return None
-                local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
-                if not row.get("avatar") and local_match.get("avatar"):
-                    row["avatar"] = local_match["avatar"]
-                return row
-        except Exception as exc:
-            print(f"[user_store] Supabase lookup error for {clean}: {exc}")
+    # 2. Try Supabase
+    try:
+        sb = get_supabase_admin_client() or get_supabase_client()
+        res = sb.table("users").select("*").eq("email", clean).limit(1).execute()
+        rows = res.data or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("id"):
+            row = dict(rows[0])
+            uid = str(row.get("id") or "").lower()
+            em = str(row.get("email") or "").lower()
+            emp_id = str(row.get("employee_id") or "").lower()
+            if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
+                return None
+            local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
+            if not row.get("avatar") and local_match.get("avatar"):
+                row["avatar"] = local_match["avatar"]
+            return row
+    except Exception as exc:
+        print(f"[user_store] Supabase lookup error for {clean}: {exc}")
 
     return None
 
@@ -302,24 +301,23 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
                 return None
             return dict(u)
 
-    if has_service_role_key():
-        try:
-            sb = get_supabase_admin_client()
-            res = sb.table("users").select("*").eq("id", clean).limit(1).execute()
-            rows = res.data or []
-            if rows and isinstance(rows[0], dict) and rows[0].get("id"):
-                row = dict(rows[0])
-                uid = str(row.get("id") or "").lower()
-                em = str(row.get("email") or "").lower()
-                emp_id = str(row.get("employee_id") or "").lower()
-                if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                    return None
-                local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
-                if not row.get("avatar") and local_match.get("avatar"):
-                    row["avatar"] = local_match["avatar"]
-                return row
-        except Exception:
-            pass
+    try:
+        sb = get_supabase_admin_client() or get_supabase_client()
+        res = sb.table("users").select("*").eq("id", clean).limit(1).execute()
+        rows = res.data or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("id"):
+            row = dict(rows[0])
+            uid = str(row.get("id") or "").lower()
+            em = str(row.get("email") or "").lower()
+            emp_id = str(row.get("employee_id") or "").lower()
+            if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
+                return None
+            local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
+            if not row.get("avatar") and local_match.get("avatar"):
+                row["avatar"] = local_match["avatar"]
+            return row
+    except Exception:
+        pass
 
     return None
 
@@ -376,41 +374,39 @@ def get_all_users() -> list[dict[str, Any]]:
     _load_persisted()
     all_map: dict[str, dict[str, Any]] = {}
 
-    if has_service_role_key():
-        try:
-            sb = get_supabase_admin_client()
-            res = (
-                sb.table("users")
-                .select("id, employee_id, name, email, phone, role, department, designation, team, location, status, created_at, updated_at")
-                .execute()
-            )
-            for row in res.data or []:
-                if isinstance(row, dict) and row.get("email"):
-                    ek = str(row["email"]).strip().lower()
-                    uid = str(row.get("id") or "").strip().lower()
-                    emp_id = str(row.get("employee_id") or "").strip().lower()
-                    if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
-                        continue
-                    local_match = _LOCAL_USERS_MAP.get(ek) or _LOCAL_USERS_MAP.get(f"id:{uid}") or {}
-                    merged_row = {**local_match, **row}
-                    if not merged_row.get("avatar") and local_match.get("avatar"):
-                        merged_row["avatar"] = local_match["avatar"]
-                    all_map[ek] = merged_row
-        except Exception as exc:
-            print(f"[user_store] get_all_users Supabase read note: {exc}")
+    try:
+        sb = get_supabase_admin_client() or get_supabase_client()
+        res = (
+            sb.table("users")
+            .select("id, employee_id, name, email, phone, role, department, designation, team, location, status, created_at, updated_at")
+            .execute()
+        )
+        for row in res.data or []:
+            if isinstance(row, dict) and row.get("email"):
+                ek = str(row["email"]).strip().lower()
+                uid = str(row.get("id") or "").strip().lower()
+                emp_id = str(row.get("employee_id") or "").strip().lower()
+                if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
+                    continue
+                local_match = _LOCAL_USERS_MAP.get(ek) or _LOCAL_USERS_MAP.get(f"id:{uid}") or {}
+                merged_row = {**local_match, **row}
+                if not merged_row.get("avatar") and local_match.get("avatar"):
+                    merged_row["avatar"] = local_match["avatar"]
+                all_map[ek] = merged_row
+    except Exception as exc:
+        print(f"[user_store] get_all_users Supabase read note: {exc}")
 
-    # Fallback / merge local store if Supabase returned nothing or offline
-    if not all_map:
-        for k, u in _LOCAL_USERS_MAP.items():
-            if k.startswith("id:"):
-                continue
-            ek = str(u.get("email") or "").strip().lower()
-            uid = str(u.get("id") or "").strip().lower()
-            emp_id = str(u.get("employee_id") or "").strip().lower()
-            if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
-                continue
-            if ek and ek not in all_map:
-                all_map[ek] = dict(u)
+    # Fallback / merge local store
+    for k, u in _LOCAL_USERS_MAP.items():
+        if k.startswith("id:"):
+            continue
+        ek = str(u.get("email") or "").strip().lower()
+        uid = str(u.get("id") or "").strip().lower()
+        emp_id = str(u.get("employee_id") or "").strip().lower()
+        if ek in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
+            continue
+        if ek and ek not in all_map:
+            all_map[ek] = dict(u)
 
     # Deduplicate strictly by normalized id, employee_id, and email
     deduped: dict[str, dict[str, Any]] = {}
@@ -460,35 +456,34 @@ def save_user(user_data: dict[str, Any]) -> dict[str, Any]:
         except Exception as exc:
             print(f"[user_store] error saving {_DELETED_USERS_FILE}: {exc}")
 
-    if has_service_role_key():
-        try:
-            sb = get_supabase_admin_client()
-            db_row: dict[str, Any] = {
-                "id": str(user_data.get("id") or ""),
-                "name": str(user_data.get("name") or ""),
-                "email": clean_email,
-                "role": str(user_data.get("role") or "employee"),
-                "department": str(user_data.get("department") or "IT Support"),
-                "status": str(user_data.get("status") or "Active"),
-            }
-            if user_data.get("employee_id"):
-                db_row["employee_id"] = str(user_data.get("employee_id"))
-            elif user_id:
-                db_row["employee_id"] = user_id
-            if user_data.get("phone"):
-                db_row["phone"] = str(user_data.get("phone"))
-            if user_data.get("designation"):
-                db_row["designation"] = str(user_data.get("designation"))
-            if user_data.get("team"):
-                db_row["team"] = str(user_data.get("team"))
-            if user_data.get("location"):
-                db_row["location"] = str(user_data.get("location"))
-            pwd = user_data.get("password_hash") or user_data.get("password")
-            if pwd:
-                db_row["password_hash"] = hash_password(pwd) if not is_hashed(pwd) else pwd
-            sb.table("users").upsert(db_row).execute()
-        except Exception as exc:
-            print(f"[user_store] Supabase upsert note: {exc}")
+    try:
+        sb = get_supabase_admin_client() or get_supabase_client()
+        db_row: dict[str, Any] = {
+            "id": str(user_data.get("id") or ""),
+            "name": str(user_data.get("name") or ""),
+            "email": clean_email,
+            "role": str(user_data.get("role") or "employee"),
+            "department": str(user_data.get("department") or "IT Support"),
+            "status": str(user_data.get("status") or "Active"),
+        }
+        if user_data.get("employee_id"):
+            db_row["employee_id"] = str(user_data.get("employee_id"))
+        elif user_id:
+            db_row["employee_id"] = user_id
+        if user_data.get("phone"):
+            db_row["phone"] = str(user_data.get("phone"))
+        if user_data.get("designation"):
+            db_row["designation"] = str(user_data.get("designation"))
+        if user_data.get("team"):
+            db_row["team"] = str(user_data.get("team"))
+        if user_data.get("location"):
+            db_row["location"] = str(user_data.get("location"))
+        pwd = user_data.get("password_hash") or user_data.get("password")
+        if pwd:
+            db_row["password_hash"] = hash_password(pwd) if not is_hashed(pwd) else pwd
+        sb.table("users").upsert(db_row, on_conflict="email").execute()
+    except Exception as exc:
+        print(f"[user_store] Supabase upsert note: {exc}")
 
     return user_data
 

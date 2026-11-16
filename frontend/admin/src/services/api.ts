@@ -723,8 +723,6 @@ export const AdminApiService = {
       department: data.department || 'IT Support',
       role: mappedRole,
       team: resolvedTeam,
-      team_lead: rawLead || null,
-      team_lead_id: leadEmpId || null,
       status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
       created_at: now,
       updated_at: now,

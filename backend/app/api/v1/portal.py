@@ -608,7 +608,7 @@ def admin_create_user(body: UserCreate) -> dict[str, Any]:
     }
     valid_cols = {
         "id", "employee_id", "name", "email", "phone", "role",
-        "department", "designation", "team", "team_lead", "team_lead_id", "location", "status",
+        "department", "designation", "team", "location", "status",
         "password_hash", "auth_user_id", "created_at", "updated_at",
     }
     clean_row = {k: v for k, v in row.items() if k in valid_cols and v is not None}
@@ -851,7 +851,7 @@ def team_create_user(body: UserCreate, context: tuple[dict[str, Any], dict[str, 
     }
     valid_cols = {
         "id", "employee_id", "name", "email", "phone", "role",
-        "department", "designation", "team", "team_lead_id", "location", "status",
+        "department", "designation", "team", "location", "status",
         "password_hash", "auth_user_id", "created_at", "updated_at",
     }
     clean_row = {k: v for k, v in row.items() if k in valid_cols and v is not None}
