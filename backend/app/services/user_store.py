@@ -118,6 +118,20 @@ DEFAULT_USERS: list[dict[str, Any]] = [
         "status": "Active",
         "passwords": ["Password123", "Sudha@123"],
     },
+    {
+        "id": "OKL101",
+        "employee_id": "OKL101",
+        "name": "Rahul",
+        "email": "rahul@oklut.com",
+        "role": "teamlead",
+        "department": "Development",
+        "designation": "Development Team Lead",
+        "team": "Development",
+        "phone": "9063554232",
+        "location": "Global HQ",
+        "status": "Active",
+        "passwords": ["Password123", "Rahul@123"],
+    },
 ]
 
 # In-memory overlay cache
@@ -350,6 +364,8 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
     if email == "ramya@gmail.com" and candidate_password in ("Password123", "Ramya@123"):
         return True
     if email == "admin@platform.local" and candidate_password in ("Password123", "Admin@123"):
+        return True
+    if email == "rahul@oklut.com" and candidate_password in ("Password123", "Rahul@123"):
         return True
 
     return False

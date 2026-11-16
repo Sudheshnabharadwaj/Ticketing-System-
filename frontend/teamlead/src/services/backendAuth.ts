@@ -301,6 +301,15 @@ const KNOWN_CREDENTIALS: KnownCredential[] = [
     phone: '+1 (555) 000-0014',
     validPasswords: ['Password123', 'Ramya@123'],
   },
+  {
+    id: 'OKL101',
+    name: 'Rahul',
+    email: 'rahul@oklut.com',
+    role: 'teamlead',
+    department: 'Development',
+    phone: '9063554232',
+    validPasswords: ['Password123', 'Rahul@123'],
+  },
 ];
 
 function checkFallbackUser(email: string, password: string): BackendUser | null {
