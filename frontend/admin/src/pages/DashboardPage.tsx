@@ -25,6 +25,7 @@ import {
   X,
   Inbox,
   Eye,
+  RefreshCw,
 } from 'lucide-react';
 
 const DEFAULT_DEPARTMENT_OPTIONS = [
@@ -44,6 +45,7 @@ export const DashboardPage: React.FC = () => {
   const [filterQuery, setFilterQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedStats() && (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0));
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
   // Modal State for Admin Create Ticket
@@ -90,7 +92,7 @@ export const DashboardPage: React.FC = () => {
   );
 
   const loadData = async (force = false) => {
-    if (!stats && tickets.length === 0) {
+    if (!stats && tickets.length === 0 && !force) {
       setIsLoading(true);
     }
     setLoadError(false);
@@ -102,6 +104,30 @@ export const DashboardPage: React.FC = () => {
     setTickets(ticketsData);
     setLoadError(statsData === null && ticketsData.length === 0);
     setIsLoading(false);
+  };
+
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      AdminApiService.invalidateCache();
+      await Promise.all([
+        loadData(true),
+        OrganizationService.syncFromDatabase().then(() => {
+          const depts = OrganizationService.getDepartments();
+          if (depts && depts.length > 0) {
+            const names = depts.map((d) => d.name);
+            if (!names.includes('Other')) names.push('Other');
+            setDepartmentOptions(names);
+          }
+        }),
+      ]);
+      setToastNotification({ message: 'Dashboard data refreshed successfully.' });
+    } catch (err: any) {
+      console.error('Failed to refresh dashboard:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -567,15 +593,28 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => setShowCreateModal(true)}
-          className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shrink-0 shadow-2xs"
-        >
-          <PlusCircle className="w-4 h-4 mr-1.5" />
-          Create Ticket
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="border-slate-200 text-slate-700 hover:bg-slate-50 font-medium shadow-2xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin text-[#0284C7]' : 'text-slate-500'}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setShowCreateModal(true)}
+            className="bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold shadow-2xs"
+          >
+            <PlusCircle className="w-4 h-4 mr-1.5" />
+            Create Ticket
+          </Button>
+        </div>
       </div>
 
       {/* Load error / retry state */}

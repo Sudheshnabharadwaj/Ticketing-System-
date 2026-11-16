@@ -69,10 +69,11 @@ export const AdminTicketDetailsPage: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const loadTicket = async () => {
+  const loadTicket = async (force = false) => {
     if (!id) return;
-    if (!ticket && !cachedTicket) {
+    if (!ticket && !cachedTicket && !force) {
       setIsLoading(true);
     }
     const found = await AdminApiService.getTicketById(id);
@@ -82,6 +83,21 @@ export const AdminTicketDetailsPage: React.FC = () => {
       setSelectedPriority(found.priority);
     }
     setIsLoading(false);
+  };
+
+  const handleRefresh = async () => {
+    if (!id || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      AdminApiService.invalidateCache();
+      await loadTicket(true);
+      setToastMessage('Ticket details and conversation refreshed.');
+      window.dispatchEvent(new CustomEvent('ticket-updated', { detail: { id } }));
+    } catch (err: any) {
+      console.error('Refresh error:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleOpenDeadlineModal = () => {
@@ -585,6 +601,17 @@ export const AdminTicketDetailsPage: React.FC = () => {
         </button>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs font-medium cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin text-[#0284C7]' : 'text-slate-500'}`} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </Button>
+
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs">
             <Eye className="w-3.5 h-3.5 text-slate-500" />
             View
@@ -896,14 +923,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0284C7] focus:ring-2 focus:ring-[#0284C7]/20"
                 />
 
-                <div className="flex items-center justify-between pt-1">
-                  <AttachmentFilePicker
-                    files={commentAttachedFiles}
-                    onFilesChange={setCommentAttachedFiles}
-                    label=""
-                    buttonText="Attach Local File"
-                    compact
-                  />
+                <div className="flex items-center justify-end pt-1">
                   <Button
                     type="submit"
                     variant="primary"
