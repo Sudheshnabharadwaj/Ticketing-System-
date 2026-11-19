@@ -894,6 +894,45 @@ def serialize_ticket(
                 break
 
     result["is_unassigned"] = is_ticket_unassigned
+
+    # Populate tagged team leads and tagged employees from database records
+    tagged_ids = [str(x).strip() for x in (result.get("tagged_member_ids") or []) if x]
+    if tagged_ids and cached_users:
+        users_by_id = {str(u.get("id") or "").strip().lower(): u for u in cached_users}
+        users_by_empid = {str(u.get("employee_id") or "").strip().lower(): u for u in cached_users if u.get("employee_id")}
+        users_by_name = {_norm(u.get("name")): u for u in cached_users if u.get("name")}
+
+        team_leads_list: list[dict[str, Any]] = []
+        employees_list: list[dict[str, Any]] = []
+
+        for tid_raw in tagged_ids:
+            tid_lower = tid_raw.lower()
+            matched_user = users_by_id.get(tid_lower) or users_by_empid.get(tid_lower) or users_by_name.get(tid_lower)
+            if matched_user:
+                urole = normalize_role(matched_user.get("role"))
+                user_info = {
+                    "id": str(matched_user.get("id") or ""),
+                    "name": matched_user.get("name") or tid_raw,
+                    "employeeId": str(matched_user.get("employee_id") or matched_user.get("id") or ""),
+                    "role": "Team Lead" if urole == ROLE_TEAMLEAD else "Employee",
+                    "department": matched_user.get("department") or "IT Support",
+                    "email": matched_user.get("email") or "",
+                }
+                if urole == ROLE_TEAMLEAD:
+                    if not any(tl["id"] == user_info["id"] for tl in team_leads_list):
+                        team_leads_list.append(user_info)
+                else:
+                    if not any(emp["id"] == user_info["id"] for emp in employees_list):
+                        employees_list.append(user_info)
+
+        if team_leads_list:
+            result["team_leads"] = team_leads_list
+            result["teamLeads"] = team_leads_list
+        if employees_list:
+            result["employees"] = employees_list
+            result["tagged_employees"] = employees_list
+            result["taggedEmployees"] = employees_list
+
     if payload is not None and user is not None:
         result["is_assigned_to_me"] = _same_person(user, payload, result, "assigned_agent")
         result["is_created_by_me"] = (

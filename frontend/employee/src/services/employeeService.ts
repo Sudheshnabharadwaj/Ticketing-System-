@@ -192,7 +192,11 @@ function mapDbTicket(row: any): EmployeeTicket {
     subCategory: row.sub_category || 'General Support',
     department: row.department || 'IT Support',
     departments: Array.isArray(row.departments) && row.departments.length > 0 ? row.departments : [row.department || 'IT Support'],
-    teamLeads: [],
+    teamLeads: Array.isArray(row.team_leads)
+      ? row.team_leads
+      : Array.isArray(row.teamLeads)
+      ? row.teamLeads
+      : [],
     priority: (row.priority || 'Medium') as TicketPriority,
     status: (row.status || 'Open') as TicketStatus,
     createdAt: formatDateTime(row.created_at),

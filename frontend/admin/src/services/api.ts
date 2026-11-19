@@ -471,6 +471,18 @@ function mapBackendTicket(t: BackendTicket): Ticket {
     updatedAt: formatDateTime(t.updated_at || t.created_at),
     dueDate: calculatedDueDate,
     attachments: normalizedAttachments,
+    teamLeads: Array.isArray((t as any).team_leads)
+      ? (t as any).team_leads
+      : Array.isArray((t as any).teamLeads)
+      ? (t as any).teamLeads
+      : undefined,
+    employees: Array.isArray((t as any).employees)
+      ? (t as any).employees
+      : Array.isArray((t as any).tagged_employees)
+      ? (t as any).tagged_employees
+      : Array.isArray((t as any).taggedEmployees)
+      ? (t as any).taggedEmployees
+      : undefined,
     comments: Array.isArray(t.comments)
       ? t.comments
           .filter(isUserChatMessage)

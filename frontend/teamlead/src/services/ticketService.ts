@@ -171,6 +171,18 @@ export function mapTicket(row: any): Ticket {
     assignedToType: (row.assigned_to_type || undefined) as Ticket['assignedToType'],
     handledBy: (row.handled_by || undefined) as Ticket['handledBy'],
     departments: Array.isArray(row.departments) ? row.departments : undefined,
+    teamLeads: Array.isArray(row.team_leads)
+      ? row.team_leads
+      : Array.isArray(row.teamLeads)
+      ? row.teamLeads
+      : undefined,
+    taggedEmployees: Array.isArray(row.employees)
+      ? row.employees
+      : Array.isArray(row.tagged_employees)
+      ? row.tagged_employees
+      : Array.isArray(row.taggedEmployees)
+      ? row.taggedEmployees
+      : undefined,
   };
 }
 

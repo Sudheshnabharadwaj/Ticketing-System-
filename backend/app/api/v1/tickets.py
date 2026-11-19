@@ -629,6 +629,16 @@ def get_ticket(
             if c and c not in cands:
                 cands.append(c)
 
+    # Populate tagged_member_ids on ticket if not present
+    if not ticket.get("tagged_member_ids"):
+        try:
+            tt_res = sb.table("ticket_tagged_members").select("user_id").in_("ticket_id", cands).execute()
+            u_ids = [str(tm.get("user_id")) for tm in (tt_res.data or []) if tm.get("user_id")]
+            if u_ids:
+                ticket["tagged_member_ids"] = u_ids
+        except Exception as tag_err:
+            print(f"[get_ticket] load tagged members note: {tag_err}")
+
     comments: list[dict[str, Any]] = []
     activities: list[dict[str, Any]] = []
     try:

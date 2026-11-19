@@ -186,12 +186,33 @@ export const AllTicketsPage: React.FC = () => {
     },
     {
       header: 'Assigned Team',
-      cell: (row) => (
-        <div>
-          <div className="text-slate-800 font-medium text-[12.5px]">{row.assignedTo || 'Unassigned'}</div>
-          <div className="text-[11px] text-slate-500">{row.requesterName}</div>
-        </div>
-      )
+      cell: (row) => {
+        const depts = (row.departments && row.departments.length > 0)
+          ? row.departments.join(', ')
+          : (row.department || 'IT Support');
+
+        const assignedPersonnel: string[] = [];
+        if (Array.isArray(row.teamLeads) && row.teamLeads.length > 0) {
+          assignedPersonnel.push(...row.teamLeads.map((tl: any) => tl.name || tl));
+        }
+        if (Array.isArray(row.employees) && row.employees.length > 0) {
+          assignedPersonnel.push(...row.employees.map((emp: any) => emp.name || emp));
+        }
+        if (assignedPersonnel.length === 0 && row.assignedTo && row.assignedTo !== 'Unassigned') {
+          assignedPersonnel.push(row.assignedTo);
+        }
+
+        const displayAssigned = assignedPersonnel.length > 0 ? assignedPersonnel.join(', ') : 'Unassigned';
+
+        return (
+          <div>
+            <div className="text-slate-800 font-medium text-[12.5px]">{depts}</div>
+            <div className="text-[11px] text-slate-500 line-clamp-2" title={displayAssigned}>
+              {displayAssigned}
+            </div>
+          </div>
+        );
+      }
     },
     {
       header: 'Updated Time',
