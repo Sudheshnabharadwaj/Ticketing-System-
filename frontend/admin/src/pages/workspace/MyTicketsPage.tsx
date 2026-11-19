@@ -31,27 +31,35 @@ export const MyTicketsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [isLoading, setIsLoading] = useState(() => !AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadTickets = async (force = false) => {
-    if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
+    if (force) {
+      setIsRefreshing(true);
+      AdminApiService.invalidateCache();
+    } else if (!AdminApiService.getCachedTickets() || AdminApiService.getCachedTickets()!.length === 0) {
       setIsLoading(true);
     }
-    const all = await AdminApiService.getTickets('all', force);
-    const sessionUser = getCurrentSessionUser();
-    const userEmail = (sessionUser?.email || '').toLowerCase();
-    const userName = (sessionUser?.name || '').toLowerCase();
+    try {
+      const all = await AdminApiService.getTickets('all', force);
+      const sessionUser = getCurrentSessionUser();
+      const userEmail = (sessionUser?.email || '').toLowerCase();
+      const userName = (sessionUser?.name || '').toLowerCase();
 
-    // Filter tickets requested by or assigned to current user
-    const myTickets = all.filter((t) => {
-      const reqEmail = (t.requesterEmail || '').toLowerCase();
-      const reqName = (t.requesterName || '').toLowerCase();
-      const assigned = (t.assignedTo || '').toLowerCase();
-      if (userEmail && reqEmail === userEmail) return true;
-      if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
-      return false;
-    });
-    setTickets(myTickets);
-    setIsLoading(false);
+      // Filter tickets requested by or assigned to current user
+      const myTickets = all.filter((t) => {
+        const reqEmail = (t.requesterEmail || '').toLowerCase();
+        const reqName = (t.requesterName || '').toLowerCase();
+        const assigned = (t.assignedTo || '').toLowerCase();
+        if (userEmail && reqEmail === userEmail) return true;
+        if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+        return false;
+      });
+      setTickets(myTickets);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -154,10 +162,11 @@ export const MyTicketsPage: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={() => loadTickets(true)}
-            className="border-slate-200 text-slate-600 hover:bg-slate-50"
+            disabled={isRefreshing}
+            className="border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin text-[#0284C7]' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button
             variant="primary"

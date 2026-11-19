@@ -271,7 +271,7 @@ export const EmployeeService = {
     _fetchTicketsInflight = (async () => {
       try {
         const data = await apiRequest<any[]>('/tickets');
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           // Direct synchronous mapping without N+1 network requests
           const mapped = data.map(mapDbTicket);
           ticketsCache = mapped;
@@ -279,7 +279,23 @@ export const EmployeeService = {
           return ticketsCache;
         }
       } catch (e) {
-        console.error('Backend fetchTickets error:', e);
+        console.warn('Backend fetchTickets error, falling back to database query:', e);
+      }
+
+      // Supabase direct fallback if backend returns empty or fails
+      try {
+        const { data: supaTickets, error } = await supabase
+          .from('tickets')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && Array.isArray(supaTickets) && supaTickets.length > 0) {
+          const mapped = supaTickets.map(mapDbTicket);
+          ticketsCache = mapped;
+          _lastTicketsFetchTime = Date.now();
+          return ticketsCache;
+        }
+      } catch (err) {
+        console.warn('Supabase fallback query error:', err);
       } finally {
         _fetchTicketsInflight = null;
       }

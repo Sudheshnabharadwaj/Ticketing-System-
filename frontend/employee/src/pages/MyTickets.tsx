@@ -20,12 +20,23 @@ export const MyTickets: React.FC = () => {
   const [tickets, setTickets] = useState<EmployeeTicket[]>(() => EmployeeService.getMyTickets());
   const [searchTerm, setSearchTerm] = useState(paramSearch);
   const [statusFilter, setStatusFilter] = useState<string>(paramStatus || 'ALL');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadTickets = async (force = false) => {
-    await EmployeeService.fetchTickets(force);
-    // Show only tickets created by the logged-in employee
-    const list = EmployeeService.getMyTickets();
-    setTickets(list);
+    if (force) {
+      setIsRefreshing(true);
+      EmployeeService.clearCache();
+    }
+    try {
+      await EmployeeService.fetchTickets(force);
+      // Show only tickets created by the logged-in employee
+      const list = EmployeeService.getMyTickets();
+      setTickets(list);
+    } finally {
+      if (force) {
+        setIsRefreshing(false);
+      }
+    }
   };
 
   useEffect(() => {
@@ -166,10 +177,11 @@ export const MyTickets: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={() => loadTickets(true)}
+            disabled={isRefreshing}
             className="border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            Refresh
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin text-[#0284C7]' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button
             variant="primary"

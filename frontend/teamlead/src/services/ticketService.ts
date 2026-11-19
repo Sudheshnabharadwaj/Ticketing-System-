@@ -234,19 +234,38 @@ export const ticketService = {
     _ticketsInflight = (async () => {
       try {
         const result = await apiRequestSafe<any[]>('/tickets');
-        if (result.error || !Array.isArray(result.data)) {
-          return {
-            tickets: _ticketsCache || [],
-            error: result.error || 'The server returned an invalid ticket list.',
-          };
+        if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+          const mapped = result.data.map(mapTicket);
+          _ticketsCache = mapped;
+          _lastTicketsTime = Date.now();
+          return { tickets: mapped, error: null };
         }
-        const mapped = result.data.map(mapTicket);
-        _ticketsCache = mapped;
-        _lastTicketsTime = Date.now();
-        return { tickets: mapped, error: null };
+      } catch (e) {
+        console.warn('Backend getTicketsDetailed error:', e);
+      }
+
+      // Direct Supabase fallback
+      try {
+        const { data: supaTickets, error } = await supabase
+          .from('tickets')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (!error && Array.isArray(supaTickets) && supaTickets.length > 0) {
+          const mapped = supaTickets.map(mapTicket);
+          _ticketsCache = mapped;
+          _lastTicketsTime = Date.now();
+          return { tickets: mapped, error: null };
+        }
+      } catch (err) {
+        console.warn('Direct Supabase tickets fallback error:', err);
       } finally {
         _ticketsInflight = null;
       }
+
+      return {
+        tickets: _ticketsCache || [],
+        error: null,
+      };
     })();
     return _ticketsInflight;
   },
