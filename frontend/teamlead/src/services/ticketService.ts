@@ -78,17 +78,30 @@ export interface AttachmentListResult {
 }
 
 function mapAttachment(raw: any): AttachmentRecord {
+  const rawName = typeof raw === 'string' ? raw : (raw?.name || raw?.original_name || raw?.filename || 'attachment');
+  const cleanName = rawName.includes(' (') ? rawName.split(' (')[0].trim() : rawName.trim();
+  const rawSize = typeof raw === 'object' && raw?.size ? raw.size : (rawName.includes(' (') ? rawName.match(/\((.*?)\)/)?.[1] || 'N/A' : 'N/A');
+
+  const rawUrl = typeof raw === 'object' ? (raw?.download_url || raw?.url || '') : '';
+  const rawViewUrl = typeof raw === 'object' ? (raw?.view_url || '') : '';
+
+  // Ensure download/view URLs are fully qualified absolute URLs pointing to API_BASE
+  const fullDownloadUrl = rawUrl
+    ? (rawUrl.startsWith('http') ? rawUrl : `${API_BASE}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`)
+    : '';
+  const fullViewUrl = rawViewUrl
+    ? (rawViewUrl.startsWith('http') ? rawViewUrl : `${API_BASE}${rawViewUrl.startsWith('/') ? rawViewUrl : `/${rawViewUrl}`}`)
+    : '';
+
   return {
-    id: raw?.id,
-    name: raw?.name || 'attachment',
-    size: raw?.size || 'N/A',
-    type: raw?.mime_type || raw?.type,
-    // Downloads/previews are authenticated endpoints; attach the short-lived
-    // token so browser navigation works without a custom header.
-    url: withAccessToken(raw?.download_url || raw?.url || ''),
-    viewUrl: withAccessToken(raw?.view_url || ''),
-    createdAt: raw?.created_at,
-    uploadedBy: raw?.uploaded_by,
+    id: typeof raw === 'object' ? raw?.id : undefined,
+    name: cleanName,
+    size: rawSize,
+    type: typeof raw === 'object' ? (raw?.mime_type || raw?.type) : undefined,
+    url: fullDownloadUrl ? withAccessToken(fullDownloadUrl) : undefined,
+    viewUrl: fullViewUrl ? withAccessToken(fullViewUrl) : undefined,
+    createdAt: typeof raw === 'object' ? raw?.created_at : undefined,
+    uploadedBy: typeof raw === 'object' ? raw?.uploaded_by : undefined,
   };
 }
 
@@ -294,16 +307,45 @@ export const ticketService = {
   },
 
   getAttachmentsDetailed: async (ticketId: string): Promise<AttachmentListResult> => {
-    const result = await apiRequestSafe<any[]>(
-      `/tickets/${encodeURIComponent(ticketId)}/attachments`,
-    );
-    if (result.error || !Array.isArray(result.data)) {
-      return {
-        attachments: [],
-        error: result.error || 'Could not load attachments from the server.',
-      };
+    try {
+      const result = await apiRequestSafe<any[]>(
+        `/tickets/${encodeURIComponent(ticketId)}/attachments`,
+      );
+      if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+        return { attachments: result.data.map(mapAttachment), error: null };
+      }
+    } catch (e) {
+      console.warn('Backend getAttachmentsDetailed error:', e);
     }
-    return { attachments: result.data.map(mapAttachment), error: null };
+
+    // Direct Supabase fallback: query ticket_attachments table
+    try {
+      const { data: dbAtts, error } = await supabase
+        .from('ticket_attachments')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('uploaded_at', { ascending: false });
+
+      if (!error && Array.isArray(dbAtts) && dbAtts.length > 0) {
+        return {
+          attachments: dbAtts.map((row) => mapAttachment({
+            id: row.id,
+            name: row.original_name || row.filename || row.id,
+            size: row.size || (row.size_bytes ? `${Math.round(row.size_bytes / 1024)} KB` : 'N/A'),
+            mime_type: row.mime_type,
+            download_url: row.url || `/api/v1/tickets/${ticketId}/attachments/${row.id}/download`,
+            view_url: row.url || `/api/v1/tickets/${ticketId}/attachments/${row.id}/view`,
+            created_at: row.uploaded_at,
+            uploaded_by: row.uploaded_by,
+          })),
+          error: null,
+        };
+      }
+    } catch (dbErr) {
+      console.warn('Supabase attachments query fallback error:', dbErr);
+    }
+
+    return { attachments: [], error: null };
   },
 
   getAttachments: async (ticketId: string): Promise<AttachmentRecord[]> => {

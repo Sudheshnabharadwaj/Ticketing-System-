@@ -254,22 +254,51 @@ export const TicketDetailsPage: React.FC = () => {
   }, [ticketId, ticket?.id]);
 
   const handleDownloadAttachment = async (attName: string, attUrl?: string) => {
-    const cleanName = attName.includes(' (') ? attName.split(' (')[0] : attName;
+    const cleanName = attName.includes(' (') ? attName.split(' (')[0].trim() : attName.trim();
     const tid = ticket?.id || ticketId;
-    const url = attUrl || `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
+
+    // Resolve URL: prefer given url, ensuring it points to the full backend API url
+    let url = attUrl || `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
+    if (url.startsWith('/api/v1')) {
+      url = `${API_BASE_URL.replace(/\/api\/v1\/?$/, '')}${url}`;
+    }
+
     try {
       await ensureBackendSession();
-      const res = await authenticatedFetch(url);
-      if (!res.ok) throw new Error(`Download failed (${res.status})`);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
+      // 1. Try authenticated fetch
+      let blob: Blob | null = null;
+      try {
+        const res = await authenticatedFetch(url);
+        if (res.ok) {
+          blob = await res.blob();
+        }
+      } catch (fetchErr) {
+        console.warn('Authenticated fetch failed, attempting direct download URL:', fetchErr);
+      }
+
+      // 2. If blob retrieved, trigger browser save
+      if (blob) {
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = cleanName.includes('.') ? cleanName : `${cleanName}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+        showToast(`Downloading attachment: ${cleanName}`);
+        return;
+      }
+
+      // 3. Fallback: direct window download via withAccessToken
+      const directUrl = withAccessToken(url);
       const a = document.createElement('a');
-      a.href = objectUrl;
-      a.download = cleanName.includes('.') ? cleanName : `${cleanName}.txt`;
+      a.href = directUrl;
+      a.target = '_blank';
+      a.download = cleanName.includes('.') ? cleanName : `${cleanName}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(objectUrl);
       showToast(`Downloading attachment: ${cleanName}`);
     } catch {
       showToast(`Failed to download ${cleanName}. The file may not exist on the server.`);
@@ -306,14 +335,22 @@ export const TicketDetailsPage: React.FC = () => {
   };
 
   const handleViewAttachment = async (att: AttachmentRecord) => {
-    const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;
+    const cleanName = att.name.includes(' (') ? att.name.split(' (')[0].trim() : att.name.trim();
     const tid = ticket?.id || ticketId;
     await ensureBackendSession();
-    const baseViewUrl =
-      att.viewUrl ||
-      (att.url
-        ? att.url.replace('/download', '/view')
-        : `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/view`);
+
+    let baseViewUrl = att.viewUrl;
+    if (!baseViewUrl) {
+      if (att.url) {
+        baseViewUrl = att.url.replace('/download', '/view');
+      } else {
+        baseViewUrl = `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/view`;
+      }
+    }
+    if (baseViewUrl.startsWith('/api/v1')) {
+      baseViewUrl = `${API_BASE_URL.replace(/\/api\/v1\/?$/, '')}${baseViewUrl}`;
+    }
+
     const viewUrl = withAccessToken(baseViewUrl);
     setPreviewAttachment({ name: att.name, size: att.size, viewUrl, downloadUrl: att.url });
   };
