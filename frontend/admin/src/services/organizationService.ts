@@ -420,8 +420,12 @@ export const OrganizationService = {
               deptName.toLowerCase().includes(d.name.toLowerCase())
             );
             if (!deptObj) {
-              deptObj = { id: `D_${deptName}`, name: deptName };
-              DEPARTMENTS.push(deptObj);
+              if (deptName && deptName !== '123456' && !/^\d+$/.test(deptName.trim())) {
+                deptObj = { id: `D_${deptName}`, name: deptName };
+                DEPARTMENTS.push(deptObj);
+              } else {
+                deptObj = DEPARTMENTS[0];
+              }
             }
 
             const leadItem: TeamLeadItem = {
@@ -475,8 +479,12 @@ export const OrganizationService = {
               deptName.toLowerCase().includes(d.name.toLowerCase())
             );
             if (!deptObj) {
-              deptObj = { id: `D_${deptName}`, name: deptName };
-              DEPARTMENTS.push(deptObj);
+              if (deptName && deptName !== '123456' && !/^\d+$/.test(deptName.trim())) {
+                deptObj = { id: `D_${deptName}`, name: deptName };
+                DEPARTMENTS.push(deptObj);
+              } else {
+                deptObj = DEPARTMENTS[0];
+              }
             }
 
             let leadId = u.team_lead_id || u.team_lead || '';
