@@ -177,8 +177,14 @@ export const AdminCreateTicketPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200/80">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department</span>
-                  <span className="text-xs font-semibold text-slate-800">{activeDepartments.join(', ') || 'IT Support'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Department(s)</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {activeDepartments.map((dept, idx) => (
+                      <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-100 text-sky-800">
+                        {dept}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category</span>
@@ -186,15 +192,51 @@ export const AdminCreateTicketPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Assigned Person Highlight */}
-              <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
-                  <span className="text-xs font-bold text-slate-900">{assignedPerson}</span>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                  Assigned
+              {/* Tagged Team Leads & Employees */}
+              <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 space-y-2">
+                <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">
+                  Tagged Personnel ({selectedTeamLeadObjs.length + selectedEmployeeObjs.length})
                 </span>
+
+                {selectedTeamLeadObjs.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block">Team Leads</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedTeamLeadObjs.map((tl) => (
+                        <span key={tl.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-sky-200 text-slate-800 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          {tl.name} <span className="text-[10px] text-slate-400">({tl.departmentName || tl.departmentId || 'IT Support'})</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedEmployeeObjs.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block">Employees</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedEmployeeObjs.map((emp) => (
+                        <span key={emp.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-emerald-200 text-slate-800 shadow-2xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          {emp.name} <span className="text-[10px] text-slate-400">({emp.departmentName || emp.departmentId || 'IT Support'})</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedTeamLeadObjs.length === 0 && selectedEmployeeObjs.length === 0 && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
+                      <span className="text-xs font-bold text-slate-900">{assignedPerson}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                      Assigned
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -43,19 +43,26 @@ export const MyTicketsPage: React.FC = () => {
     try {
       const all = await AdminApiService.getTickets('all', force);
       const sessionUser = getCurrentSessionUser();
-      const userEmail = (sessionUser?.email || '').toLowerCase();
-      const userName = (sessionUser?.name || '').toLowerCase();
+      const userEmail = (sessionUser?.email || '').toLowerCase().trim();
+      const userName = (sessionUser?.name || '').toLowerCase().trim();
+      const userEmpId = ((sessionUser as any)?.employeeId || sessionUser?.id || '').toLowerCase().trim();
 
       // Filter tickets requested by or assigned to current user
       const myTickets = all.filter((t) => {
-        const reqEmail = (t.requesterEmail || '').toLowerCase();
-        const reqName = (t.requesterName || '').toLowerCase();
-        const assigned = (t.assignedTo || '').toLowerCase();
+        const reqEmail = (t.requesterEmail || '').toLowerCase().trim();
+        const reqName = (t.requesterName || '').toLowerCase().trim();
+        const assigned = (t.assignedTo || '').toLowerCase().trim();
+        const assignedLead = (t.assignedTeamLead || '').toLowerCase().trim();
+
         if (userEmail && reqEmail === userEmail) return true;
-        if (userName && (reqName.includes(userName) || assigned.includes(userName))) return true;
+        if (userEmpId && (reqEmail.includes(userEmpId) || assigned.includes(userEmpId))) return true;
+        if (userName && (reqName.includes(userName) || assigned.includes(userName) || assignedLead.includes(userName))) return true;
         return false;
       });
       setTickets(myTickets);
+      if (force && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ticket-updated'));
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);

@@ -916,6 +916,8 @@ export const AdminApiService = {
           }
         } catch (e) {
           console.warn('Backend getTickets error:', e);
+        } finally {
+          _adminTicketsInflight = null;
         }
 
         // Direct Supabase fallback
@@ -956,7 +958,11 @@ export const AdminApiService = {
 
         return _adminTicketsCache || [];
       })();
-      mapped = await _adminTicketsInflight;
+      try {
+        mapped = await _adminTicketsInflight;
+      } finally {
+        _adminTicketsInflight = null;
+      }
     }
 
     const isActive = (t: Ticket) => !['resolved', 'closed'].includes((t.status || '').toLowerCase());

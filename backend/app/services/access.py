@@ -546,6 +546,12 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if member_ids and any(m_id in member_ids for m_id in tagged):
             return True
 
+        # Multiple Department Assignment: visible to Team Leads in any selected department
+        user_dept = user.get("department") or payload.get("department")
+        ticket_depts = ticket.get("departments") or ticket.get("department")
+        if user_dept and ticket_depts and _scopes_overlap(user_dept, ticket_depts):
+            return True
+
         return False
 
     # Employee
@@ -564,6 +570,13 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
                 return True
             if _norm(member.get("email")) and _norm(member.get("email")) == _norm(user.get("email")):
                 return True
+
+    # Multiple Department Assignment: visible to Employees in any selected department
+    user_dept = user.get("department") or payload.get("department")
+    ticket_depts = ticket.get("departments") or ticket.get("department")
+    if user_dept and ticket_depts and _scopes_overlap(user_dept, ticket_depts):
+        return True
+
     return False
 
 
