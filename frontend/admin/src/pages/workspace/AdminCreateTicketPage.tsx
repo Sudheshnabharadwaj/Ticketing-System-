@@ -194,9 +194,14 @@ export const AdminCreateTicketPage: React.FC = () => {
 
               {/* Tagged Team Leads & Employees */}
               <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 space-y-2">
-                <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">
-                  Tagged Personnel ({selectedTeamLeadObjs.length + selectedEmployeeObjs.length})
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">
+                    Assigned Personnel ({selectedTeamLeadObjs.length + selectedEmployeeObjs.length || 1})
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                    Assigned
+                  </span>
+                </div>
 
                 {selectedTeamLeadObjs.length > 0 && (
                   <div className="space-y-1">
@@ -227,14 +232,11 @@ export const AdminCreateTicketPage: React.FC = () => {
                 )}
 
                 {selectedTeamLeadObjs.length === 0 && selectedEmployeeObjs.length === 0 && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pt-1">
                     <div>
                       <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
                       <span className="text-xs font-bold text-slate-900">{assignedPerson}</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                      Assigned
-                    </span>
                   </div>
                 )}
               </div>
