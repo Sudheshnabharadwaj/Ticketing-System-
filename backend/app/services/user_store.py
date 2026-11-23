@@ -32,105 +32,19 @@ _DELETED_DEPTS_SET: set[str] = set()
 DEFAULT_USERS: list[dict[str, Any]] = [
     # ── Admin Users ─────────────────────────────────────────────────────────
     {
-        "id": "usr-admin-1791538577749",
+        "id": "usr-admin-001",
         "employee_id": "ADM-001",
-        "name": "shruthi",
-        "email": "s.ronda@oklut.com",
+        "name": "Admin",
+        "email": "admin@oklut.com",
         "role": "admin",
         "department": "IT Support",
-        "designation": "Security Administrator",
-        "team": "Security Operations",
-        "phone": "+1 (555) 000-0002",
+        "designation": "System Administrator",
+        "team": "Administration",
+        "phone": "+1 (555) 000-0001",
         "location": "Global HQ",
         "status": "Active",
-        "passwords": ["Shruthi@123", "Password123"],
-    },
-    # ── Team Lead Users ──────────────────────────────────────────────────────
-    {
-        "id": "OKL003",
-        "employee_id": "OKL003",
-        "name": "Kotesh",
-        "email": "k.ananthu@oklut.com",
-        "role": "teamlead",
-        "department": "IT Support",
-        "designation": "IT Support Team Lead",
-        "team": "Team Alpha",
-        "phone": "+1 (555) 000-0003",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Kotesh@123", "Password123"],
-    },
-    {
-        "id": "OKL015",
-        "employee_id": "OKL015",
-        "name": "Manikanta",
-        "email": "m.nisankam@oklut.com",
-        "alternate_email": "s.manikanta@oklut.com",
-        "role": "teamlead",
-        "department": "IT Support",
-        "designation": "IT Support Team Lead",
-        "team": "Team Beta",
-        "phone": "+1 (555) 000-0015",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Manikanta@123"],
-    },
-    # ── Employee Users ───────────────────────────────────────────────────────
-    {
-        "id": "OKL002",
-        "employee_id": "OKL002",
-        "name": "uday",
-        "email": "u.vadlamudi@oklut.com",
-        "role": "employee",
-        "department": "IT Support",
-        "designation": "IT Support Engineer",
-        "team": "Team Alpha",
-        "phone": "+1 (555) 000-0004",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Uday@123"],
-    },
-    {
-        "id": "OKL001",
-        "employee_id": "OKL001",
-        "name": "aditya",
-        "email": "a.reddy@oklut.com",
-        "role": "employee",
-        "department": "IT Support",
-        "designation": "Support Specialist",
-        "team": "Team Alpha",
-        "phone": "+1 (555) 000-0005",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Aditya@123"],
-    },
-    {
-        "id": "OKL016",
-        "employee_id": "OKL016",
-        "name": "sudha",
-        "email": "sudha@gmail.com",
-        "role": "employee",
-        "department": "IT Support",
-        "designation": "Support Engineer",
-        "team": "Team Beta",
-        "phone": "+1 (555) 000-0016",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Sudha@123"],
-    },
-    {
-        "id": "OKL101",
-        "employee_id": "OKL101",
-        "name": "Rahul",
-        "email": "rahul@oklut.com",
-        "role": "teamlead",
-        "department": "Development",
-        "designation": "Development Team Lead",
-        "team": "Development",
-        "phone": "9063554232",
-        "location": "Global HQ",
-        "status": "Active",
-        "passwords": ["Password123", "Rahul@123"],
+        "password": "pbkdf2_sha256$240000$9d044a966a01682ee0e7cb150928b14f$68c43b44d084b33c938c346ff874f36c5194af5d943703c7d87dcc6561e05caf",
+        "passwords": ["Admin@123"],
     },
 ]
 
@@ -344,26 +258,8 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
             if verify_password(p, candidate_password) or p == candidate_password:
                 return True
 
-    # 3. Universal fallback for existing seed users if password matches their standard
-    if email == "s.ronda@oklut.com" and candidate_password in ("Shruthi@123", "Password123"):
-        return True
-    if email == "k.ananthu@oklut.com" and candidate_password in ("Kotesh@123", "Password123"):
-        return True
-    if email == "u.vadlamudi@oklut.com" and candidate_password in ("Password123", "Uday@123"):
-        return True
-    if email == "a.reddy@oklut.com" and candidate_password in ("Password123", "Aditya@123"):
-        return True
-    if email in ("m.nisankam@oklut.com", "s.manikanta@oklut.com") and candidate_password in ("Password123", "Manikanta@123"):
-        return True
-    if email == "soni@gmail.com" and candidate_password in ("Password123", "Soniya@123"):
-        return True
-    if email == "sudha@gmail.com" and candidate_password in ("Password123", "Sudha@123"):
-        return True
-    if email == "ramya@gmail.com" and candidate_password in ("Password123", "Ramya@123"):
-        return True
-    if email == "admin@platform.local" and candidate_password in ("Password123", "Admin@123"):
-        return True
-    if email == "rahul@oklut.com" and candidate_password in ("Password123", "Rahul@123"):
+    # 3. Universal fallback for admin accounts if password matches standard
+    if email == "admin@oklut.com" and candidate_password in ("Admin@123", "Password123"):
         return True
 
     return False

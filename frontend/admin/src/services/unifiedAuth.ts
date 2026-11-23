@@ -20,6 +20,14 @@ const STORAGE_KEY_SESSION = 'platform_current_user';
 
 export const INITIAL_PLATFORM_USERS: AppUser[] = [
   {
+    id: 'usr-admin-001',
+    name: 'Admin',
+    email: 'admin@oklut.com',
+    role: 'admin',
+    department: 'IT Support',
+    status: 'Active',
+  },
+  {
     id: 'usr-admin-1791538577749',
     name: 'shruthi',
     email: 's.ronda@oklut.com',

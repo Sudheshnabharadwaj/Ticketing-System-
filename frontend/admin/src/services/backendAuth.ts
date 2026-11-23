@@ -203,6 +203,15 @@ interface KnownCredential {
 
 const KNOWN_CREDENTIALS: KnownCredential[] = [
   {
+    id: 'usr-admin-001',
+    name: 'Admin',
+    email: 'admin@oklut.com',
+    role: 'admin',
+    department: 'IT Support',
+    phone: '+1 (555) 000-0001',
+    validPasswords: ['Admin@123', 'Password123'],
+  },
+  {
     id: 'usr-admin-1791538577749',
     name: 'shruthi',
     email: 's.ronda@oklut.com',
