@@ -18,11 +18,10 @@ from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user, require_role
 from app.auth.passwords import hash_password
 from app.db.supabase import get_supabase_admin_client
-from app.services.user_store import find_user_by_email, save_user, delete_user_from_store
 from app.services.access import (
     ROLE_ADMIN,
-    ROLE_TEAMLEAD,
     ROLE_EMPLOYEE,
+    ROLE_TEAMLEAD,
     _scopes_overlap,
     fetch_all_users_cached,
     invalidate_all_users_cache,
@@ -38,6 +37,12 @@ from app.services.access import (
     role_of,
     scoped_tickets,
     teamlead_managed_employees,
+)
+from app.services.user_store import (
+    delete_user_from_store,
+    find_user_by_email,
+    find_user_by_id,
+    save_user,
 )
 
 router = APIRouter(tags=["Portal"])
