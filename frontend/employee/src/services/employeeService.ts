@@ -312,7 +312,7 @@ export const EmployeeService = {
     _fetchTicketsInflight = (async () => {
       try {
         const data = await apiRequest<any[]>('/tickets');
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           // Direct synchronous mapping without N+1 network requests
           const mapped = data.map(mapDbTicket);
           ticketsCache = mapped;
@@ -323,14 +323,50 @@ export const EmployeeService = {
         console.warn('Backend fetchTickets error, falling back to database query:', e);
       }
 
-      // Supabase direct fallback if backend returns empty or fails
+      // Supabase direct fallback if backend fails (with client-side employee isolation)
       try {
         const { data: supaTickets, error } = await supabase
           .from('tickets')
           .select('*')
           .order('created_at', { ascending: false });
-        if (!error && Array.isArray(supaTickets) && supaTickets.length > 0) {
-          const mapped = supaTickets.map(mapDbTicket);
+        if (!error && Array.isArray(supaTickets)) {
+          let mapped = supaTickets.map(mapDbTicket);
+          try {
+            const user = getEmployeeSessionUser();
+            if (user) {
+              const uId = String(user.id || '').toLowerCase();
+              const uEmpId = String((user as any).employeeId || '').toLowerCase();
+              const uEmail = String(user.email || '').toLowerCase();
+              const uName = String(user.name || '').toLowerCase();
+              mapped = mapped.filter((t: any) => {
+                const agId = String(t.assigned_agent_id || t.assignedAgentId || '').toLowerCase();
+                const agName = String(t.assignedTo || t.assigned_agent || '').toLowerCase();
+                const agEmail = String(t.assigned_agent_email || '').toLowerCase();
+                const empId = String(t.employeeId || t.requesterId || '').toLowerCase();
+                const empEmail = String(t.employeeEmail || '').toLowerCase();
+                const empName = String(t.employee || '').toLowerCase();
+                if (uId && (agId === uId || empId === uId)) return true;
+                if (uEmpId && (agId === uEmpId || empId === uEmpId)) return true;
+                if (uEmail && (agEmail === uEmail || empEmail === uEmail)) return true;
+                if (uName && (agName === uName || empName === uName)) return true;
+                const tagged = [
+                  ...(Array.isArray(t.taggedEmployees) ? t.taggedEmployees : []),
+                  ...(Array.isArray(t.employees) ? t.employees : []),
+                  ...(Array.isArray(t.tagged_employees) ? t.tagged_employees : []),
+                ];
+                for (const m of tagged) {
+                  const mId = String(m?.id || m?.employeeId || m || '').toLowerCase();
+                  const mEmail = String(m?.email || '').toLowerCase();
+                  const mName = String(m?.name || '').toLowerCase();
+                  if (uId && mId === uId) return true;
+                  if (uEmpId && mId === uEmpId) return true;
+                  if (uEmail && mEmail === uEmail) return true;
+                  if (uName && mName === uName) return true;
+                }
+                return false;
+              });
+            }
+          } catch {}
           ticketsCache = mapped;
           _lastTicketsFetchTime = Date.now();
           return ticketsCache;
@@ -368,9 +404,6 @@ export const EmployeeService = {
       const agentId = (t.assigned_agent_id || '').trim().toLowerCase();
       const agentEmail = (t.assigned_agent_email || '').trim().toLowerCase();
 
-      // Skip tickets that are unassigned
-      if (!assigned || assigned === 'unassigned' || assigned === 'none') return false;
-
       // Exact match by User ID or Employee ID
       if (userId && (agentId === userId || assigned === userId)) return true;
       if (empId && (agentId === empId || assigned === empId)) return true;
@@ -380,6 +413,32 @@ export const EmployeeService = {
 
       // Match by Name or substring
       if (userName && (assigned === userName || (userName.length >= 3 && assigned.includes(userName)))) return true;
+
+      // Tagged / assigned employee matches
+      const taggedList = [
+        ...(Array.isArray(t.taggedEmployees) ? t.taggedEmployees : []),
+        ...(Array.isArray(t.employees) ? t.employees : []),
+        ...(Array.isArray(t.tagged_employees) ? t.tagged_employees : []),
+        ...(Array.isArray(t.tagged_employee_ids) ? t.tagged_employee_ids : []),
+      ];
+      for (const item of taggedList) {
+        if (!item) continue;
+        if (typeof item === 'string') {
+          const s = item.trim().toLowerCase();
+          if (userId && s === userId) return true;
+          if (empId && s === empId) return true;
+          if (userEmail && s === userEmail) return true;
+          if (userName && s === userName) return true;
+        } else if (typeof item === 'object') {
+          const mId = String(item.id || item.employeeId || '').trim().toLowerCase();
+          const mEmail = String(item.email || '').trim().toLowerCase();
+          const mName = String(item.name || '').trim().toLowerCase();
+          if (userId && mId === userId) return true;
+          if (empId && mId === empId) return true;
+          if (userEmail && mEmail === userEmail) return true;
+          if (userName && mName === userName) return true;
+        }
+      }
 
       return false;
     });

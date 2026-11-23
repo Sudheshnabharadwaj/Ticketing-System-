@@ -181,30 +181,7 @@ export function mapTicket(row: any): Ticket {
         : Array.isArray(row.teamLeads)
         ? row.teamLeads
         : [];
-      if (tls.length > 0) return tls;
-      const rawDepts: string[] = Array.isArray(row.departments) && row.departments.length > 0
-        ? row.departments
-        : (row.department ? String(row.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
-      if (rawDepts.length > 0) {
-        const orgLeads: any[] = [];
-        for (const d of rawDepts) {
-          const found = OrganizationService.getTeamLeadsByDepartment(d);
-          for (const l of found) {
-            if (!orgLeads.some((x) => x.id === l.id || x.name === l.name)) {
-              orgLeads.push({
-                id: l.id,
-                name: l.name,
-                role: 'Team Lead',
-                department: l.departmentName || d,
-                email: l.email || '',
-                employeeId: l.employeeId || l.id,
-              });
-            }
-          }
-        }
-        if (orgLeads.length > 0) return orgLeads;
-      }
-      return undefined;
+      return tls.length > 0 ? tls : undefined;
     })(),
     taggedEmployees: Array.isArray(row.employees)
       ? row.employees
@@ -330,7 +307,7 @@ export const ticketService = {
                 if (uId && (agId === uId || empId === uId || tlId === uId || tlIds.includes(uId))) return true;
                 if (uEmail && (agEmail === uEmail || empEmail === uEmail)) return true;
                 if (uName && (agName === uName || empName === uName)) return true;
-                if (uTeam && (teamId === uTeam || teamId.includes(uTeam))) return true;
+                if (uTeam && !['development', 'qa team', 'it support', 'none', 'all', 'general', ''].includes(uTeam) && (teamId === uTeam || teamId.includes(uTeam))) return true;
                 return false;
               });
             }

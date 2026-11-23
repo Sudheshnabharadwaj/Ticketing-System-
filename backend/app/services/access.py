@@ -383,55 +383,47 @@ def teamlead_member_index(
 
 
 def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
-    """Find the Team Lead of a user (or the user themselves if they are already a Team Lead)."""
+    """Find the specific assigned Team Lead of a user (or the user themselves if they are already a Team Lead)."""
     role = normalize_role(user.get("role"))
     if role == ROLE_TEAMLEAD:
         return user
 
     users = all_users if all_users is not None else fetch_all_users_cached()
-    uid = str(user.get("id") or "").strip()
-    uteam = str(user.get("team") or "").strip()
-    udept = user.get("department")
-    tl_id_field = str(user.get("team_lead_id") or "").strip()
+    uid = str(user.get("id") or "").strip().lower()
+    uempid = str(user.get("employee_id") or "").strip().lower()
+    uteam = str(user.get("team") or "").strip().lower()
+    tl_field = str(user.get("team_lead_id") or user.get("team_lead") or "").strip().lower()
 
-    # 1. Direct team_lead_id match
-    if tl_id_field:
+    # 1. Direct team_lead_id / team_lead match
+    if tl_field:
         for u in users:
-            if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("id") or "").strip() == tl_id_field:
-                return u
+            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                tl_id = str(u.get("id") or "").strip().lower()
+                tl_empid = str(u.get("employee_id") or "").strip().lower()
+                tl_name = str(u.get("name") or "").strip().lower()
+                if (tl_id and tl_id == tl_field) or (tl_empid and tl_empid == tl_field) or (tl_name and tl_name in tl_field):
+                    return u
 
-    # 2. uteam matches team lead's id (e.g. team='OKL013')
+    # 2. Match in employee's team string (e.g. "Gokul (OKIN20061)", "OKIN20061", "Suryani (OKGEN260001)")
     if uteam:
         for u in users:
             if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                tl_id = str(u.get("id") or "").strip()
-                if tl_id and tl_id.lower() == uteam.lower():
-                    return u
+                tl_id = str(u.get("id") or "").strip().lower()
+                tl_empid = str(u.get("employee_id") or "").strip().lower()
+                tl_name = str(u.get("name") or "").strip().lower()
+                tl_keys = [k for k in (tl_id, tl_empid, tl_name) if k]
+                for k in tl_keys:
+                    if k and k in uteam:
+                        return u
 
-    # 3. uteam matches team lead's team name (e.g. team='Team Alpha')
+    # 3. Explicit team name match (when tl_team is a distinct subteam, never a generic department name)
     if uteam:
         for u in users:
             if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                tl_team = str(u.get("team") or "").strip()
-                if tl_team and (tl_team.lower() == uteam.lower() or _teams_overlap(tl_team, uteam)):
-                    return u
-
-    # 4. Department match fallback
-    if udept:
-        for u in users:
-            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                if _scopes_overlap(udept, u.get("department")):
-                    return u
-
-    # 5. Fallback: first active team lead
-    for u in users:
-        if normalize_role(u.get("role")) == ROLE_TEAMLEAD and str(u.get("status") or "").strip().lower() == "active":
-            return u
-
-    # 6. Fallback: any team lead
-    for u in users:
-        if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-            return u
+                tl_team = str(u.get("team") or "").strip().lower()
+                if tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
+                    if uteam == tl_team:
+                        return u
 
     return None
 
@@ -513,12 +505,12 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if tl_team_id is not None and ticket_team_id is not None and tl_team_id == ticket_team_id:
             return True
         assigned_team_id = str(ticket.get("assigned_team_id") or "").strip()
-        if assigned_team_id and (assigned_team_id == tl_id or (tl_team and assigned_team_id.lower() == tl_team.lower())):
+        if assigned_team_id and assigned_team_id == tl_id:
             return True
-        if tl_team and _scopes_overlap(tl_team, ticket.get("assigned_team_id")):
-            return True
-        if tl_dept and (not tl_team or tl_team.lower() in (tl_dept.lower(), "none", "")):
-            if _scopes_overlap(tl_dept, ticket.get("department")) or any(_scopes_overlap(tl_dept, d) for d in (ticket.get("departments") or [])):
+        if tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
+            if assigned_team_id and assigned_team_id.lower() == tl_team.lower():
+                return True
+            if _scopes_overlap(tl_team, ticket.get("assigned_team_id")):
                 return True
 
         # 4b. Explicitly routed to this Team Lead via team_lead_id / team_lead_ids / team_leads
@@ -618,17 +610,27 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
                 return True
 
     user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    user_empid = str(user.get("employee_id") or "").strip().lower()
     user_email = _norm(user.get("email") or payload.get("email"))
+    user_name = _norm(user.get("name") or payload.get("name"))
+    user_match_keys = [k for k in (user_id, user_empid, user_email) if k]
+
     for emp in (ticket.get("tagged_employees") or ticket.get("employees") or []):
         if isinstance(emp, dict):
             eid = str(emp.get("id") or emp.get("employeeId") or "").strip().lower()
             em = _norm(emp.get("email"))
-            if (user_id and eid == user_id) or (user_email and em == user_email):
+            en = _norm(emp.get("name"))
+            if any(k in (eid, em) for k in user_match_keys):
                 return True
-        elif isinstance(emp, str) and emp.strip().lower() == user_id:
-            return True
+            if user_name and en and user_name == en:
+                return True
+        elif isinstance(emp, str):
+            e_str = emp.strip().lower()
+            if any(k == e_str for k in user_match_keys):
+                return True
     for eid in (ticket.get("tagged_employee_ids") or []):
-        if str(eid).strip().lower() == user_id:
+        e_str = str(eid).strip().lower()
+        if any(k == e_str for k in user_match_keys):
             return True
 
     return False
@@ -979,30 +981,24 @@ def serialize_ticket(
                     if not any(emp["id"] == user_info["id"] for emp in employees_list):
                         employees_list.append(user_info)
 
-        # Also enrich with Team Leads for all selected departments if ticket has departments
-        ticket_depts = result.get("departments")
-        if not ticket_depts and result.get("department"):
-            dept_str = str(result.get("department"))
-            if "," in dept_str or "&" in dept_str:
-                ticket_depts = [d.strip() for d in dept_str.replace("&", ",").split(",") if d.strip()]
-        if ticket_depts and isinstance(ticket_depts, list):
-            for dept in ticket_depts:
-                dept_norm = _norm(dept)
-                for u in cached_users:
-                    if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                        u_dept = _norm(u.get("department"))
-                        if u_dept == dept_norm or _scopes_overlap(u.get("department"), dept):
-                            uid = str(u.get("id") or "")
-                            uname = u.get("name") or "Team Lead"
-                            if not any(tl["id"] == uid or tl["name"] == uname for tl in team_leads_list):
-                                team_leads_list.append({
-                                    "id": uid,
-                                    "name": uname,
-                                    "employeeId": str(u.get("employee_id") or uid),
-                                    "role": "Team Lead",
-                                    "department": u.get("department") or dept,
-                                    "email": u.get("email") or "",
-                                })
+        # Enrich with the respective Team Leads of the tagged/assigned employees
+        for emp_item in employees_list:
+            emp_uid = emp_item.get("id") or emp_item.get("employeeId")
+            emp_user = users_by_id.get(str(emp_uid).lower()) if emp_uid else None
+            if emp_user:
+                tl = find_user_team_lead(emp_user, all_users=cached_users)
+                if tl:
+                    tl_uid = str(tl.get("id") or "")
+                    tl_uname = tl.get("name") or "Team Lead"
+                    if not any(tl_entry["id"] == tl_uid for tl_entry in team_leads_list):
+                        team_leads_list.append({
+                            "id": tl_uid,
+                            "name": tl_uname,
+                            "employeeId": str(tl.get("employee_id") or tl_uid),
+                            "role": "Team Lead",
+                            "department": tl.get("department") or "Development",
+                            "email": tl.get("email") or "",
+                        })
 
         # Include matched assigned agent in the relevant list if not already present
         if matched:

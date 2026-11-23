@@ -802,24 +802,21 @@ def create_ticket(
         else:
             raw_emp_ids.add(agent_id)
 
-    # When multiple departments are selected, ensure all department Team Leads are tagged
-    if departments:
+    # Tag ONLY the respective Team Leads of the tagged employees (do NOT tag unrelated department Team Leads)
+    from app.services.access import find_user_team_lead
+    if raw_emp_ids:
         cached_all = fetch_all_users_cached()
-        for d in departments:
-            d_norm = d.strip().lower()
-            for u in cached_all:
-                if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                    u_dept = str(u.get("department") or "").strip().lower()
-                    if u_dept == d_norm or _scopes_overlap(u.get("department"), d):
-                        uid = str(u.get("id") or "").strip()
-                        if uid:
-                            raw_tl_ids.add(uid)
+        for eid in list(raw_emp_ids):
+            emp_user = _find_user(user_id=eid)
+            if emp_user:
+                tl = find_user_team_lead(emp_user, all_users=cached_all)
+                if tl and str(tl.get("id") or "").strip():
+                    raw_tl_ids.add(str(tl["id"]).strip())
 
     # Ticket Assignment:
     # 1. When an employee is tagged/selected, assign directly to the employee.
     # 2. When only a Team Lead is selected, assign to that Team Lead.
     # 3. When neither is selected or explicitly unassigned, leave as Unassigned.
-    from app.services.access import find_user_team_lead
 
     assigned_emp_id = None
     if raw_emp_ids:

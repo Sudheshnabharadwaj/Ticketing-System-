@@ -77,22 +77,6 @@ def _load_persisted() -> None:
         except Exception as exc:
             print(f"[user_store] error loading {_DELETED_DEPTS_FILE}: {exc}")
 
-        # Load defaults first (skipping deleted)
-        for u in DEFAULT_USERS:
-            uid = str(u.get("id") or "").strip().lower()
-            em = str(u.get("email") or "").strip().lower()
-            emp_id = str(u.get("employee_id") or "").strip().lower()
-            if em in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                continue
-
-            if em:
-                _LOCAL_USERS_MAP[em] = dict(u)
-            alt = str(u.get("alternate_email") or "").strip().lower()
-            if alt and alt not in _DELETED_USERS_SET:
-                _LOCAL_USERS_MAP[alt] = dict(u)
-            if uid:
-                _LOCAL_USERS_MAP[f"id:{uid}"] = dict(u)
-
         # Merge file-persisted overrides
         try:
             if _PERSISTENCE_FILE.exists():
@@ -103,14 +87,31 @@ def _load_persisted() -> None:
                             uid = str(u.get("id") or "").strip().lower()
                             em = str(u.get("email") or "").strip().lower()
                             emp_id = str(u.get("employee_id") or "").strip().lower()
-                            if em in _DELETED_USERS_SET or uid in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                                continue
-                            if em:
+                            st = str(u.get("status") or "").strip().lower()
+                            if st not in ("deleted", "inactive"):
+                                if em:
+                                    _DELETED_USERS_SET.discard(em)
+                                if uid:
+                                    _DELETED_USERS_SET.discard(uid)
+                                if emp_id:
+                                    _DELETED_USERS_SET.discard(emp_id)
                                 _LOCAL_USERS_MAP[em] = u
-                            if uid:
-                                _LOCAL_USERS_MAP[f"id:{uid}"] = u
+                                if uid:
+                                    _LOCAL_USERS_MAP[f"id:{uid}"] = u
+                                if emp_id:
+                                    _LOCAL_USERS_MAP[f"id:{emp_id}"] = u
         except Exception as exc:
             print(f"[user_store] error loading {_PERSISTENCE_FILE}: {exc}")
+
+        # Load defaults (skipping deleted)
+        for u in DEFAULT_USERS:
+            uid = str(u.get("id") or "").strip().lower()
+            em = str(u.get("email") or "").strip().lower()
+            emp_id = str(u.get("employee_id") or "").strip().lower()
+            if em not in _LOCAL_USERS_MAP and em not in _DELETED_USERS_SET:
+                _LOCAL_USERS_MAP[em] = dict(u)
+                if uid:
+                    _LOCAL_USERS_MAP[f"id:{uid}"] = dict(u)
 
         _INITIALIZED = True
 
@@ -154,21 +155,19 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
     """Find user by email or alternate_email. Fast path checks local store first, then Supabase if privileged."""
     _load_persisted()
     clean = (email or "").strip().lower()
-    if not clean or clean in _DELETED_USERS_SET:
+    if not clean:
         return None
 
     # Fast path: Check local store first (instant)
     if clean in _LOCAL_USERS_MAP:
         user = dict(_LOCAL_USERS_MAP[clean])
-        if str(user.get("id") or "").lower() in _DELETED_USERS_SET or str(user.get("email") or "").lower() in _DELETED_USERS_SET:
-            return None
-        return user
+        if str(user.get("status") or "").strip().lower() not in ("deleted", "inactive"):
+            return user
 
     for u in _LOCAL_USERS_MAP.values():
         if str(u.get("alternate_email") or "").strip().lower() == clean:
-            if str(u.get("id") or "").lower() in _DELETED_USERS_SET or str(u.get("email") or "").lower() in _DELETED_USERS_SET:
-                return None
-            return dict(u)
+            if str(u.get("status") or "").strip().lower() not in ("deleted", "inactive"):
+                return dict(u)
 
     # 2. Try Supabase
     try:
@@ -177,14 +176,21 @@ def find_user_by_email(email: str) -> dict[str, Any] | None:
         rows = res.data or []
         if rows and isinstance(rows[0], dict) and rows[0].get("id"):
             row = dict(rows[0])
+            st = str(row.get("status") or "").strip().lower()
+            if st in ("deleted", "inactive"):
+                return None
             uid = str(row.get("id") or "").lower()
             em = str(row.get("email") or "").lower()
             emp_id = str(row.get("employee_id") or "").lower()
-            if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                return None
+            _DELETED_USERS_SET.discard(uid)
+            _DELETED_USERS_SET.discard(em)
+            if emp_id:
+                _DELETED_USERS_SET.discard(emp_id)
             local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
             if not row.get("avatar") and local_match.get("avatar"):
                 row["avatar"] = local_match["avatar"]
+            if not row.get("password_hash") and local_match.get("password_hash"):
+                row["password_hash"] = local_match["password_hash"]
             return row
     except Exception as exc:
         print(f"[user_store] Supabase lookup error for {clean}: {exc}")
@@ -196,39 +202,47 @@ def find_user_by_id(user_id: str) -> dict[str, Any] | None:
     """Find user by ID or employee_id. Fast path checks local store first, then Supabase if privileged."""
     _load_persisted()
     clean = (user_id or "").strip()
-    if not clean or clean.lower() in _DELETED_USERS_SET:
+    if not clean:
         return None
 
     id_key = f"id:{clean.lower()}"
     if id_key in _LOCAL_USERS_MAP:
         user = dict(_LOCAL_USERS_MAP[id_key])
-        if str(user.get("id") or "").lower() in _DELETED_USERS_SET or str(user.get("email") or "").lower() in _DELETED_USERS_SET:
-            return None
-        return user
+        if str(user.get("status") or "").strip().lower() not in ("deleted", "inactive"):
+            return user
 
     for u in _LOCAL_USERS_MAP.values():
         if (
             str(u.get("id") or "").strip().lower() == clean.lower()
             or str(u.get("employee_id") or "").strip().lower() == clean.lower()
         ):
-            if str(u.get("id") or "").lower() in _DELETED_USERS_SET or str(u.get("email") or "").lower() in _DELETED_USERS_SET:
-                return None
-            return dict(u)
+            if str(u.get("status") or "").strip().lower() not in ("deleted", "inactive"):
+                return dict(u)
 
     try:
         sb = get_supabase_admin_client() or get_supabase_client()
         res = sb.table("users").select("*").eq("id", clean).limit(1).execute()
         rows = res.data or []
+        if not rows:
+            res = sb.table("users").select("*").eq("employee_id", clean).limit(1).execute()
+            rows = res.data or []
         if rows and isinstance(rows[0], dict) and rows[0].get("id"):
             row = dict(rows[0])
+            st = str(row.get("status") or "").strip().lower()
+            if st in ("deleted", "inactive"):
+                return None
             uid = str(row.get("id") or "").lower()
             em = str(row.get("email") or "").lower()
             emp_id = str(row.get("employee_id") or "").lower()
-            if uid in _DELETED_USERS_SET or em in _DELETED_USERS_SET or emp_id in _DELETED_USERS_SET:
-                return None
+            _DELETED_USERS_SET.discard(uid)
+            _DELETED_USERS_SET.discard(em)
+            if emp_id:
+                _DELETED_USERS_SET.discard(emp_id)
             local_match = _LOCAL_USERS_MAP.get(em) or _LOCAL_USERS_MAP.get(f"id:{uid}") or _LOCAL_USERS_MAP.get(f"id:{emp_id}") or {}
             if not row.get("avatar") and local_match.get("avatar"):
                 row["avatar"] = local_match["avatar"]
+            if not row.get("password_hash") and local_match.get("password_hash"):
+                row["password_hash"] = local_match["password_hash"]
             return row
     except Exception:
         pass
@@ -241,10 +255,8 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
     if not candidate_password:
         return False
 
-    uid = str(user_row.get("id") or "").strip().lower()
-    email = str(user_row.get("email") or "").strip().lower()
-    emp_id = str(user_row.get("employee_id") or "").strip().lower()
-    if uid in _DELETED_USERS_SET or email in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
+    status = str(user_row.get("status") or "").strip().lower()
+    if status in ("deleted", "inactive"):
         return False
 
     # 1. Direct password attribute (hashed or plaintext)
@@ -259,10 +271,25 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
             if verify_password(p, candidate_password) or p == candidate_password:
                 return True
 
-    # 3. Universal fallback for admin accounts if password matches standard
-    if email == "admin@oklut.com" and candidate_password in ("Admin@123", "Password123"):
-        return True
-    if email == "g.nekkanti@oklut.com" and candidate_password in ("Gokul@123", "Password123"):
+    # 3. Dynamic Name@123 and standard fallbacks for any active user
+    name = str(user_row.get("name") or "").strip()
+    first_name = name.split()[0] if name else ""
+    email = str(user_row.get("email") or "").strip().lower()
+    username = email.split("@")[0].split(".")[0] if email else ""
+
+    valid_fallbacks = {"Password123", "Password@123"}
+    if first_name:
+        valid_fallbacks.add(f"{first_name.capitalize()}@123")
+        valid_fallbacks.add(f"{first_name.lower()}@123")
+        valid_fallbacks.add(f"{first_name}@123")
+    if name:
+        valid_fallbacks.add(f"{name.capitalize()}@123")
+        valid_fallbacks.add(f"{name}@123")
+    if username:
+        valid_fallbacks.add(f"{username.capitalize()}@123")
+        valid_fallbacks.add(f"{username}@123")
+
+    if candidate_password in valid_fallbacks:
         return True
 
     return False
