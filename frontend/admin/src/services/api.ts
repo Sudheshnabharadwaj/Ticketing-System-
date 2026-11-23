@@ -762,6 +762,7 @@ export const AdminApiService = {
       role: mappedRole,
       team: resolvedTeam,
       status: data.sendEmailInvite ? 'Pending Invitation' : 'Active',
+      ...(data.password ? { password_hash: data.password } : {}),
       created_at: now,
       updated_at: now,
     };

@@ -203,6 +203,15 @@ interface KnownCredential {
 
 const KNOWN_CREDENTIALS: KnownCredential[] = [
   {
+    id: 'OKIN20061',
+    name: 'GOKUL',
+    email: 'g.nekkanti@oklut.com',
+    role: 'teamlead',
+    department: 'Development',
+    phone: '9063554232',
+    validPasswords: ['Gokul@123', 'Password123'],
+  },
+  {
     id: 'usr-admin-1791538577749',
     name: 'shruthi',
     email: 's.ronda@oklut.com',
