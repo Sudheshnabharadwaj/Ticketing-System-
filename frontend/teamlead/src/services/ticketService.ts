@@ -259,7 +259,7 @@ export const ticketService = {
     _ticketsInflight = (async () => {
       try {
         const result = await apiRequestSafe<any[]>('/tickets');
-        if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+        if (!result.error && Array.isArray(result.data)) {
           const mapped = result.data.map(mapTicket);
           _ticketsCache = mapped;
           _lastTicketsTime = Date.now();
@@ -269,14 +269,44 @@ export const ticketService = {
         console.warn('Backend getTicketsDetailed error:', e);
       }
 
-      // Direct Supabase fallback
+      // Direct Supabase fallback (with client-side teamlead scoping)
       try {
         const { data: supaTickets, error } = await supabase
           .from('tickets')
           .select('*')
           .order('created_at', { ascending: false });
-        if (!error && Array.isArray(supaTickets) && supaTickets.length > 0) {
-          const mapped = supaTickets.map(mapTicket);
+        if (!error && Array.isArray(supaTickets)) {
+          let mapped = supaTickets.map(mapTicket);
+          // Apply team lead client-side isolation to fallback results so no cross-team tickets leak
+          try {
+            const rawUser = localStorage.getItem('platform_current_user') || sessionStorage.getItem('platform_current_user');
+            if (rawUser) {
+              const u = JSON.parse(rawUser);
+              const uId = String(u.id || '').toLowerCase();
+              const uName = String(u.name || '').toLowerCase();
+              const uEmail = String(u.email || '').toLowerCase();
+              const uTeam = String(u.team || '').toLowerCase();
+              mapped = mapped.filter((t: any) => {
+                const agId = String(t.assignedAgentId || '').toLowerCase();
+                const agName = String(t.assignedAgent || '').toLowerCase();
+                const agEmail = String(t.assignedAgentEmail || '').toLowerCase();
+                const empId = String(t.employeeId || t.requesterId || '').toLowerCase();
+                const empName = String(t.employee || '').toLowerCase();
+                const empEmail = String(t.employeeEmail || '').toLowerCase();
+                const teamId = String(t.assignedTeamId || t.assignedTeam || t.team || '').toLowerCase();
+                const tlId = String(t.teamLeadId || '').toLowerCase();
+                const tlIds = Array.isArray(t.teamLeadIds) ? t.teamLeadIds.map((x: any) => String(x).toLowerCase()) : [];
+
+                if (uId && (agId === uId || empId === uId || tlId === uId || tlIds.includes(uId))) return true;
+                if (uEmail && (agEmail === uEmail || empEmail === uEmail)) return true;
+                if (uName && (agName === uName || empName === uName)) return true;
+                if (uTeam && (teamId === uTeam || teamId.includes(uTeam))) return true;
+                return false;
+              });
+            }
+          } catch {
+            /* ignore fallback parse error */
+          }
           _ticketsCache = mapped;
           _lastTicketsTime = Date.now();
           return { tickets: mapped, error: null };

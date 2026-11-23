@@ -95,12 +95,20 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } else {
       setError(null);
-      setTickets(result.tickets);
-      const loaded = await teamLeadService.getEscalations(result.tickets);
+      // Ensure unique tickets without duplicates by ID
+      const uniqueMap = new Map<string, Ticket>();
+      for (const t of result.tickets || []) {
+        if (t && t.id && !uniqueMap.has(t.id)) {
+          uniqueMap.set(t.id, t);
+        }
+      }
+      const uniqueTickets = Array.from(uniqueMap.values());
+      setTickets(uniqueTickets);
+      const loaded = await teamLeadService.getEscalations(uniqueTickets);
       setEscalations(loaded || []);
       setSelectedTicket((prev) => {
         if (!prev) return prev;
-        const fresh = result.tickets.find((t) => t.id === prev.id || t.ticketNumber === prev.ticketNumber);
+        const fresh = uniqueTickets.find((t) => t.id === prev.id || t.ticketNumber === prev.ticketNumber);
         return fresh || prev;
       });
     }

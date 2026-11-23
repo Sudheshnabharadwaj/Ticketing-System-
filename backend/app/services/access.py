@@ -505,22 +505,36 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if tl_team and _scopes_overlap(tl_team, ticket.get("assigned_team_id")):
             return True
 
-        # 4b. Explicitly routed to this Team Lead via team_lead_id / team_lead_ids
+        # 4b. Explicitly routed to this Team Lead via team_lead_id / team_lead_ids / team_leads
         tl_ids_on_ticket = [str(x) for x in (ticket.get("team_lead_ids") or [])]
         if str(ticket.get("team_lead_id") or ""):
             tl_ids_on_ticket.append(str(ticket.get("team_lead_id")))
         if tl_id and tl_id in tl_ids_on_ticket:
             return True
+        for tl_obj in (ticket.get("team_leads") or []):
+            if isinstance(tl_obj, dict):
+                tid = str(tl_obj.get("id") or tl_obj.get("employeeId") or "").strip()
+                tem = _norm(tl_obj.get("email"))
+                if (tl_id and tid == tl_id) or (tl_email and tem == tl_email):
+                    return True
+            elif isinstance(tl_obj, str) and tl_id and tl_obj.strip() == tl_id:
+                return True
 
         # 5. Tagged members
         tagged = [str(x) for x in (ticket.get("tagged_member_ids") or [])]
         if tl_id and tl_id in tagged:
             return True
+        for member in (ticket.get("tagged_members") or []):
+            if isinstance(member, dict):
+                mid = str(member.get("id") or "").strip()
+                mem = _norm(member.get("email"))
+                if (tl_id and mid == tl_id) or (tl_email and mem == tl_email):
+                    return True
 
         # 6. Belongs to any managed team member (created by, assigned to, or tagged to)
         member_ids, member_emails, member_names = teamlead_member_index(user)
 
-        # Assigned to a team member
+        # Assigned to a team member (includes cross-team tickets assigned to this team)
         agent_id = str(ticket.get("assigned_agent_id") or "").strip()
         if agent_id and agent_id in member_ids:
             return True
@@ -531,7 +545,22 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if agent_name and agent_name not in ("", "unassigned", "user", "employee") and agent_name in member_names:
             return True
 
-        # Created by / requested by a team member
+        # Multiple assigned agents / tagged employees on the ticket
+        for emp in (ticket.get("tagged_employees") or ticket.get("employees") or []):
+            if isinstance(emp, dict):
+                eid = str(emp.get("id") or emp.get("employeeId") or "").strip()
+                em = _norm(emp.get("email"))
+                en = _norm(emp.get("name"))
+                if (eid and eid in member_ids) or (em and em in member_emails) or (en and en in member_names):
+                    return True
+            elif isinstance(emp, str) and emp.strip() in member_ids:
+                return True
+
+        for eid in (ticket.get("tagged_employee_ids") or []):
+            if str(eid).strip() in member_ids:
+                return True
+
+        # Created by / requested by a team member (includes cross-team tickets created by this team)
         emp_id = str(ticket.get("employee_id") or ticket.get("requester_id") or "").strip()
         if emp_id and emp_id in member_ids:
             return True
@@ -546,11 +575,12 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
         if member_ids and any(m_id in member_ids for m_id in tagged):
             return True
 
-        # Multiple Department Assignment: visible to Team Leads in any selected department
-        user_dept = user.get("department") or payload.get("department")
-        ticket_depts = ticket.get("departments") or ticket.get("department")
-        if user_dept and ticket_depts and _scopes_overlap(user_dept, ticket_depts):
-            return True
+        for member in (ticket.get("tagged_members") or []):
+            if isinstance(member, dict):
+                mid = str(member.get("id") or "").strip()
+                mem = _norm(member.get("email"))
+                if (mid and mid in member_ids) or (mem and mem in member_emails):
+                    return True
 
         return False
 
@@ -571,11 +601,19 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
             if _norm(member.get("email")) and _norm(member.get("email")) == _norm(user.get("email")):
                 return True
 
-    # Multiple Department Assignment: visible to Employees in any selected department
-    user_dept = user.get("department") or payload.get("department")
-    ticket_depts = ticket.get("departments") or ticket.get("department")
-    if user_dept and ticket_depts and _scopes_overlap(user_dept, ticket_depts):
-        return True
+    user_id = str(user.get("id") or payload.get("sub") or "").strip().lower()
+    user_email = _norm(user.get("email") or payload.get("email"))
+    for emp in (ticket.get("tagged_employees") or ticket.get("employees") or []):
+        if isinstance(emp, dict):
+            eid = str(emp.get("id") or emp.get("employeeId") or "").strip().lower()
+            em = _norm(emp.get("email"))
+            if (user_id and eid == user_id) or (user_email and em == user_email):
+                return True
+        elif isinstance(emp, str) and emp.strip().lower() == user_id:
+            return True
+    for eid in (ticket.get("tagged_employee_ids") or []):
+        if str(eid).strip().lower() == user_id:
+            return True
 
     return False
 
