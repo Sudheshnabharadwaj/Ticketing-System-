@@ -42,24 +42,16 @@ export const DEPARTMENTS: DepartmentItem[] = [
 ];
 
 export const INITIAL_TEAM_LEADS: TeamLeadItem[] = [
-  { id: 'OKL003', employeeId: 'OKL003', name: 'Kotesh', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'k.ananthu@oklut.com', team: 'Team Alpha' } as any,
-  { id: 'OKL015', employeeId: 'OKL015', name: 'Manikanta', role: 'IT Support Team Lead', departmentId: 'D001', departmentName: 'IT Support', email: 'm.nisankam@oklut.com', team: 'Team Beta' } as any,
+  { id: 'OKIN20061', employeeId: 'OKIN20061', name: 'GOKUL', role: 'Team Lead', departmentId: 'D004', departmentName: 'Development', email: 'g.nekkanti@oklut.com', team: 'Development' } as any,
 ];
 
-export const INITIAL_EMPLOYEES: EmployeeItem[] = [
-  { id: 'OKL001', employeeId: 'OKL001', name: 'aditya', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'a.reddy@oklut.com', team: 'Team Alpha' } as any,
-  { id: 'OKL002', employeeId: 'OKL002', name: 'uday', role: 'Team Member', teamLeadId: 'OKL003', departmentId: 'D001', departmentName: 'IT Support', email: 'u.vadlamudi@oklut.com', team: 'Team Alpha' } as any,
-  { id: 'OKL016', employeeId: 'OKL016', name: 'sudha', role: 'Team Member', teamLeadId: 'OKL015', departmentId: 'D001', departmentName: 'IT Support', email: 'sudha@gmail.com', team: 'Team Beta' } as any,
-];
+export const INITIAL_EMPLOYEES: EmployeeItem[] = [];
 
 export const TEAM_LEADS: TeamLeadItem[] = [...INITIAL_TEAM_LEADS];
 
 export const EMPLOYEES: EmployeeItem[] = [...INITIAL_EMPLOYEES];
 
-const _leadEmployeesCache = new Map<string, EmployeeItem[]>([
-  ['OKL003', [INITIAL_EMPLOYEES[0], INITIAL_EMPLOYEES[1]]],
-  ['OKL015', [INITIAL_EMPLOYEES[2]]],
-]);
+const _leadEmployeesCache = new Map<string, EmployeeItem[]>();
 
 let _syncInflight: Promise<void> | null = null;
 let _lastSyncAt = 0;
@@ -545,26 +537,6 @@ export const OrganizationService = {
           }
         }
 
-        // Always guarantee Ramya is mapped to Soniya (OKL013)
-        const soniyaEmployees = _leadEmployeesCache.get('OKL013') || [];
-        if (!soniyaEmployees.some(e => e.employeeId === 'OKL014' || e.name.toLowerCase() === 'ramya')) {
-          const ramyaItem: EmployeeItem = {
-            id: 'OKL014',
-            employeeId: 'OKL014',
-            name: 'Ramya',
-            role: 'Team Member',
-            teamLeadId: 'OKL013',
-            departmentId: 'D003',
-            departmentName: 'HR',
-            email: 'ramya@gmail.com',
-          };
-          soniyaEmployees.push(ramyaItem);
-          _leadEmployeesCache.set('OKL013', soniyaEmployees);
-          if (!EMPLOYEES.some(e => e.id === 'OKL014')) {
-            EMPLOYEES.push(ramyaItem);
-          }
-        }
-
         _lastSyncAt = Date.now();
       } catch (e) {
         console.warn('OrganizationService: syncFromDatabase error', e);
@@ -578,10 +550,10 @@ export const OrganizationService = {
   async fetchAdmins(): Promise<{ id: string; name: string; email: string; department?: string }[]> {
     const fallbackAdmins = [
       {
-        id: 'usr-admin-1791538577749',
-        name: 'shruthi',
-        email: 's.ronda@oklut.com',
-        department: 'IT Operations',
+        id: 'usr-admin-001',
+        name: 'Admin',
+        email: 'admin@oklut.com',
+        department: 'IT Support',
       },
     ];
 

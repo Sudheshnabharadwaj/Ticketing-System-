@@ -52,11 +52,11 @@ export function getAdminProfile(): AdminProfileData {
   }
 
   return {
-    name: 'shruthi',
-    email: 's.ronda@oklut.com',
-    role: 'Security Administrator',
+    name: 'Admin',
+    email: 'admin@oklut.com',
+    role: 'System Administrator',
     department: 'IT Support',
-    phone: '+1 (555) 000-0002',
+    phone: '+1 (555) 000-0001',
     employeeId: 'ADM-001',
     avatarUrl: '',
   };

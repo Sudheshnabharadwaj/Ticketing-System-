@@ -893,21 +893,68 @@ export const AdminApiService = {
     return { success: true };
   },
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: string, email?: string, employeeId?: string) {
+    const cleanId = (userId || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanEmp = (employeeId || '').trim();
+    let backendSuccess = false;
     try {
-      await apiRequest(`/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      await apiRequest(`/admin/users/${encodeURIComponent(cleanId)}`, { method: 'DELETE' });
+      backendSuccess = true;
     } catch (apiErr) {
-      console.warn('Backend deleteUser error, falling back to direct Supabase delete:', apiErr);
-      const { error: supaErr } = await supabase
+      console.warn('Backend deleteUser error, ensuring direct Supabase delete:', apiErr);
+    }
+
+    // Direct Supabase delete guarantee across id, employee_id, and email
+    try {
+      const orClauses = [`id.eq.${cleanId}`, `employee_id.eq.${cleanId}`, `email.eq.${cleanId}`];
+      if (cleanEmail) orClauses.push(`email.eq.${cleanEmail}`);
+      if (cleanEmp) orClauses.push(`employee_id.eq.${cleanEmp}`, `id.eq.${cleanEmp}`);
+      await supabase
         .from('users')
         .delete()
-        .or(`id.eq.${userId},employee_id.eq.${userId}`);
-      if (supaErr) throw apiErr;
+        .or(orClauses.join(','));
+    } catch (supaErr) {
+      console.warn('Supabase delete warning:', supaErr);
+      if (!backendSuccess) throw supaErr;
     }
+
+    // Clean internal memory cache
+    if (_adminUsersCache) {
+      _adminUsersCache = _adminUsersCache.filter(
+        (u) =>
+          u.id !== cleanId &&
+          (u as any).employee_id !== cleanId &&
+          u.email !== cleanId &&
+          u.employeeId !== cleanId &&
+          (!cleanEmail || u.email.toLowerCase() !== cleanEmail) &&
+          (!cleanEmp || (u.employeeId !== cleanEmp && (u as any).employee_id !== cleanEmp))
+      );
+    }
+
+    // Purge from browser localStorage if stored
+    try {
+      const raw = localStorage.getItem('platform_users');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const filtered = list.filter(
+            (u: any) =>
+              u.id !== cleanId &&
+              u.email !== cleanId &&
+              u.employeeId !== cleanId &&
+              (!cleanEmail || (u.email || '').toLowerCase() !== cleanEmail) &&
+              (!cleanEmp || (u.employeeId !== cleanEmp && (u.employee_id !== cleanEmp)))
+          );
+          localStorage.setItem('platform_users', JSON.stringify(filtered));
+        }
+      }
+    } catch {}
+
     invalidateAdminCache();
     // Also invalidate organization service cache across the platform
     OrganizationService.invalidateCache();
-    window.dispatchEvent(new CustomEvent('user-deleted', { detail: { id: userId } }));
+    window.dispatchEvent(new CustomEvent('user-deleted', { detail: { id: cleanId, email: cleanEmail } }));
     window.dispatchEvent(new CustomEvent('ticket-updated'));
     return { success: true };
   },

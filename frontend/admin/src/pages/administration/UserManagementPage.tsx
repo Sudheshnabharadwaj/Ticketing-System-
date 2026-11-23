@@ -168,8 +168,8 @@ export const UserManagementPage: React.FC = () => {
     if (!deletingUser) return;
     setIsDeleting(true);
     try {
-      await AdminApiService.deleteUser(deletingUser.id);
-      setUsers(prev => prev.filter(u => u.id !== deletingUser.id));
+      await AdminApiService.deleteUser(deletingUser.id, deletingUser.email, deletingUser.employeeId);
+      setUsers(prev => prev.filter(u => u.id !== deletingUser.id && u.email !== deletingUser.email));
       setToastMessage({ text: `User ${deletingUser.name} deleted successfully!`, type: 'success' });
       setDeletingUser(null);
     } catch (err: any) {

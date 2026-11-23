@@ -243,7 +243,8 @@ def verify_user_credentials(user_row: dict[str, Any], candidate_password: str) -
 
     uid = str(user_row.get("id") or "").strip().lower()
     email = str(user_row.get("email") or "").strip().lower()
-    if uid in _DELETED_USERS_SET or email in _DELETED_USERS_SET:
+    emp_id = str(user_row.get("employee_id") or "").strip().lower()
+    if uid in _DELETED_USERS_SET or email in _DELETED_USERS_SET or (emp_id and emp_id in _DELETED_USERS_SET):
         return False
 
     # 1. Direct password attribute (hashed or plaintext)
@@ -396,6 +397,7 @@ def delete_user_from_store(user_id_or_email: str) -> None:
         _DELETED_USERS_SET.add(clean)
         matched_email = None
         matched_id = None
+        matched_emp = None
         for k, v in list(_LOCAL_USERS_MAP.items()):
             v_id = str(v.get("id") or "").lower()
             v_email = str(v.get("email") or "").lower()
@@ -403,6 +405,7 @@ def delete_user_from_store(user_id_or_email: str) -> None:
             if clean in (k, f"id:{clean}", v_id, v_email, v_emp):
                 matched_email = v_email
                 matched_id = v_id
+                matched_emp = v_emp
                 _DELETED_USERS_SET.add(v_email)
                 _DELETED_USERS_SET.add(v_id)
                 if v_emp:
@@ -437,7 +440,7 @@ def delete_user_from_store(user_id_or_email: str) -> None:
     if has_service_role_key():
         try:
             sb = get_supabase_admin_client()
-            for key in {clean, matched_id, matched_email}:
+            for key in {clean, matched_id, matched_email, matched_emp}:
                 if key:
                     sb.table("users").delete().eq("id", key).execute()
                     sb.table("users").delete().eq("employee_id", key).execute()

@@ -690,9 +690,14 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
     clean_id = str(user_id).strip()
     sb = get_supabase_admin_client()
 
-    # 1. Fetch user to obtain email and details before deletion
-    user_res = sb.table("users").select("*").eq("id", clean_id).limit(1).execute()
-    user_row = (user_res.data or [])[0] if user_res.data else None
+    # 1. Fetch user to obtain email, employee_id, and details before deletion
+    user_row = None
+    try:
+        user_res = sb.table("users").select("*").eq("id", clean_id).limit(1).execute()
+        user_row = (user_res.data or [])[0] if user_res.data else None
+    except Exception:
+        pass
+
     if not user_row:
         try:
             res_alt = sb.table("users").select("*").eq("email", clean_id).limit(1).execute()
@@ -700,46 +705,73 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
         except Exception:
             pass
 
+    if not user_row:
+        try:
+            res_emp = sb.table("users").select("*").eq("employee_id", clean_id).limit(1).execute()
+            user_row = (res_emp.data or [])[0] if res_emp.data else None
+        except Exception:
+            pass
+
+    if not user_row:
+        user_row = find_user_by_id(clean_id) or find_user_by_email(clean_id)
+
     user_email = (user_row.get("email") if isinstance(user_row, dict) else "").strip().lower()
     canonical_id = str((user_row.get("id") if isinstance(user_row, dict) else None) or clean_id).strip()
+    employee_id = str((user_row.get("employee_id") if isinstance(user_row, dict) else None) or "").strip()
 
     # 2. Safely handle ticket_comments to satisfy FK constraints without losing audit history/messages
-    fallback_uid = actor_id if (actor_id and actor_id != canonical_id) else "usr-admin-1791538577749"
+    fallback_uid = actor_id if (actor_id and actor_id != canonical_id) else "usr-admin-001"
     try:
         sb.table("ticket_comments").update({
-            "author_user_id": fallback_uid,
-        }).eq("author_user_id", canonical_id).execute()
+            "author_id": fallback_uid,
+        }).eq("author_id", canonical_id).execute()
+        if employee_id:
+            sb.table("ticket_comments").update({
+                "author_id": fallback_uid,
+            }).eq("author_id", employee_id).execute()
     except Exception as exc:
         print(f"[portal] ticket_comments FK update notice: {exc}")
 
     # 3. Safely handle tickets where user was assigned agent
     try:
-        sb.table("tickets").update({
-            "assigned_agent": "Unassigned",
-            "assigned_agent_id": None,
-            "assigned_to_type": "unassigned",
-        }).eq("assigned_agent_id", canonical_id).execute()
+        for tid in {canonical_id, clean_id, employee_id}:
+            if tid:
+                sb.table("tickets").update({
+                    "assigned_agent": "Unassigned",
+                    "assigned_agent_id": None,
+                    "assigned_to_type": "unassigned",
+                }).eq("assigned_agent_id", tid).execute()
     except Exception as exc:
         print(f"[portal] tickets assigned_agent_id update notice: {exc}")
 
-    # 4. Safely handle tickets where user was employee/requester
+    # 4. Safely handle tickets where user was employee/requester (preserving ticket history and fields)
     try:
-        sb.table("tickets").update({
-            "employee_id": None,
-        }).eq("employee_id", canonical_id).execute()
+        for tid in {canonical_id, clean_id, employee_id}:
+            if tid:
+                sb.table("tickets").update({
+                    "employee_id": None,
+                }).eq("employee_id", tid).execute()
+                sb.table("tickets").update({
+                    "requester_id": None,
+                }).eq("requester_id", tid).execute()
     except Exception as exc:
         print(f"[portal] tickets employee_id update notice: {exc}")
 
-    # 5. Remove user from ticket_tagged_members
+    # 5. Remove user from ticket_tagged_members and portal_notifications
     try:
-        sb.table("ticket_tagged_members").delete().eq("user_id", canonical_id).execute()
-        sb.table("ticket_tagged_members").delete().eq("member_uid", canonical_id).execute()
-    except Exception:
-        pass
+        for tid in {canonical_id, clean_id, employee_id}:
+            if tid:
+                sb.table("ticket_tagged_members").delete().eq("user_id", tid).execute()
+                sb.table("ticket_tagged_members").delete().eq("member_uid", tid).execute()
+                sb.table("portal_notifications").delete().eq("user_id", tid).execute()
+        if user_email:
+            sb.table("portal_notifications").delete().eq("user_email", user_email).execute()
+    except Exception as exc:
+        print(f"[portal] tagged/notifications delete notice: {exc}")
 
     # 6. Delete user from auth system if applicable
     if user_row:
-        auth_uid = user_row.get("auth_id") or user_row.get("id")
+        auth_uid = user_row.get("auth_user_id") or user_row.get("auth_id") or user_row.get("id")
         try:
             if hasattr(sb, "auth") and hasattr(sb.auth, "admin") and hasattr(sb.auth.admin, "delete_user"):
                 sb.auth.admin.delete_user(auth_uid)
@@ -747,24 +779,26 @@ def _permanently_delete_user(user_id: str, actor_id: str = "") -> None:
             print(f"[portal] auth user deletion notice: {auth_exc}")
 
     # 7. Delete user from users table (permanent delete by id, employee_id, and email)
-    try:
-        sb.table("users").delete().eq("id", canonical_id).execute()
-    except Exception as exc:
-        print(f"[portal] delete user by id note: {exc}")
-    try:
-        sb.table("users").delete().eq("employee_id", canonical_id).execute()
-    except Exception:
-        pass
+    for tid in {canonical_id, clean_id, employee_id}:
+        if tid:
+            try:
+                sb.table("users").delete().eq("id", tid).execute()
+            except Exception:
+                pass
+            try:
+                sb.table("users").delete().eq("employee_id", tid).execute()
+            except Exception:
+                pass
     if user_email:
         try:
             sb.table("users").delete().eq("email", user_email).execute()
         except Exception:
             pass
 
-    # 8. Invalidate all caches so user disappears immediately from every dashboard
-    delete_user_from_store(canonical_id)
-    if user_email:
-        delete_user_from_store(user_email)
+    # 8. Invalidate all caches and tombstone in user store so user disappears immediately and permanently
+    for key in {canonical_id, clean_id, employee_id, user_email}:
+        if key:
+            delete_user_from_store(key)
     invalidate_user_cache(canonical_id, user_email)
     invalidate_all_users_cache()
     invalidate_team_cache()

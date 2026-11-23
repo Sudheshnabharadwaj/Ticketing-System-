@@ -203,6 +203,15 @@ interface KnownCredential {
 
 const KNOWN_CREDENTIALS: KnownCredential[] = [
   {
+    id: 'usr-admin-001',
+    name: 'Admin',
+    email: 'admin@oklut.com',
+    role: 'admin',
+    department: 'IT Support',
+    phone: '+1 (555) 000-0001',
+    validPasswords: ['Admin@123', 'Password123'],
+  },
+  {
     id: 'OKIN20061',
     name: 'GOKUL',
     email: 'g.nekkanti@oklut.com',
@@ -210,114 +219,6 @@ const KNOWN_CREDENTIALS: KnownCredential[] = [
     department: 'Development',
     phone: '9063554232',
     validPasswords: ['Gokul@123', 'Password123'],
-  },
-  {
-    id: 'usr-admin-1791538577749',
-    name: 'shruthi',
-    email: 's.ronda@oklut.com',
-    role: 'admin',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0002',
-    validPasswords: ['Shruthi@123', 'Password123'],
-  },
-  {
-    id: 'usr-admin-1791222872974',
-    name: 'Sudheshna Bharadwaj',
-    email: 'sudheshna@gmail.com',
-    role: 'admin',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0001',
-    validPasswords: ['Password123', 'Admin@123'],
-  },
-  {
-    id: 'ADM001',
-    name: 'System Admin',
-    email: 'admin@platform.local',
-    role: 'admin',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0000',
-    validPasswords: ['Password123', 'Admin@123'],
-  },
-  {
-    id: 'OKL003',
-    name: 'Kotesh',
-    email: 'k.ananthu@oklut.com',
-    role: 'teamlead',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0003',
-    validPasswords: ['Kotesh@123', 'Password123'],
-  },
-  {
-    id: 'OKL015',
-    name: 'Manikanta',
-    email: 'm.nisankam@oklut.com',
-    role: 'teamlead',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0015',
-    validPasswords: ['Password123', 'Manikanta@123'],
-  },
-  {
-    id: 'OKL120',
-    name: 'manikanta',
-    email: 's.manikanta@oklut.com',
-    role: 'teamlead',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0015',
-    validPasswords: ['Password123', 'Manikanta@123'],
-  },
-  {
-    id: 'OKL013',
-    name: 'soniya',
-    email: 'soni@gmail.com',
-    role: 'teamlead',
-    department: 'HR',
-    phone: '+1 (555) 000-0013',
-    validPasswords: ['Password123', 'Soniya@123'],
-  },
-  {
-    id: 'OKL002',
-    name: 'uday',
-    email: 'u.vadlamudi@oklut.com',
-    role: 'employee',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0004',
-    validPasswords: ['Password123', 'Uday@123'],
-  },
-  {
-    id: 'OKL001',
-    name: 'aditya',
-    email: 'a.reddy@oklut.com',
-    role: 'employee',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0005',
-    validPasswords: ['Password123', 'Aditya@123'],
-  },
-  {
-    id: 'OKL016',
-    name: 'sudha',
-    email: 'sudha@gmail.com',
-    role: 'employee',
-    department: 'IT Support',
-    phone: '+1 (555) 000-0016',
-    validPasswords: ['Password123', 'Sudha@123'],
-  },
-  {
-    id: 'OKL014',
-    name: 'Ramya',
-    email: 'ramya@gmail.com',
-    role: 'employee',
-    department: 'HR',
-    phone: '+1 (555) 000-0014',
-    validPasswords: ['Password123', 'Ramya@123'],
-  },
-  {
-    id: 'OKL101',
-    name: 'Rahul',
-    email: 'rahul@oklut.com',
-    role: 'teamlead',
-    department: 'Development',
-    phone: '9063554232',
-    validPasswords: ['Password123', 'Rahul@123'],
   },
 ];
 
@@ -444,12 +345,6 @@ export async function loginBackend(email: string, password: string): Promise<Log
         return { ok: true, user: data.user as BackendUser };
       }
     } else if (res.status === 401) {
-      const fallbackUser = checkFallbackUser(cleanEmail, password);
-      if (fallbackUser) {
-        const sessionToken = await createClientJwt(fallbackUser);
-        setBackendSession(sessionToken, `refresh-${fallbackUser.id}`, 7 * 24 * 3600);
-        return { ok: true, user: fallbackUser };
-      }
       return { ok: false, error: await readErrorDetail(res), status: res.status };
     }
   } catch {
@@ -464,13 +359,6 @@ export async function loginBackend(email: string, password: string): Promise<Log
       error: 'Cannot reach the backend API. Make sure the server is running and try again.',
       status: 0,
     };
-  }
-
-  const fallbackUser = checkFallbackUser(cleanEmail, password);
-  if (fallbackUser) {
-    const sessionToken = await createClientJwt(fallbackUser);
-    setBackendSession(sessionToken, `refresh-${fallbackUser.id}`, 7 * 24 * 3600);
-    return { ok: true, user: fallbackUser };
   }
 
   return { ok: false, error: 'Invalid email or password.', status: 401 };
