@@ -935,13 +935,13 @@ def serialize_ticket(
 
     # Populate tagged team leads and tagged employees from database records
     tagged_ids = [str(x).strip() for x in (result.get("tagged_member_ids") or []) if x]
-    if tagged_ids and cached_users:
+    team_leads_list: list[dict[str, Any]] = []
+    employees_list: list[dict[str, Any]] = []
+
+    if cached_users:
         users_by_id = {str(u.get("id") or "").strip().lower(): u for u in cached_users}
         users_by_empid = {str(u.get("employee_id") or "").strip().lower(): u for u in cached_users if u.get("employee_id")}
         users_by_name = {_norm(u.get("name")): u for u in cached_users if u.get("name")}
-
-        team_leads_list: list[dict[str, Any]] = []
-        employees_list: list[dict[str, Any]] = []
 
         for tid_raw in tagged_ids:
             tid_lower = tid_raw.lower()
@@ -962,6 +962,49 @@ def serialize_ticket(
                 else:
                     if not any(emp["id"] == user_info["id"] for emp in employees_list):
                         employees_list.append(user_info)
+
+        # Also enrich with Team Leads for all selected departments if ticket has departments
+        ticket_depts = result.get("departments")
+        if not ticket_depts and result.get("department"):
+            dept_str = str(result.get("department"))
+            if "," in dept_str or "&" in dept_str:
+                ticket_depts = [d.strip() for d in dept_str.replace("&", ",").split(",") if d.strip()]
+        if ticket_depts and isinstance(ticket_depts, list):
+            for dept in ticket_depts:
+                dept_norm = _norm(dept)
+                for u in cached_users:
+                    if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                        u_dept = _norm(u.get("department"))
+                        if u_dept == dept_norm or _scopes_overlap(u.get("department"), dept):
+                            uid = str(u.get("id") or "")
+                            uname = u.get("name") or "Team Lead"
+                            if not any(tl["id"] == uid or tl["name"] == uname for tl in team_leads_list):
+                                team_leads_list.append({
+                                    "id": uid,
+                                    "name": uname,
+                                    "employeeId": str(u.get("employee_id") or uid),
+                                    "role": "Team Lead",
+                                    "department": u.get("department") or dept,
+                                    "email": u.get("email") or "",
+                                })
+
+        # Include matched assigned agent in the relevant list if not already present
+        if matched:
+            m_role = normalize_role(matched.get("role"))
+            m_info = {
+                "id": str(matched.get("id") or ""),
+                "name": matched.get("name") or agent,
+                "employeeId": str(matched.get("employee_id") or matched.get("id") or ""),
+                "role": "Team Lead" if m_role == ROLE_TEAMLEAD else "Employee",
+                "department": matched.get("department") or "IT Support",
+                "email": matched.get("email") or "",
+            }
+            if m_role == ROLE_TEAMLEAD:
+                if not any(tl["id"] == m_info["id"] or tl["name"] == m_info["name"] for tl in team_leads_list):
+                    team_leads_list.append(m_info)
+            else:
+                if not any(emp["id"] == m_info["id"] or emp["name"] == m_info["name"] for emp in employees_list):
+                    employees_list.append(m_info)
 
         if team_leads_list:
             result["team_leads"] = team_leads_list

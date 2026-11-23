@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { Ticket, TicketStatus, TicketPriority, TicketCategory } from '../types/ticket';
+import { OrganizationService } from './organizationService';
 import {
   API_BASE,
   apiRequest,
@@ -171,11 +172,37 @@ export function mapTicket(row: any): Ticket {
     assignedToType: (row.assigned_to_type || undefined) as Ticket['assignedToType'],
     handledBy: (row.handled_by || undefined) as Ticket['handledBy'],
     departments: Array.isArray(row.departments) ? row.departments : undefined,
-    teamLeads: Array.isArray(row.team_leads)
-      ? row.team_leads
-      : Array.isArray(row.teamLeads)
-      ? row.teamLeads
-      : undefined,
+    teamLeads: (() => {
+      const tls = Array.isArray(row.team_leads)
+        ? row.team_leads
+        : Array.isArray(row.teamLeads)
+        ? row.teamLeads
+        : [];
+      if (tls.length > 0) return tls;
+      const rawDepts: string[] = Array.isArray(row.departments) && row.departments.length > 0
+        ? row.departments
+        : (row.department ? String(row.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
+      if (rawDepts.length > 0) {
+        const orgLeads: any[] = [];
+        for (const d of rawDepts) {
+          const found = OrganizationService.getTeamLeadsByDepartment(d);
+          for (const l of found) {
+            if (!orgLeads.some((x) => x.id === l.id || x.name === l.name)) {
+              orgLeads.push({
+                id: l.id,
+                name: l.name,
+                role: 'Team Lead',
+                department: l.departmentName || d,
+                email: l.email || '',
+                employeeId: l.employeeId || l.id,
+              });
+            }
+          }
+        }
+        if (orgLeads.length > 0) return orgLeads;
+      }
+      return undefined;
+    })(),
     taggedEmployees: Array.isArray(row.employees)
       ? row.employees
       : Array.isArray(row.tagged_employees)
@@ -343,7 +370,13 @@ export const ticketService = {
       }
       return ticket;
     } catch (e) {
-      console.warn('Error in getTicketById:', e);
+      console.warn('Error in getTicketById, attempting fallback:', e);
+      try {
+        const { data: supaT } = await supabase.from('tickets').select('*').or(`id.eq.${id},ticket_number.eq.${id}`).single();
+        if (supaT) {
+          return mapTicket(supaT);
+        }
+      } catch {}
       return undefined;
     }
   },

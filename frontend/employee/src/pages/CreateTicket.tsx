@@ -166,8 +166,51 @@ export const CreateTicket: React.FC = () => {
   };
 
   if (isSuccess) {
-    const assignedPerson = (createdTicketData as any)?.assigned_agent || (createdTicketData as any)?.assignedAgent || (selectedEmployeeObjs.length > 0 ? selectedEmployeeObjs[0].name : (selectedTeamLeadObjs.length > 0 ? selectedTeamLeadObjs[0].name : 'Assigned Specialist'));
-    const assignedRole = selectedEmployeeObjs.length > 0 ? 'Assigned Employee' : (selectedTeamLeadObjs.length > 0 ? 'Assigned Team Lead' : 'Assignee');
+    const allAssignedTeamLeads: { id: string; name: string; department?: string }[] = [];
+    if (selectedTeamLeadObjs.length > 0) {
+      for (const tl of selectedTeamLeadObjs) {
+        allAssignedTeamLeads.push({ id: tl.id, name: tl.name, department: tl.departmentName || tl.departmentId });
+      }
+    }
+    const apiTLs = (createdTicketData as any)?.teamLeads || (createdTicketData as any)?.team_leads;
+    if (Array.isArray(apiTLs)) {
+      for (const tl of apiTLs) {
+        const id = tl.id || tl.employeeId || tl.name;
+        if (!allAssignedTeamLeads.some((x) => x.id === id || x.name === tl.name)) {
+          allAssignedTeamLeads.push({ id, name: tl.name, department: tl.department || tl.departmentName });
+        }
+      }
+    }
+    if (allAssignedTeamLeads.length === 0 && activeDepartments.length > 0) {
+      for (const dept of activeDepartments) {
+        const dLeads = OrganizationService.getTeamLeadsByDepartment(dept);
+        for (const dl of dLeads) {
+          if (!allAssignedTeamLeads.some((x) => x.id === dl.id || x.name === dl.name)) {
+            allAssignedTeamLeads.push({ id: dl.id, name: dl.name, department: dl.departmentName || dept });
+          }
+        }
+      }
+    }
+
+    const allAssignedEmployees: { id: string; name: string; department?: string }[] = [];
+    if (selectedEmployeeObjs.length > 0) {
+      for (const emp of selectedEmployeeObjs) {
+        allAssignedEmployees.push({ id: emp.id, name: emp.name, department: emp.departmentName || emp.departmentId });
+      }
+    }
+    const apiEmps = (createdTicketData as any)?.employees || (createdTicketData as any)?.taggedEmployees;
+    if (Array.isArray(apiEmps)) {
+      for (const emp of apiEmps) {
+        const id = emp.id || emp.employeeId || emp.name;
+        if (!allAssignedEmployees.some((x) => x.id === id || x.name === emp.name)) {
+          allAssignedEmployees.push({ id, name: emp.name, department: emp.department || emp.departmentName });
+        }
+      }
+    }
+
+    const totalAssignedCount = allAssignedTeamLeads.length + allAssignedEmployees.length;
+    const assignedPerson = (createdTicketData as any)?.assigned_agent || (createdTicketData as any)?.assignedAgent || (allAssignedEmployees.length > 0 ? allAssignedEmployees[0].name : (allAssignedTeamLeads.length > 0 ? allAssignedTeamLeads[0].name : 'Assigned Specialist'));
+    const assignedRole = allAssignedEmployees.length > 0 ? 'Assigned Employee' : (allAssignedTeamLeads.length > 0 ? 'Assigned Team Lead' : 'Assignee');
 
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
@@ -223,42 +266,42 @@ export const CreateTicket: React.FC = () => {
               <div className="bg-sky-50/80 border border-sky-100 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">
-                    Assigned Personnel ({selectedTeamLeadObjs.length + selectedEmployeeObjs.length || 1})
+                    Assigned Personnel ({totalAssignedCount || 1})
                   </span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                     Assigned
                   </span>
                 </div>
 
-                {selectedTeamLeadObjs.length > 0 && (
+                {allAssignedTeamLeads.length > 0 && (
                   <div className="space-y-1">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block">Team Leads</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedTeamLeadObjs.map((tl) => (
+                      {allAssignedTeamLeads.map((tl) => (
                         <span key={tl.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-sky-200 text-slate-800 shadow-2xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                          {tl.name} <span className="text-[10px] text-slate-400">({tl.departmentName || tl.departmentId || 'IT Support'})</span>
+                          {tl.name} <span className="text-[10px] text-slate-400">({tl.department || 'IT Support'})</span>
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {selectedEmployeeObjs.length > 0 && (
+                {allAssignedEmployees.length > 0 && (
                   <div className="space-y-1 pt-1">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block">Employees</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedEmployeeObjs.map((emp) => (
+                      {allAssignedEmployees.map((emp) => (
                         <span key={emp.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-white border border-emerald-200 text-slate-800 shadow-2xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          {emp.name} <span className="text-[10px] text-slate-400">({emp.departmentName || emp.departmentId || 'IT Support'})</span>
+                          {emp.name} <span className="text-[10px] text-slate-400">({emp.department || 'IT Support'})</span>
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {selectedTeamLeadObjs.length === 0 && selectedEmployeeObjs.length === 0 && (
+                {totalAssignedCount === 0 && (
                   <div className="flex items-center justify-between pt-1">
                     <div>
                       <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">{assignedRole}</span>
@@ -360,18 +403,16 @@ export const CreateTicket: React.FC = () => {
                     key={dept}
                     type="button"
                     onClick={() => toggleDepartment(dept)}
-                    className={`flex items-center gap-2 p-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                      isSelected
+                    className={`flex items-center gap-2 p-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${isSelected
                         ? 'bg-sky-50 border-[#0284C7] text-[#0284C7] shadow-2xs'
                         : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100/50'
-                    }`}
+                      }`}
                   >
                     <div
-                      className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
-                        isSelected
+                      className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${isSelected
                           ? 'bg-[#0284C7] border-[#0284C7] text-white'
                           : 'border-slate-300 bg-white'
-                      }`}
+                        }`}
                     >
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>

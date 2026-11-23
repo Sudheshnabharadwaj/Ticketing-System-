@@ -715,22 +715,46 @@ export const TicketDetailsPage: React.FC = () => {
             </span>
             {(() => {
               const allAssigned: { name: string; role?: string; dept?: string }[] = [];
+              const seen = new Set<string>();
+
+              const addAssigned = (name: string, role?: string, dept?: string) => {
+                const clean = (name || '').trim();
+                if (!clean || clean.toLowerCase() === 'unassigned') return;
+                const key = clean.toLowerCase();
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  allAssigned.push({ name: clean, role, dept });
+                }
+              };
+
               const tls = ticket.teamLeads || (ticket as any).team_leads;
               if (Array.isArray(tls) && tls.length > 0) {
                 for (const tl of tls) {
-                  allAssigned.push({ name: (tl as any).name || String(tl), role: 'Team Lead', dept: (tl as any).department });
+                  addAssigned((tl as any).name || String(tl), 'Team Lead', (tl as any).department);
                 }
               }
               const emps = ticket.taggedEmployees || (ticket as any).employees || (ticket as any).tagged_employees;
               if (Array.isArray(emps) && emps.length > 0) {
                 for (const emp of emps) {
-                  allAssigned.push({ name: (emp as any).name || String(emp), role: 'Employee', dept: (emp as any).department });
+                  addAssigned((emp as any).name || String(emp), 'Employee', (emp as any).department);
                 }
               }
-              if (allAssigned.length === 0) {
-                const single = (ticket as any).assignedTo || ticket.assignedAgent || (ticket as any).assigned_agent || (ticket as any).assigneeName;
-                if (single && single !== 'Unassigned') {
-                  allAssigned.push({ name: single });
+              const single = (ticket as any).assignedTo || ticket.assignedAgent || (ticket as any).assigned_agent || (ticket as any).assigneeName;
+              if (single) {
+                addAssigned(single);
+              }
+
+              // Fallback: If multiple departments are selected or allAssigned is empty, enrich with department leads
+              const rawDepts = (ticket.departments && ticket.departments.length > 0)
+                ? ticket.departments
+                : (ticket.department ? ticket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+              if (rawDepts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && rawDepts.length > 1))) {
+                for (const dept of rawDepts) {
+                  const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                  for (const lead of leads) {
+                    addAssigned(lead.name, 'Team Lead', dept);
+                  }
                 }
               }
 

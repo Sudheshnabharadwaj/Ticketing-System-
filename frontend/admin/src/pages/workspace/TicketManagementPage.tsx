@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import type { Ticket, TicketPriority, TicketStatus } from '../../types';
 import { AdminApiService, BACKEND_API_URL } from '../../services/api';
+import { OrganizationService } from '../../services/organizationService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import {
   Search,
@@ -559,16 +560,55 @@ export const TicketManagementPage: React.FC = () => {
 
                     {/* Assigned To */}
                     <td className="py-3 px-3">
-                      {t.assignedTo ? (
-                        <span className="font-medium text-slate-800 flex items-center gap-1.5">
-                          <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          {t.assignedTo}
-                        </span>
-                      ) : (
-                        <span className="text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[10.5px]">
-                          Unassigned
-                        </span>
-                      )}
+                      {(() => {
+                        const allAssigned: string[] = [];
+                        const seen = new Set<string>();
+                        const addName = (name: string) => {
+                          const clean = (name || '').trim();
+                          if (!clean || clean.toLowerCase() === 'unassigned') return;
+                          const k = clean.toLowerCase();
+                          if (!seen.has(k)) {
+                            seen.add(k);
+                            allAssigned.push(clean);
+                          }
+                        };
+
+                        if (Array.isArray(t.teamLeads)) {
+                          t.teamLeads.forEach((tl: any) => addName(tl.name || String(tl)));
+                        }
+                        if (Array.isArray(t.employees)) {
+                          t.employees.forEach((emp: any) => addName(emp.name || String(emp)));
+                        }
+                        if (t.assignedTo) {
+                          addName(t.assignedTo);
+                        }
+
+                        const depts = (t.departments && t.departments.length > 0)
+                          ? t.departments
+                          : (t.department ? t.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+                        if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
+                          for (const dept of depts) {
+                            const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                            leads.forEach(l => addName(l.name));
+                          }
+                        }
+
+                        if (allAssigned.length === 0) {
+                          return (
+                            <span className="text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[10.5px]">
+                              Unassigned
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="font-medium text-slate-800 flex items-center gap-1.5" title={allAssigned.join(', ')}>
+                            <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="line-clamp-1">{allAssigned.join(', ')}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* SLA */}
@@ -827,11 +867,52 @@ export const TicketManagementPage: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Assigned Team</span>
-                  <span className="font-bold text-slate-800">{selectedTicket.department} Team</span>
+                  <span className="font-bold text-slate-800">
+                    {(selectedTicket.departments && selectedTicket.departments.length > 0)
+                      ? selectedTicket.departments.join(', ')
+                      : `${selectedTicket.department} Team`}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Assigned To</span>
-                  <span className="font-bold text-[#0284C7]">{selectedTicket.assignedTo || 'Unassigned'}</span>
+                  <span className="font-bold text-[#0284C7]">
+                    {(() => {
+                      const allAssigned: string[] = [];
+                      const seen = new Set<string>();
+                      const addName = (name: string) => {
+                        const clean = (name || '').trim();
+                        if (!clean || clean.toLowerCase() === 'unassigned') return;
+                        const k = clean.toLowerCase();
+                        if (!seen.has(k)) {
+                          seen.add(k);
+                          allAssigned.push(clean);
+                        }
+                      };
+
+                      if (Array.isArray(selectedTicket.teamLeads)) {
+                        selectedTicket.teamLeads.forEach((tl: any) => addName(tl.name || String(tl)));
+                      }
+                      if (Array.isArray(selectedTicket.employees)) {
+                        selectedTicket.employees.forEach((emp: any) => addName(emp.name || String(emp)));
+                      }
+                      if (selectedTicket.assignedTo) {
+                        addName(selectedTicket.assignedTo);
+                      }
+
+                      const depts = (selectedTicket.departments && selectedTicket.departments.length > 0)
+                        ? selectedTicket.departments
+                        : (selectedTicket.department ? selectedTicket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+                      if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
+                        for (const dept of depts) {
+                          const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                          leads.forEach(l => addName(l.name));
+                        }
+                      }
+
+                      return allAssigned.length > 0 ? allAssigned.join(', ') : (selectedTicket.assignedTo || 'Unassigned');
+                    })()}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Created Date</span>

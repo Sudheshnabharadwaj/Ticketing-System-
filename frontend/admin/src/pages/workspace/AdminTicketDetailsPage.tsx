@@ -235,7 +235,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
       clearInterval(interval);
       try {
         supabase.removeChannel(channel);
-      } catch {}
+      } catch { }
     };
   }, [ticket?.id, id]);
 
@@ -299,14 +299,14 @@ export const AdminTicketDetailsPage: React.FC = () => {
     setTicket((prev) =>
       prev
         ? {
-            ...prev,
-            attachments: (prev.attachments || []).filter(
-              (f) => {
-                const fName = getAttachmentRawName(f);
-                return !(f === file || fName === rawName || fName.includes(rawName));
-              }
-            ),
-          }
+          ...prev,
+          attachments: (prev.attachments || []).filter(
+            (f) => {
+              const fName = getAttachmentRawName(f);
+              return !(f === file || fName === rawName || fName.includes(rawName));
+            }
+          ),
+        }
         : prev
     );
 
@@ -344,7 +344,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
           .delete()
           .eq('ticket_id', ticketId)
           .like('message', `%${rawName}%`);
-      } catch {}
+      } catch { }
       setToastMessage(`Attachment "${rawName}" deleted.`);
       await reloadAttachments();
     }
@@ -416,7 +416,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
   const matchingLeads = OrganizationService.getTeamLeadsByDepartment(ticket.department);
   const assignedTeamLeadStr = ticket.assignedTeamLead || (matchingLeads.length > 0 ? `${matchingLeads[0].name} (${matchingLeads[0].role})` : 'Unassigned');
 
-    const currentUser = getCurrentSessionUser();
+  const currentUser = getCurrentSessionUser();
   const isCreatedByMe = Boolean(
     (ticket as any).is_created_by_me === true ||
     (currentUser?.id && ((ticket as any).employeeId === currentUser.id || (ticket as any).employee_id === currentUser.id || (ticket as any).requester_id === currentUser.id)) ||
@@ -520,7 +520,7 @@ export const AdminTicketDetailsPage: React.FC = () => {
           is_internal: false,
           created_at: nowIso,
         });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -713,18 +713,44 @@ export const AdminTicketDetailsPage: React.FC = () => {
             </span>
             {(() => {
               const allAssigned: { name: string; role?: string; dept?: string }[] = [];
+              const seen = new Set<string>();
+
+              const addAssigned = (name: string, role?: string, dept?: string) => {
+                const clean = (name || '').trim();
+                if (!clean || clean.toLowerCase() === 'unassigned') return;
+                const key = clean.toLowerCase();
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  allAssigned.push({ name: clean, role, dept });
+                }
+              };
+
               if (Array.isArray(ticket.teamLeads) && ticket.teamLeads.length > 0) {
                 for (const tl of ticket.teamLeads) {
-                  allAssigned.push({ name: (tl as any).name || String(tl), role: 'Team Lead', dept: (tl as any).department });
+                  addAssigned((tl as any).name || String(tl), 'Team Lead', (tl as any).department);
                 }
               }
               if (Array.isArray(ticket.employees) && ticket.employees.length > 0) {
                 for (const emp of ticket.employees) {
-                  allAssigned.push({ name: (emp as any).name || String(emp), role: 'Employee', dept: (emp as any).department });
+                  addAssigned((emp as any).name || String(emp), 'Employee', (emp as any).department);
                 }
               }
-              if (allAssigned.length === 0 && ticket.assignedTo && ticket.assignedTo !== 'Unassigned') {
-                allAssigned.push({ name: ticket.assignedTo });
+              if (ticket.assignedTo) {
+                addAssigned(ticket.assignedTo);
+              }
+
+              // Fallback: If multiple departments are selected or allAssigned is empty, enrich with department leads
+              const rawDepts = (ticket.departments && ticket.departments.length > 0)
+                ? ticket.departments
+                : (ticket.department ? ticket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+              if (rawDepts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && rawDepts.length > 1))) {
+                for (const dept of rawDepts) {
+                  const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                  for (const lead of leads) {
+                    addAssigned(lead.name, 'Team Lead', dept);
+                  }
+                }
               }
 
               if (allAssigned.length === 0) {
@@ -897,11 +923,10 @@ export const AdminTicketDetailsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('conversation')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'conversation'
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'conversation'
                 ? 'bg-sky-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
-            }`}
+              }`}
           >
             <MessageSquare className="w-4 h-4" />
             Conversation & Notes ({ticket.comments?.length || 0})
@@ -909,11 +934,10 @@ export const AdminTicketDetailsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('attachments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'attachments'
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'attachments'
                 ? 'bg-sky-600 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
-            }`}
+              }`}
           >
             <Paperclip className="w-4 h-4" />
             Attachments ({ticket.attachments?.length || 0})

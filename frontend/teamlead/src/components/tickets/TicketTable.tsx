@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTickets } from '../../hooks/useTickets';
+import { OrganizationService } from '../../services/organizationService';
 
 interface TicketTableProps {
   tickets: Ticket[];
@@ -117,14 +118,50 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                   </td>
 
                   {/* Assigned To */}
-                  <td className="py-3 px-4 font-medium whitespace-nowrap">
-                    {isUnassigned ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                        Unassigned
-                      </span>
-                    ) : (
-                      <span className="text-slate-800 font-semibold">{ticket.assignedAgent}</span>
-                    )}
+                  <td className="py-3 px-4 font-medium min-w-[150px]">
+                    {(() => {
+                      const assignedNames: string[] = [];
+                      const tls = ticket.teamLeads || (ticket as any).team_leads;
+                      if (Array.isArray(tls) && tls.length > 0) {
+                        for (const tl of tls) {
+                          const n = (tl as any).name || String(tl);
+                          if (n && !assignedNames.includes(n)) assignedNames.push(n);
+                        }
+                      }
+                      const emps = ticket.taggedEmployees || (ticket as any).employees || (ticket as any).tagged_employees;
+                      if (Array.isArray(emps) && emps.length > 0) {
+                        for (const emp of emps) {
+                          const n = (emp as any).name || String(emp);
+                          if (n && !assignedNames.includes(n)) assignedNames.push(n);
+                        }
+                      }
+                      if (assignedNames.length === 0) {
+                        const depts = ticket.departments || (ticket.department ? [ticket.department] : []);
+                        for (const d of depts) {
+                          const leads = OrganizationService.getTeamLeadsByDepartment(d);
+                          for (const l of leads) {
+                            if (!assignedNames.includes(l.name)) assignedNames.push(l.name);
+                          }
+                        }
+                      }
+                      if (assignedNames.length === 0 && ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
+                        assignedNames.push(ticket.assignedAgent);
+                      }
+
+                      if (assignedNames.length === 0) {
+                        return (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            Unassigned
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <div className="text-slate-800 font-semibold text-xs line-clamp-2" title={assignedNames.join(', ')}>
+                          {assignedNames.join(', ')}
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   {/* SLA - Fully readable without truncation */}

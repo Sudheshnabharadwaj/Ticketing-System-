@@ -802,6 +802,19 @@ def create_ticket(
         else:
             raw_emp_ids.add(agent_id)
 
+    # When multiple departments are selected, ensure all department Team Leads are tagged
+    if departments:
+        cached_all = fetch_all_users_cached()
+        for d in departments:
+            d_norm = d.strip().lower()
+            for u in cached_all:
+                if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
+                    u_dept = str(u.get("department") or "").strip().lower()
+                    if u_dept == d_norm or _scopes_overlap(u.get("department"), d):
+                        uid = str(u.get("id") or "").strip()
+                        if uid:
+                            raw_tl_ids.add(uid)
+
     # Ticket Assignment:
     # 1. When an employee is tagged/selected, assign directly to the employee.
     # 2. When only a Team Lead is selected, assign to that Team Lead.
@@ -1010,6 +1023,9 @@ def create_ticket(
             sb.table("ticket_tagged_members").insert(tagged_rows).execute()
         except Exception as exc:
             print(f"[tickets] batch insert tagged members skipped: {exc}")
+
+    if tagged_to_insert:
+        created["tagged_member_ids"] = list(tagged_to_insert)
 
     invalidate_tickets_cache()
     _log_activity(ticket_id, _actor_name(user), "Ticket created", user_id=str(user.get("id") or ""), ticket=row)

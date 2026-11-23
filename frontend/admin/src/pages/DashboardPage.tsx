@@ -452,10 +452,27 @@ export const DashboardPage: React.FC = () => {
 
         const assignedPersonnel: string[] = [];
         if (Array.isArray(row.teamLeads) && row.teamLeads.length > 0) {
-          assignedPersonnel.push(...row.teamLeads.map((tl: any) => tl.name || tl));
+          for (const tl of row.teamLeads) {
+            const n = (tl as any).name || String(tl);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
         }
         if (Array.isArray(row.employees) && row.employees.length > 0) {
-          assignedPersonnel.push(...row.employees.map((emp: any) => emp.name || emp));
+          for (const emp of row.employees) {
+            const n = (emp as any).name || String(emp);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
+        }
+        if (assignedPersonnel.length === 0) {
+          const rawDepts = row.departments && row.departments.length > 0
+            ? row.departments
+            : (row.department ? String(row.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
+          for (const d of rawDepts) {
+            const orgLeads = OrganizationService.getTeamLeadsByDepartment(d);
+            for (const l of orgLeads) {
+              if (!assignedPersonnel.includes(l.name)) assignedPersonnel.push(l.name);
+            }
+          }
         }
         if (assignedPersonnel.length === 0 && row.assignedTo && row.assignedTo !== 'Unassigned') {
           assignedPersonnel.push(row.assignedTo);
@@ -662,11 +679,10 @@ export const DashboardPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setStatusFilter('all')}
-          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${
-            statusFilter === 'all'
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${statusFilter === 'all'
               ? 'border-blue-400 ring-2 ring-blue-500/20 shadow-xs'
               : 'border-slate-200 hover:border-slate-300'
-          }`}
+            }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-semibold text-slate-500">Total Tickets</span>
@@ -686,11 +702,10 @@ export const DashboardPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setStatusFilter(statusFilter === 'unassigned' ? 'all' : 'unassigned')}
-          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${
-            statusFilter === 'unassigned'
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${statusFilter === 'unassigned'
               ? 'border-sky-400 ring-2 ring-sky-500/20 bg-sky-50/30 shadow-xs'
               : 'border-slate-200 hover:border-slate-300'
-          }`}
+            }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-semibold text-slate-500">Unassigned</span>
@@ -710,11 +725,10 @@ export const DashboardPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setStatusFilter(statusFilter === 'escalated' ? 'all' : 'escalated')}
-          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${
-            statusFilter === 'escalated'
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${statusFilter === 'escalated'
               ? 'border-orange-400 ring-2 ring-orange-500/20 bg-orange-50/30 shadow-xs'
               : 'border-slate-200 hover:border-slate-300'
-          }`}
+            }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-semibold text-slate-500">Escalated</span>
@@ -734,11 +748,10 @@ export const DashboardPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setStatusFilter(statusFilter === 'sla risk' ? 'all' : 'sla risk')}
-          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${
-            statusFilter === 'sla risk'
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${statusFilter === 'sla risk'
               ? 'border-amber-400 ring-2 ring-amber-500/20 bg-amber-50/30 shadow-xs'
               : 'border-slate-200 hover:border-slate-300'
-          }`}
+            }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-semibold text-slate-500">SLA Risk</span>
@@ -758,11 +771,10 @@ export const DashboardPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setStatusFilter(statusFilter === 'sla breached' ? 'all' : 'sla breached')}
-          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${
-            statusFilter === 'sla breached'
+          className={`bg-white border rounded-xl p-3.5 shadow-2xs flex flex-col justify-between text-left transition-all cursor-pointer ${statusFilter === 'sla breached'
               ? 'border-red-400 ring-2 ring-red-500/20 bg-red-50/30 shadow-xs'
               : 'border-slate-200 hover:border-slate-300'
-          }`}
+            }`}
         >
           <div className="flex items-start justify-between">
             <span className="text-[12px] font-semibold text-slate-500">SLA Breached</span>
@@ -919,18 +931,16 @@ export const DashboardPage: React.FC = () => {
                         key={dept}
                         type="button"
                         onClick={() => toggleDepartment(dept)}
-                        className={`flex items-center gap-2 p-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
-                          isSelected
+                        className={`flex items-center gap-2 p-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${isSelected
                             ? 'bg-sky-50 border-[#0284C7] text-[#0284C7] shadow-2xs'
                             : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-100/50'
-                        }`}
+                          }`}
                       >
                         <div
-                          className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 ${
-                            isSelected
+                          className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 ${isSelected
                               ? 'bg-[#0284C7] border-[#0284C7] text-white'
                               : 'border-slate-300 bg-white'
-                          }`}
+                            }`}
                         >
                           {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                         </div>

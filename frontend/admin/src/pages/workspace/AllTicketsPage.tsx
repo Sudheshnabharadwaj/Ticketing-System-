@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import type { Ticket } from '../../types';
 import { AdminApiService } from '../../services/api';
+import { OrganizationService } from '../../services/organizationService';
 import { Search, RefreshCw, Eye, CheckCircle } from 'lucide-react';
 
 export const AllTicketsPage: React.FC = () => {
@@ -193,10 +194,27 @@ export const AllTicketsPage: React.FC = () => {
 
         const assignedPersonnel: string[] = [];
         if (Array.isArray(row.teamLeads) && row.teamLeads.length > 0) {
-          assignedPersonnel.push(...row.teamLeads.map((tl: any) => tl.name || tl));
+          for (const tl of row.teamLeads) {
+            const n = (tl as any).name || String(tl);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
         }
         if (Array.isArray(row.employees) && row.employees.length > 0) {
-          assignedPersonnel.push(...row.employees.map((emp: any) => emp.name || emp));
+          for (const emp of row.employees) {
+            const n = (emp as any).name || String(emp);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
+        }
+        if (assignedPersonnel.length === 0) {
+          const rawDepts = row.departments && row.departments.length > 0
+            ? row.departments
+            : (row.department ? String(row.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
+          for (const d of rawDepts) {
+            const orgLeads = OrganizationService.getTeamLeadsByDepartment(d);
+            for (const l of orgLeads) {
+              if (!assignedPersonnel.includes(l.name)) assignedPersonnel.push(l.name);
+            }
+          }
         }
         if (assignedPersonnel.length === 0 && row.assignedTo && row.assignedTo !== 'Unassigned') {
           assignedPersonnel.push(row.assignedTo);

@@ -484,15 +484,64 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Department</span>
-                  <span className="font-semibold text-slate-800">{currentTicket.department || 'IT'}</span>
+                  <span className="font-semibold text-slate-800">
+                    {(currentTicket.departments && currentTicket.departments.length > 0)
+                      ? currentTicket.departments.join(', ')
+                      : (currentTicket.department || 'IT')}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Category</span>
                   <span className="font-semibold text-slate-800">{currentTicket.category}</span>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Assigned To</span>
-                  <span className="font-semibold text-sky-700">{currentTicket.assignedAgent || 'Unassigned'}</span>
+                  {(() => {
+                    const allAssigned: string[] = [];
+                    const seen = new Set<string>();
+                    const addName = (name: string) => {
+                      const clean = (name || '').trim();
+                      if (!clean || clean.toLowerCase() === 'unassigned') return;
+                      const k = clean.toLowerCase();
+                      if (!seen.has(k)) {
+                        seen.add(k);
+                        allAssigned.push(clean);
+                      }
+                    };
+
+                    const tls = currentTicket.teamLeads || (currentTicket as any).team_leads;
+                    if (Array.isArray(tls)) {
+                      tls.forEach((tl: any) => addName(tl.name || String(tl)));
+                    }
+                    const emps = currentTicket.taggedEmployees || (currentTicket as any).employees || (currentTicket as any).tagged_employees;
+                    if (Array.isArray(emps)) {
+                      emps.forEach((emp: any) => addName(emp.name || String(emp)));
+                    }
+                    if (currentTicket.assignedAgent) {
+                      addName(currentTicket.assignedAgent);
+                    }
+
+                    const depts = (currentTicket.departments && currentTicket.departments.length > 0)
+                      ? currentTicket.departments
+                      : (currentTicket.department ? currentTicket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+                    if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
+                      for (const dept of depts) {
+                        const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                        leads.forEach((l: any) => addName(l.name));
+                      }
+                    }
+
+                    if (allAssigned.length === 0) {
+                      return <span className="font-semibold text-sky-700">Unassigned</span>;
+                    }
+
+                    return (
+                      <span className="font-semibold text-sky-700">
+                        {allAssigned.join(', ')}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Assigned By</span>

@@ -1,6 +1,7 @@
 import type { EmployeeTicket, EmployeeProfile, EmployeeNotificationItem, TicketPriority, TicketStatus, AssignedTeamLead } from '../types';
 import { EmailService } from './emailService';
 import { supabase } from './supabaseClient';
+import { OrganizationService } from './organizationService';
 import {
   API_BASE,
   apiRequest,
@@ -192,10 +193,43 @@ function mapDbTicket(row: any): EmployeeTicket {
     subCategory: row.sub_category || 'General Support',
     department: row.department || 'IT Support',
     departments: Array.isArray(row.departments) && row.departments.length > 0 ? row.departments : [row.department || 'IT Support'],
-    teamLeads: Array.isArray(row.team_leads)
-      ? row.team_leads
-      : Array.isArray(row.teamLeads)
-      ? row.teamLeads
+    teamLeads: (() => {
+      const tls = Array.isArray(row.team_leads)
+        ? row.team_leads
+        : Array.isArray(row.teamLeads)
+        ? row.teamLeads
+        : [];
+      if (tls.length > 0) return tls;
+      const rawDepts: string[] = Array.isArray(row.departments) && row.departments.length > 0
+        ? row.departments
+        : (row.department ? String(row.department).replace('&', ',').split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+      if (rawDepts.length > 0) {
+        const orgLeads: any[] = [];
+        for (const d of rawDepts) {
+          const found = OrganizationService.getTeamLeadsByDepartment(d);
+          for (const l of found) {
+            if (!orgLeads.some((x: any) => x.id === l.id || x.name === l.name)) {
+              orgLeads.push({
+                id: l.id,
+                name: l.name,
+                role: 'Team Lead',
+                department: l.departmentName || d,
+                email: l.email || '',
+                employeeId: l.employeeId || l.id,
+              });
+            }
+          }
+        }
+        if (orgLeads.length > 0) return orgLeads;
+      }
+      return [];
+    })(),
+    employees: Array.isArray(row.employees)
+      ? row.employees
+      : Array.isArray(row.tagged_employees)
+      ? row.tagged_employees
+      : Array.isArray(row.taggedEmployees)
+      ? row.taggedEmployees
       : [],
     priority: (row.priority || 'Medium') as TicketPriority,
     status: (row.status || 'Open') as TicketStatus,
@@ -247,6 +281,9 @@ function mapDbTicket(row: any): EmployeeTicket {
   (t as any).requester_id = row.requester_id;
   (t as any).escalationReason = row.escalation_reason || row.escalationReason;
   (t as any).escalationNotes = row.escalation_notes || row.escalationNotes;
+  (t as any).teamLeads = t.teamLeads;
+  (t as any).team_leads = t.teamLeads;
+  (t as any).employees = (t as any).employees;
   return t;
 }
 

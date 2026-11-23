@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PlusCircle, Search, Ticket, Filter, RefreshCw, Eye } from 'lucide-react';
 import { EmployeeService } from '../services/employeeService';
+import { OrganizationService } from '../services/organizationService';
 import type { EmployeeTicket } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -120,6 +121,48 @@ export const MyTickets: React.FC = () => {
           <div className="text-[11px] text-slate-400 font-medium">{row.category}</div>
         </div>
       ),
+    },
+    {
+      header: 'Department / Assigned',
+      cell: (row) => {
+        const depts = (row.departments && row.departments.length > 0)
+          ? row.departments.join(', ')
+          : (row.department || 'IT Support');
+        const assignedPersonnel: string[] = [];
+        if (Array.isArray(row.teamLeads) && row.teamLeads.length > 0) {
+          for (const tl of row.teamLeads) {
+            const n = (tl as any).name || String(tl);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
+        }
+        if (Array.isArray((row as any).employees) && (row as any).employees.length > 0) {
+          for (const emp of (row as any).employees) {
+            const n = (emp as any).name || String(emp);
+            if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
+          }
+        }
+        if (assignedPersonnel.length === 0) {
+          const rawDepts = row.departments && row.departments.length > 0 ? row.departments : [row.department || 'IT Support'];
+          for (const d of rawDepts) {
+            const orgLeads = OrganizationService.getTeamLeadsByDepartment(d);
+            for (const l of orgLeads) {
+              if (!assignedPersonnel.includes(l.name)) assignedPersonnel.push(l.name);
+            }
+          }
+        }
+        if (assignedPersonnel.length === 0 && row.assignedTo && row.assignedTo !== 'Unassigned') {
+          assignedPersonnel.push(row.assignedTo);
+        }
+        const displayAssigned = assignedPersonnel.length > 0 ? assignedPersonnel.join(', ') : 'Unassigned';
+        return (
+          <div>
+            <div className="text-slate-800 font-medium text-xs">{depts}</div>
+            <div className="text-[11px] text-slate-500 line-clamp-1" title={displayAssigned}>
+              {displayAssigned}
+            </div>
+          </div>
+        );
+      },
     },
     {
       header: 'Priority',

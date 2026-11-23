@@ -28,6 +28,7 @@ import {
   getEmployeeSessionUser,
   isUserChatMessage,
 } from '../services/employeeService';
+import { OrganizationService } from '../services/organizationService';
 import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../services/backendAuth';
 import { supabase } from '../services/supabaseClient';
 import type { EmployeeTicket, TicketStatus } from '../types';
@@ -176,12 +177,12 @@ export const AssignedTicketDetails: React.FC = () => {
     setTicket((prev) =>
       prev
         ? {
-            ...prev,
-            attachments: (prev.attachments || []).filter((f) => {
-              const fName = getAttachmentRawName(f);
-              return !(f === fileName || fName === rawName || fName.includes(rawName));
-            }),
-          }
+          ...prev,
+          attachments: (prev.attachments || []).filter((f) => {
+            const fName = getAttachmentRawName(f);
+            return !(f === fileName || fName === rawName || fName.includes(rawName));
+          }),
+        }
         : prev
     );
 
@@ -223,16 +224,16 @@ export const AssignedTicketDetails: React.FC = () => {
     ]);
 
     if (found) {
-      const mergedAttachments = attachmentResult.attachments.length > 0 
-        ? attachmentResult.attachments 
+      const mergedAttachments = attachmentResult.attachments.length > 0
+        ? attachmentResult.attachments
         : found.attachments || [];
       setTicket({ ...found, attachments: mergedAttachments });
       setSelectedStatus(found.status);
     } else {
       const cached = EmployeeService.getTicketById(id);
       if (cached) {
-        const mergedAttachments = attachmentResult.attachments.length > 0 
-          ? attachmentResult.attachments 
+        const mergedAttachments = attachmentResult.attachments.length > 0
+          ? attachmentResult.attachments
           : cached.attachments || [];
         setTicket({ ...cached, attachments: mergedAttachments });
         setSelectedStatus(cached.status);
@@ -336,7 +337,7 @@ export const AssignedTicketDetails: React.FC = () => {
       clearInterval(interval);
       try {
         supabase.removeChannel(channel);
-      } catch {}
+      } catch { }
     };
   }, [ticket?.id, id]);
 
@@ -517,7 +518,7 @@ export const AssignedTicketDetails: React.FC = () => {
           is_internal: false,
           created_at: nowIso,
         });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -721,22 +722,46 @@ export const AssignedTicketDetails: React.FC = () => {
             </span>
             {(() => {
               const allAssigned: { name: string; role?: string; dept?: string }[] = [];
+              const seen = new Set<string>();
+
+              const addAssigned = (name: string, role?: string, dept?: string) => {
+                const clean = (name || '').trim();
+                if (!clean || clean.toLowerCase() === 'unassigned') return;
+                const key = clean.toLowerCase();
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  allAssigned.push({ name: clean, role, dept });
+                }
+              };
+
               const tls = ticket.teamLeads || (ticket as any).team_leads;
               if (Array.isArray(tls) && tls.length > 0) {
                 for (const tl of tls) {
-                  allAssigned.push({ name: (tl as any).name || String(tl), role: 'Team Lead', dept: (tl as any).department });
+                  addAssigned((tl as any).name || String(tl), 'Team Lead', (tl as any).department);
                 }
               }
               const emps = (ticket as any).employees || (ticket as any).tagged_employees || (ticket as any).taggedEmployees;
               if (Array.isArray(emps) && emps.length > 0) {
                 for (const emp of emps) {
-                  allAssigned.push({ name: (emp as any).name || String(emp), role: 'Employee', dept: (emp as any).department });
+                  addAssigned((emp as any).name || String(emp), 'Employee', (emp as any).department);
                 }
               }
-              if (allAssigned.length === 0) {
-                const single = ticket.assignedTo || (ticket as any).assignedAgent || (ticket as any).assigneeName;
-                if (single && single !== 'Unassigned') {
-                  allAssigned.push({ name: single });
+              const single = ticket.assignedTo || (ticket as any).assignedAgent || (ticket as any).assigneeName;
+              if (single) {
+                addAssigned(single);
+              }
+
+              // Fallback: If multiple departments are selected or allAssigned is empty, enrich with department leads
+              const rawDepts = (ticket.departments && ticket.departments.length > 0)
+                ? ticket.departments
+                : (ticket.department ? ticket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
+
+              if (rawDepts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && rawDepts.length > 1))) {
+                for (const dept of rawDepts) {
+                  const leads = OrganizationService.getTeamLeadsByDepartment(dept);
+                  for (const lead of leads) {
+                    addAssigned(lead.name, 'Team Lead', dept);
+                  }
                 }
               }
 
@@ -943,11 +968,10 @@ export const AssignedTicketDetails: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('conversation')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'conversation'
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'conversation'
                 ? 'bg-[#0284C7] text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
-            }`}
+              }`}
           >
             <MessageSquare className="w-4 h-4" />
             Conversation & Notes ({ticket.comments?.length || 0})
@@ -955,11 +979,10 @@ export const AssignedTicketDetails: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveTab('attachments')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'attachments'
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer ${activeTab === 'attachments'
                 ? 'bg-[#0284C7] text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
-            }`}
+              }`}
           >
             <Paperclip className="w-4 h-4" />
             Attachments ({ticket.attachments?.length || 0})
