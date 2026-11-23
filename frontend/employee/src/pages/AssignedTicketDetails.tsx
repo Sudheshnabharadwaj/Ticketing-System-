@@ -872,15 +872,6 @@ export const AssignedTicketDetails: React.FC = () => {
               <Paperclip className="w-3.5 h-3.5 text-slate-400" />
               ATTACHMENTS ({ticket.attachments?.length || 0})
             </h3>
-            {!isReadOnly && canWorkOnTicket && (
-              <button
-                type="button"
-                onClick={() => setShowAttachModal(true)}
-                className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
-              >
-                + Upload File
-              </button>
-            )}
           </div>
 
           {attachmentsLoading ? (
@@ -1053,13 +1044,6 @@ export const AssignedTicketDetails: React.FC = () => {
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Attached Files ({ticket.attachments?.length || 0})
               </span>
-              <button
-                type="button"
-                onClick={() => setShowAttachModal(true)}
-                className="text-xs font-semibold text-[#0284C7] hover:underline cursor-pointer flex items-center gap-1"
-              >
-                + Upload File
-              </button>
             </div>
             {attachmentsLoading ? (
               <div className="flex items-center gap-2 text-xs text-slate-500 py-2">

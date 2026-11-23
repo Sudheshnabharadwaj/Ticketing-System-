@@ -151,10 +151,16 @@ export const OrganizationService = {
           `team_lead_id.eq.${teamLeadId}`,
           `team_lead_id.eq.${leadEmpId}`,
           `team.eq.${teamLeadId}`,
-          `team.eq.${leadEmpId}`
+          `team.eq.${leadEmpId}`,
+          `team.ilike.%${leadEmpId}%`,
         ];
-        if (leadTeam) filters.push(`team.eq.${leadTeam}`);
-        if (leadName) filters.push(`team_lead.eq.${leadName}`);
+        if (leadTeam && leadTeam.toLowerCase() !== 'development' && leadTeam.toLowerCase() !== 'it support' && leadTeam.toLowerCase() !== 'none') {
+          filters.push(`team.eq.${leadTeam}`);
+        }
+        if (leadName) {
+          filters.push(`team_lead.eq.${leadName}`);
+          filters.push(`team.ilike.%${leadName}%`);
+        }
 
         const { data: supaEmps, error: supaErr } = await supabase
           .from('users')
@@ -490,11 +496,13 @@ export const OrganizationService = {
               if (matchedLead) leadId = matchedLead.id;
             }
             if (!leadId && u.team) {
+              const uTeamLower = u.team.toLowerCase();
               const matchingLead = TEAM_LEADS.find(
                 (tl: any) =>
-                  (tl.team && tl.team.toLowerCase() === u.team.toLowerCase()) ||
-                  tl.id.toLowerCase() === u.team.toLowerCase() ||
-                  (tl.employeeId && tl.employeeId.toLowerCase() === u.team.toLowerCase())
+                  (tl.team && tl.team.toLowerCase() === uTeamLower) ||
+                  tl.id.toLowerCase() === uTeamLower ||
+                  (tl.employeeId && (uTeamLower === tl.employeeId.toLowerCase() || uTeamLower.includes(tl.employeeId.toLowerCase()))) ||
+                  (tl.name && uTeamLower.includes(tl.name.toLowerCase()))
               );
               if (matchingLead) leadId = matchingLead.id;
             }

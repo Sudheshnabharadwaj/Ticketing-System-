@@ -650,28 +650,38 @@ def _find_file(ticket_id: str, att_id: str, ticket: dict[str, Any] | None = None
             .in_("ticket_id", cands)
             .execute()
         )
+        clean_id_lower = clean_id.lower()
+        clean_id_spaces = clean_id_lower.replace("_", " ")
         for row in (res.data or []):
             row_id = str(row.get("id") or "").lower()
             orig_name = str(row.get("original_name") or row.get("filename") or "").lower()
             fname = str(row.get("filename") or "").lower()
-            if (
-                clean_id in (row_id, orig_name, fname)
-                or norm_clean in (row_id, orig_name, fname)
-                or clean_id == orig_name.replace(" ", "_")
-            ):
+            norm_orig = re.sub(r"[\s_]+", "_", orig_name)
+            norm_fname = re.sub(r"[\s_]+", "_", fname)
+            orig_spaces = orig_name.replace("_", " ")
+
+            matched = (
+                clean_id_lower in (row_id, orig_name, fname)
+                or norm_clean in (row_id, orig_name, fname, norm_orig, norm_fname)
+                or clean_id_spaces == orig_spaces
+                or clean_id_lower == orig_name.replace(" ", "_")
+                or (row_id and row_id in clean_id_lower)
+            )
+            if matched:
                 storage_path = row.get("storage_path") or f"{row.get('ticket_id')}/{row.get('filename')}"
-                try:
-                    file_bytes = sb.storage.from_("ticket-attachments").download(storage_path)
-                    if file_bytes:
-                        tid = str(row.get("ticket_id") or cands[0])
-                        target_folder = UPLOAD_BASE_DIR / _validate_ticket_id(tid)
-                        target_folder.mkdir(parents=True, exist_ok=True)
-                        stored_name = row.get("filename") or f"{row.get('id')}_{row.get('original_name', 'file')}"
-                        restored_path = target_folder / _safe_stored_filename(stored_name)
-                        restored_path.write_bytes(file_bytes)
-                        return restored_path
-                except Exception as dl_exc:
-                    print(f"[attachments] storage download attempt note for {storage_path}: {dl_exc}")
+                for sp in [storage_path, storage_path.removeprefix("ticket-attachments/") if storage_path.startswith("ticket-attachments/") else storage_path]:
+                    try:
+                        file_bytes = sb.storage.from_("ticket-attachments").download(sp)
+                        if file_bytes:
+                            tid = str(row.get("ticket_id") or cands[0])
+                            target_folder = UPLOAD_BASE_DIR / _validate_ticket_id(tid)
+                            target_folder.mkdir(parents=True, exist_ok=True)
+                            stored_name = row.get("filename") or f"{row.get('id')}_{row.get('original_name', 'file')}"
+                            restored_path = target_folder / _safe_stored_filename(stored_name)
+                            restored_path.write_bytes(file_bytes)
+                            return restored_path
+                    except Exception as dl_exc:
+                        print(f"[attachments] storage download attempt note for {sp}: {dl_exc}")
     except Exception as query_exc:
         print(f"[attachments] ticket_attachments search note: {query_exc}")
 
@@ -711,11 +721,51 @@ def download_attachment(
             media_type=media_type or "application/octet-stream",
         )
 
-    # If missing on disk, fallback to direct streaming from persistent database
+    # If missing on disk, fallback to direct streaming from Supabase Storage
     cands = _candidate_ids(ticket_id, _ticket)
-    db_recs = _fetch_persisted_db_attachments(cands)
     raw_clean = unquote(att_id or "").strip()
     clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip().lower()
+    clean_id_spaces = clean_id.replace("_", " ")
+    norm_clean = re.sub(r"[\s_]+", "_", clean_id)
+
+    try:
+        sb = get_supabase_admin_client()
+        res = sb.table("ticket_attachments").select("*").in_("ticket_id", cands).execute()
+        for row in (res.data or []):
+            row_id = str(row.get("id") or "").lower()
+            orig_name = str(row.get("original_name") or row.get("filename") or "").lower()
+            fname = str(row.get("filename") or "").lower()
+            norm_orig = re.sub(r"[\s_]+", "_", orig_name)
+            norm_fname = re.sub(r"[\s_]+", "_", fname)
+            orig_spaces = orig_name.replace("_", " ")
+
+            matched = (
+                clean_id in (row_id, orig_name, fname)
+                or norm_clean in (row_id, orig_name, fname, norm_orig, norm_fname)
+                or clean_id_spaces == orig_spaces
+                or clean_id == orig_name.replace(" ", "_")
+                or (row_id and row_id in clean_id)
+            )
+            if matched:
+                storage_path = row.get("storage_path") or f"{row.get('ticket_id')}/{row.get('filename')}"
+                for sp in [storage_path, storage_path.removeprefix("ticket-attachments/") if storage_path.startswith("ticket-attachments/") else storage_path]:
+                    try:
+                        file_bytes = sb.storage.from_("ticket-attachments").download(sp)
+                        if file_bytes:
+                            disp_name = row.get("original_name") or row.get("filename") or "attachment"
+                            m_type = row.get("mime_type") or mimetypes.guess_type(disp_name)[0] or "application/octet-stream"
+                            return Response(
+                                content=file_bytes,
+                                media_type=m_type,
+                                headers={"Content-Disposition": f'attachment; filename="{disp_name}"'}
+                            )
+                    except Exception as s_exc:
+                        print(f"[attachments] direct storage download note for {sp}: {s_exc}")
+    except Exception as query_exc:
+        print(f"[attachments] ticket_attachments download query note: {query_exc}")
+
+    # Fallback: search legacy persistent comments
+    db_recs = _fetch_persisted_db_attachments(cands)
     for rec in db_recs:
         r_id = str(rec.get("id") or "").lower()
         r_name = str(rec.get("name") or "").lower()
@@ -751,11 +801,52 @@ def view_attachment(
             headers={"Content-Disposition": f'inline; filename="{original_name}"'},
         )
 
-    # If missing on disk, fallback to direct streaming from persistent database
+    # If missing on disk, fallback to direct streaming from Supabase Storage
     cands = _candidate_ids(ticket_id, _ticket)
-    db_recs = _fetch_persisted_db_attachments(cands)
     raw_clean = unquote(att_id or "").strip()
     clean_id = re.sub(r"\s*\([^)]*\)$", "", raw_clean).strip().lower()
+    clean_id_spaces = clean_id.replace("_", " ")
+    norm_clean = re.sub(r"[\s_]+", "_", clean_id)
+
+    try:
+        sb = get_supabase_admin_client()
+        res = sb.table("ticket_attachments").select("*").in_("ticket_id", cands).execute()
+        for row in (res.data or []):
+            row_id = str(row.get("id") or "").lower()
+            orig_name = str(row.get("original_name") or row.get("filename") or "").lower()
+            fname = str(row.get("filename") or "").lower()
+            norm_orig = re.sub(r"[\s_]+", "_", orig_name)
+            norm_fname = re.sub(r"[\s_]+", "_", fname)
+            orig_spaces = orig_name.replace("_", " ")
+
+            matched = (
+                clean_id in (row_id, orig_name, fname)
+                or norm_clean in (row_id, orig_name, fname, norm_orig, norm_fname)
+                or clean_id_spaces == orig_spaces
+                or clean_id == orig_name.replace(" ", "_")
+                or (row_id and row_id in clean_id)
+            )
+            if matched:
+                storage_path = row.get("storage_path") or f"{row.get('ticket_id')}/{row.get('filename')}"
+                for sp in [storage_path, storage_path.removeprefix("ticket-attachments/") if storage_path.startswith("ticket-attachments/") else storage_path]:
+                    try:
+                        file_bytes = sb.storage.from_("ticket-attachments").download(sp)
+                        if file_bytes:
+                            disp_name = row.get("original_name") or row.get("filename") or "attachment"
+                            m_type = row.get("mime_type") or mimetypes.guess_type(disp_name)[0] or "application/octet-stream"
+                            return Response(
+                                content=file_bytes,
+                                media_type=m_type,
+                                headers={"Content-Disposition": f'inline; filename="{disp_name}"'}
+                            )
+                    except Exception as s_exc:
+                        print(f"[attachments] direct storage view note for {sp}: {s_exc}")
+    except Exception as query_exc:
+        print(f"[attachments] ticket_attachments view query note: {query_exc}")
+
+    # Fallback: search legacy persistent comments
+    cands = _candidate_ids(ticket_id, _ticket)
+    db_recs = _fetch_persisted_db_attachments(cands)
     for rec in db_recs:
         r_id = str(rec.get("id") or "").lower()
         r_name = str(rec.get("name") or "").lower()

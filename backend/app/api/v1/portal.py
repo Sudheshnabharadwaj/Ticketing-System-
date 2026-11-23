@@ -80,6 +80,26 @@ def _all_users() -> list[dict[str, Any]]:
     return fetch_all_users_cached()
 
 
+def _find_employee_lead(employee: dict[str, Any], all_users: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Find the specific Team Lead who manages this employee."""
+    team_leads = [
+        u for u in all_users
+        if normalize_role(u.get("role")) == ROLE_TEAMLEAD
+        and str(u.get("status") or "").strip().lower() not in ("deleted", "inactive")
+    ]
+    emp_team = str(employee.get("team") or "").strip().lower()
+    emp_lead = str(employee.get("team_lead_id") or employee.get("team_lead") or "").strip().lower()
+    for tl in team_leads:
+        tl_empid = str(tl.get("employee_id") or "").strip().lower()
+        tl_name = str(tl.get("name") or "").strip().lower()
+        tl_id = str(tl.get("id") or "").strip().lower()
+        tl_keys = [k for k in (tl_empid, tl_name, tl_id) if k]
+        for k in tl_keys:
+            if (emp_lead and k in emp_lead) or (emp_team and k in emp_team):
+                return tl
+    return None
+
+
 def _visible_user(
     payload: dict[str, Any],
     user: dict[str, Any],
@@ -89,33 +109,58 @@ def _visible_user(
     """Whether ``row`` may appear in the caller's directory listing."""
     if is_admin(payload):
         return True
-    if str(row.get("id") or "") == str(user.get("id") or ""):
+    uid = str(user.get("id") or payload.get("sub") or "").strip()
+    row_id = str(row.get("id") or "").strip()
+    if row_id and row_id == uid:
         return True
-    if is_teamlead(payload):
-        # A Team Lead must be able to route a ticket to *any* Team Lead and to
-        # request assistance from an administrator, so both roles stay in the
-        # directory. Employee visibility stays limited to the Lead's own team.
-        if normalize_role(row.get("role")) in (ROLE_ADMIN, ROLE_TEAMLEAD):
+
+    current_role = normalize_role(payload.get("role") or user.get("role"))
+    target_role = normalize_role(row.get("role"))
+
+    # Team Lead: Sees Admin, all Team Leads (for ticket transfers), and strictly their own team members
+    if current_role == ROLE_TEAMLEAD:
+        if target_role in (ROLE_ADMIN, ROLE_TEAMLEAD):
             return True
         if managed_ids is None:
             managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(user)}
-        return str(row.get("id") or "") in managed_ids
-    # Employees may see Team Leads and colleagues across departments (to route tickets
-    # to the proper department lead and tag team members).
-    if normalize_role(row.get("role")) in (ROLE_TEAMLEAD, ROLE_EMPLOYEE):
-        return True
+        return row_id in managed_ids
+
+    # Employee: Sees Admin, their own assigned Team Lead, themselves, and fellow team members under the same Team Lead
+    if current_role == ROLE_EMPLOYEE:
+        if target_role == ROLE_ADMIN:
+            return True
+        all_users = _all_users()
+        my_lead = _find_employee_lead(user, all_users)
+        if my_lead:
+            my_lead_id = str(my_lead.get("id") or "").strip()
+            if row_id == my_lead_id:
+                return True
+            if managed_ids is None:
+                managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(my_lead)}
+            return row_id in managed_ids
+        return False
+
     return _scopes_overlap(user.get("department"), row.get("department"))
 
 
 def _visible_rows(
     payload: dict[str, Any], user: dict[str, Any], rows: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Filter a user list for the caller, resolving the team scope only once."""
+    """Filter a user list for the caller, strictly isolating teams across Team Leads and Employees."""
     if is_admin(payload):
         return list(rows)
+
+    current_role = normalize_role(payload.get("role") or user.get("role"))
     managed_ids: set[str] | None = None
-    if is_teamlead(payload):
-        managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(user)}
+
+    if current_role == ROLE_TEAMLEAD:
+        managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(user) if m.get("id")}
+    elif current_role == ROLE_EMPLOYEE:
+        all_users = _all_users()
+        my_lead = _find_employee_lead(user, all_users)
+        if my_lead:
+            managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(my_lead) if m.get("id")}
+
     return [
         row
         for row in rows

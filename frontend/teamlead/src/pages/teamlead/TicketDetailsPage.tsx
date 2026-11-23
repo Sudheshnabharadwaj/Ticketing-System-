@@ -259,13 +259,13 @@ export const TicketDetailsPage: React.FC = () => {
     };
   }, [ticketId, ticket?.id]);
 
-  const handleDownloadAttachment = async (attName: string, attUrl?: string) => {
+  const handleDownloadAttachment = async (attName: string, _attUrl?: string) => {
     const cleanName = attName.includes(' (') ? attName.split(' (')[0].trim() : attName.trim();
     const tid = ticket?.id || ticketId;
 
-    // Resolve URL: prefer given url, ensuring it points to the full backend API url
+    // Route download through backend API for authenticated streaming
     const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
-    let url = attUrl || `${API_BASE}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
+    let url = `${API_BASE}/tickets/${encodeURIComponent(tid || '')}/attachments/${encodeURIComponent(cleanName)}/download`;
     if (url.startsWith('/api/v1')) {
       url = `${apiRoot}${url}`;
     }
@@ -347,20 +347,18 @@ export const TicketDetailsPage: React.FC = () => {
     await ensureBackendSession();
 
     const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
-    let baseViewUrl = att.viewUrl;
-    if (!baseViewUrl) {
-      if (att.url) {
-        baseViewUrl = att.url.replace('/download', '/view');
-      } else {
-        baseViewUrl = `${API_BASE}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/view`;
-      }
-    }
+    let baseViewUrl = `${API_BASE}/tickets/${encodeURIComponent(tid || '')}/attachments/${encodeURIComponent(att.id || cleanName)}/view`;
     if (baseViewUrl.startsWith('/api/v1')) {
       baseViewUrl = `${apiRoot}${baseViewUrl}`;
     }
 
     const viewUrl = withAccessToken(baseViewUrl);
-    setPreviewAttachment({ name: att.name, size: att.size, viewUrl, downloadUrl: att.url });
+    setPreviewAttachment({
+      name: att.name,
+      size: att.size,
+      viewUrl,
+      downloadUrl: baseViewUrl.replace('/view', '/download'),
+    });
   };
 
   if (ticketLoading && !ticket) {

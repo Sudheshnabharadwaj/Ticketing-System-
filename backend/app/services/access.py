@@ -305,16 +305,17 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
 
     all_users = fetch_all_users_cached()
 
-    tl_empid = str(tl_user.get("employee_id") or "").strip()
-    tl_name = str(tl_user.get("name") or "").strip()
-    tl_team = str(tl_user.get("team") or "").strip()
-    tl_dept = str(tl_user.get("department") or "").strip()
-    tl_team_keys = {k.lower() for k in (tl_id, tl_empid, tl_name, tl_team) if k}
+    tl_empid = str(tl_user.get("employee_id") or "").strip().lower()
+    tl_name = str(tl_user.get("name") or "").strip().lower()
+    tl_team = str(tl_user.get("team") or "").strip().lower()
+    tl_id_lower = str(tl_id or "").strip().lower()
+    tl_keys = [k for k in (tl_id_lower, tl_empid, tl_name) if k]
 
     matched: list[dict[str, Any]] = []
     for u in all_users:
-        uid = str(u.get("id") or "").strip()
-        if uid == tl_id or (tl_empid and uid == tl_empid):
+        uid = str(u.get("id") or "").strip().lower()
+        uempid = str(u.get("employee_id") or "").strip().lower()
+        if uid == tl_id_lower or (tl_empid and (uid == tl_empid or uempid == tl_empid)):
             continue
         if str(u.get("status") or "").strip().lower() in ("deleted", "inactive"):
             continue
@@ -322,20 +323,27 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
         if urole in (ROLE_ADMIN, ROLE_TEAMLEAD):
             continue
 
-        uteam = str(u.get("team") or "").strip()
-        ulead = str(u.get("team_lead_id") or u.get("team_lead") or "").strip()
+        uteam = str(u.get("team") or "").strip().lower()
+        ulead = str(u.get("team_lead_id") or u.get("team_lead") or "").strip().lower()
         is_member = False
-        if ulead and ulead.lower() in tl_team_keys:
-            is_member = True
-        elif uteam and uteam.lower() in tl_team_keys:
-            is_member = True
-        elif tl_team and uteam and uteam.lower() == tl_team.lower():
-            is_member = True
-        elif _scopes_overlap(tl_dept, u.get("department")):
-            if not tl_team or tl_team.lower() in (tl_dept.lower(), "none", ""):
-                if not ulead or ulead.lower() in tl_team_keys:
+
+        # 1. Explicit team_lead / team_lead_id reference
+        if ulead:
+            for k in tl_keys:
+                if k in ulead:
                     is_member = True
-            elif not ulead and (not uteam or uteam.lower() in (tl_dept.lower(), "none", "general")):
+                    break
+
+        # 2. Match in employee's team string (e.g. "Gokul (OKIN20061)" or "OKIN20061")
+        if not is_member and uteam:
+            for k in tl_keys:
+                if k in uteam:
+                    is_member = True
+                    break
+
+        # 3. Explicit team name match (when tl_team is a distinct subteam, never a generic department name)
+        if not is_member and tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
+            if uteam == tl_team:
                 is_member = True
 
         if is_member:
