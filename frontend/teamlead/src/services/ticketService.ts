@@ -87,12 +87,15 @@ function mapAttachment(raw: any): AttachmentRecord {
   const rawViewUrl = typeof raw === 'object' ? (raw?.view_url || '') : '';
 
   // Ensure download/view URLs are fully qualified absolute URLs pointing to API_BASE
-  const fullDownloadUrl = rawUrl
-    ? (rawUrl.startsWith('http') ? rawUrl : `${API_BASE}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`)
-    : '';
-  const fullViewUrl = rawViewUrl
-    ? (rawViewUrl.startsWith('http') ? rawViewUrl : `${API_BASE}${rawViewUrl.startsWith('/') ? rawViewUrl : `/${rawViewUrl}`}`)
-    : '';
+  const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
+  const resolveUrl = (u: string) => {
+    if (!u) return '';
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    const clean = u.startsWith('/') ? u : `/${u}`;
+    return clean.startsWith('/api/v1') ? `${apiRoot}${clean}` : `${API_BASE}${clean}`;
+  };
+  const fullDownloadUrl = resolveUrl(rawUrl);
+  const fullViewUrl = resolveUrl(rawViewUrl);
 
   return {
     id: typeof raw === 'object' ? raw?.id : undefined,
@@ -465,12 +468,15 @@ export const ticketService = {
         .from('ticket_attachments')
         .delete()
         .eq('ticket_id', ticketId)
-        .or(`id.eq.${cleanId},name.eq.${cleanId}`);
+        .or(`id.eq.${cleanId},original_name.eq.${cleanId},filename.eq.${cleanId}`);
       await supabase
         .from('ticket_comments')
         .delete()
         .eq('ticket_id', ticketId)
         .like('message', `%${cleanId}%`);
+      try {
+        await supabase.storage.from('ticket-attachments').remove([`${ticketId}/${cleanId}`]);
+      } catch {}
     } catch (dbErr) {
       console.warn('Direct Supabase delete warning:', dbErr);
     }

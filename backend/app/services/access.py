@@ -331,8 +331,12 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
             is_member = True
         elif tl_team and uteam and uteam.lower() == tl_team.lower():
             is_member = True
-        elif not tl_team and not uteam and _scopes_overlap(tl_dept, u.get("department")):
-            is_member = True
+        elif _scopes_overlap(tl_dept, u.get("department")):
+            if not tl_team or tl_team.lower() in (tl_dept.lower(), "none", ""):
+                if not ulead or ulead.lower() in tl_team_keys:
+                    is_member = True
+            elif not ulead and (not uteam or uteam.lower() in (tl_dept.lower(), "none", "general")):
+                is_member = True
 
         if is_member:
             matched.append(u)
@@ -477,6 +481,7 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
     if role == ROLE_TEAMLEAD:
         tl_id = str(user.get("id") or payload.get("sub") or "").strip()
         tl_team = str(user.get("team") or "").strip()
+        tl_dept = str(user.get("department") or payload.get("department") or "").strip()
         tl_name = (user.get("name") or payload.get("name") or "").strip()
         tl_email = (user.get("email") or payload.get("email") or "").strip().lower()
 
@@ -504,6 +509,9 @@ def ticket_visible(payload: dict[str, Any], user: dict[str, Any], ticket: dict[s
             return True
         if tl_team and _scopes_overlap(tl_team, ticket.get("assigned_team_id")):
             return True
+        if tl_dept and (not tl_team or tl_team.lower() in (tl_dept.lower(), "none", "")):
+            if _scopes_overlap(tl_dept, ticket.get("department")) or any(_scopes_overlap(tl_dept, d) for d in (ticket.get("departments") or [])):
+                return True
 
         # 4b. Explicitly routed to this Team Lead via team_lead_id / team_lead_ids / team_leads
         tl_ids_on_ticket = [str(x) for x in (ticket.get("team_lead_ids") or [])]

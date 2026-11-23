@@ -15,17 +15,18 @@ _bearer = HTTPBearer(auto_error=False)
 async def get_token_payload(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer)],
     access_token: Annotated[str | None, Query()] = None,
+    token: Annotated[str | None, Query()] = None,
 ) -> dict[str, Any]:
     """Extract and validate the Bearer token from the Authorization header.
 
-    Also accepts an ``?access_token=`` query parameter as a fallback so that
-    direct-link file downloads and inline previews (which cannot set headers)
+    Also accepts an ``?access_token=`` or ``?token=`` query parameter as a fallback
+    so that direct-link file downloads and inline previews (which cannot set headers)
     can still authenticate with a short-lived token.
     """
-    token = credentials.credentials if credentials is not None else access_token
-    if not token:
+    raw_token = credentials.credentials if credentials is not None else (access_token or token)
+    if not raw_token:
         raise UnauthorizedError("No authorization token provided")
-    return await decode_token(token)
+    return await decode_token(raw_token)
 
 
 async def get_current_user(

@@ -783,11 +783,13 @@ def delete_attachment(
 ) -> dict[str, Any]:
     """Delete an attachment by ID or filename from file storage, metadata, and database."""
     from app.services.access import (
-        load_current_user,
-        is_admin,
-        is_ticket_creator,
-        is_teamlead_involved_in_ticket,
         _same_person,
+        is_admin,
+        is_teamlead,
+        is_teamlead_involved_in_ticket,
+        is_ticket_creator,
+        load_current_user,
+        ticket_visible,
     )
     try:
         user = load_current_user(current_user)
@@ -798,6 +800,7 @@ def delete_attachment(
         is_admin(current_user)
         or is_ticket_creator(user, current_user, _ticket)
         or is_teamlead_involved_in_ticket(user, current_user, _ticket)
+        or (is_teamlead(current_user) and ticket_visible(current_user, user, _ticket))
         or _same_person(user, current_user, _ticket, "employee")
         or _same_person(user, current_user, _ticket, "assigned_agent")
     )
@@ -866,7 +869,21 @@ def delete_attachment(
                         f.unlink(missing_ok=True)
 
     # 2. Delete from database (Supabase) and Supabase Storage
+    storage_paths_to_remove: set[str] = set()
     for cid in cands:
+        storage_paths_to_remove.add(f"{cid}/{att_id}")
+        try:
+            res = sb.table("ticket_attachments").select("storage_path, filename").eq("ticket_id", cid).execute()
+            for r in (res.data or []):
+                sp = r.get("storage_path")
+                fn = r.get("filename")
+                if sp and (att_id in sp or clean_id in sp.lower() or any(d.lower() in sp.lower() for d in deleted_names)):
+                    storage_paths_to_remove.add(sp)
+                if fn and (att_id in fn or clean_id in fn.lower() or any(d.lower() in fn.lower() for d in deleted_names)):
+                    storage_paths_to_remove.add(f"{cid}/{fn}")
+        except Exception:
+            pass
+
         try:
             sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("id", att_id).execute()
             for name in deleted_names:
@@ -874,10 +891,28 @@ def delete_attachment(
                 sb.table("ticket_attachments").delete().eq("ticket_id", cid).eq("filename", name).execute()
         except Exception as e:
             print(f"[attachments] DB delete error ticket_attachments: {e}")
+
+        # Update tickets.attachments column if present
         try:
-            sb.storage.from_("ticket-attachments").remove([f"{cid}/{att_id}"])
-        except Exception:
-            pass
+            t_res = sb.table("tickets").select("attachments").eq("id", cid).execute()
+            if t_res.data:
+                cur_atts = t_res.data[0].get("attachments")
+                if isinstance(cur_atts, list):
+                    all_targets = [d.lower() for d in deleted_names + [clean_id, att_id] if d]
+                    updated_atts = [
+                        a for a in cur_atts
+                        if not any(t in str(a).lower() for t in all_targets)
+                    ]
+                    if len(updated_atts) != len(cur_atts):
+                        sb.table("tickets").update({"attachments": updated_atts}).eq("id", cid).execute()
+        except Exception as e:
+            print(f"[attachments] ticket attachments column update note: {e}")
+
+    if storage_paths_to_remove:
+        try:
+            sb.storage.from_("ticket-attachments").remove(list(storage_paths_to_remove))
+        except Exception as st_exc:
+            print(f"[attachments] storage remove note: {st_exc}")
 
     try:
         sb.table("ticket_comments").delete().eq("id", f"attmeta-{att_id}").execute()

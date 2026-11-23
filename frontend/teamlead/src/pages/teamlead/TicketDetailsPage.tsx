@@ -5,7 +5,7 @@ import { useTickets } from '../../hooks/useTickets';
 import { useAuth } from '../../hooks/useAuth';
 import { ticketService, type AttachmentRecord, isUserChatMessage } from '../../services/ticketService';
 import { supabase } from '../../services/supabaseClient';
-import { authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
+import { API_BASE, authenticatedFetch, ensureBackendSession, withAccessToken } from '../../services/backendAuth';
 import { API_BASE_URL } from '../../utils/constants';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
@@ -161,7 +161,13 @@ export const TicketDetailsPage: React.FC = () => {
     (isFromMyTickets || isWorkMode || (isAssignedToMe && !isReadOnly)) &&
     (user?.role === 'admin' || user?.role === 'teamlead' || isCreatedByMe || isAssignedToMe || (ticket as any)?.can_reply === true)
   );
-  const canDeleteAttachment = Boolean(user?.role === 'admin' || isCreatedByMe || isAssignedToMe || canReply);
+  const canDeleteAttachment = Boolean(
+    user?.role === 'admin' ||
+    user?.role === 'teamlead' ||
+    isCreatedByMe ||
+    isAssignedToMe ||
+    canReply
+  );
 
 
   const showToast = (msg: string) => {
@@ -258,9 +264,10 @@ export const TicketDetailsPage: React.FC = () => {
     const tid = ticket?.id || ticketId;
 
     // Resolve URL: prefer given url, ensuring it points to the full backend API url
-    let url = attUrl || `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
+    const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
+    let url = attUrl || `${API_BASE}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
     if (url.startsWith('/api/v1')) {
-      url = `${API_BASE_URL.replace(/\/api\/v1\/?$/, '')}${url}`;
+      url = `${apiRoot}${url}`;
     }
 
     try {
@@ -339,16 +346,17 @@ export const TicketDetailsPage: React.FC = () => {
     const tid = ticket?.id || ticketId;
     await ensureBackendSession();
 
+    const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
     let baseViewUrl = att.viewUrl;
     if (!baseViewUrl) {
       if (att.url) {
         baseViewUrl = att.url.replace('/download', '/view');
       } else {
-        baseViewUrl = `${API_BASE_URL}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/view`;
+        baseViewUrl = `${API_BASE}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/view`;
       }
     }
     if (baseViewUrl.startsWith('/api/v1')) {
-      baseViewUrl = `${API_BASE_URL.replace(/\/api\/v1\/?$/, '')}${baseViewUrl}`;
+      baseViewUrl = `${apiRoot}${baseViewUrl}`;
     }
 
     const viewUrl = withAccessToken(baseViewUrl);

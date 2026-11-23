@@ -26,7 +26,7 @@ import { useTickets } from '../../hooks/useTickets';
 import { PRIORITIES, STATUSES } from '../../utils/constants';
 import { ticketService, isUserChatMessage } from '../../services/ticketService';
 import { OrganizationService } from '../../services/organizationService';
-import { authenticatedFetch, API_BASE, withAccessToken } from '../../services/backendAuth';
+import { authenticatedFetch, API_BASE, withAccessToken, ensureBackendSession } from '../../services/backendAuth';
 
 interface TicketDetailsModalProps {
   ticket: Ticket | null;
@@ -148,14 +148,19 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
 
   const visibleComments = (ticket.comments || []).filter(isUserChatMessage);
 
-  const handleViewAttachment = (att: any) => {
+  const handleViewAttachment = async (att: any) => {
     const cleanName = att.name.includes(' (') ? att.name.split(' (')[0] : att.name;
-    const tid = currentTicket.id || ticket.id;
-    const baseViewUrl =
+    const tid = currentTicket?.id || ticket.id;
+    await ensureBackendSession();
+    const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
+    let baseViewUrl =
       att.viewUrl ||
       (att.url
         ? att.url.replace('/download', '/view')
         : `${API_BASE}/tickets/${encodeURIComponent(tid)}/attachments/${encodeURIComponent(cleanName)}/view`);
+    if (baseViewUrl.startsWith('/api/v1')) {
+      baseViewUrl = `${apiRoot}${baseViewUrl}`;
+    }
     const viewUrl = withAccessToken(baseViewUrl);
     setPreviewAttachment({
       name: att.name,
@@ -171,32 +176,67 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
     if (!window.confirm(`Are you sure you want to delete attachment "${attName}"? This action cannot be undone.`)) {
       return;
     }
+    // Optimistic removal from modal state
+    setModalAttachments((prev) => prev.filter((a) => a.id !== att.id && a.name !== att.name));
+    setCurrentTicket((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        attachments: (prev.attachments || []).filter((a: any) => a.id !== att.id && a.name !== att.name),
+      };
+    });
+
     const success = await ticketService.deleteAttachment(currentTicket.id, att.id || attName);
     if (success) {
       showToast(`Attachment "${attName}" deleted successfully.`);
       await loadLiveAttachments(currentTicket.id);
     } else {
       showToast(`Failed to delete attachment "${attName}". Please try again.`);
+      await loadLiveAttachments(currentTicket.id);
     }
   };
 
   const handleDownloadAttachment = async (attName: string, attUrl?: string) => {
     const cleanName = attName.includes(' (') ? attName.split(' (')[0] : attName;
-    const url = attUrl || `${API_BASE}/tickets/${ticket.id}/attachments/${encodeURIComponent(cleanName)}/download`;
+    const tid = currentTicket?.id || ticket.id;
+    const apiRoot = API_BASE.replace(/\/api\/v1\/?$/i, '');
+    let url = attUrl || `${API_BASE}/tickets/${tid}/attachments/${encodeURIComponent(cleanName)}/download`;
+    if (url.startsWith('/api/v1')) {
+      url = `${apiRoot}${url}`;
+    }
     try {
+      await ensureBackendSession();
       const res = await authenticatedFetch(url);
-      if (!res.ok) throw new Error(`Download failed (${res.status})`);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
+      if (res.ok) {
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = cleanName.includes('.') ? cleanName : `${cleanName}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+        showToast(`Downloading attachment: ${cleanName}`);
+        return;
+      }
+      // Direct token download fallback
+      const directUrl = withAccessToken(url);
       const a = document.createElement('a');
-      a.href = objectUrl;
+      a.href = directUrl;
+      a.target = '_blank';
       a.download = cleanName.includes('.') ? cleanName : `${cleanName}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(objectUrl);
+      showToast(`Downloading attachment: ${cleanName}`);
     } catch (e) {
       console.warn('Failed to download attachment:', e);
+      try {
+        const directUrl = withAccessToken(url);
+        window.open(directUrl, '_blank');
+      } catch {}
+      showToast(`Failed to download ${cleanName}.`);
     }
   };
 
