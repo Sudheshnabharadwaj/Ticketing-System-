@@ -152,12 +152,12 @@ export const TicketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       })
       .subscribe();
 
-    // 2. Controlled Polling Fallback (8 seconds, non-destructive background sync)
+    // 2. Controlled Polling Fallback (30 seconds, non-destructive background sync)
     const pollInterval = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         void refresh(true, false);
       }
-    }, 8000);
+    }, 30000);
 
     // 3. Local/Cross-tab update listener with debounce protection
     let debounceTimer: number | null = null;

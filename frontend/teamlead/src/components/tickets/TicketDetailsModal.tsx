@@ -558,17 +558,6 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                       addName(currentTicket.assignedAgent);
                     }
 
-                    const depts = (currentTicket.departments && currentTicket.departments.length > 0)
-                      ? currentTicket.departments
-                      : (currentTicket.department ? currentTicket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
-
-                    if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
-                      for (const dept of depts) {
-                        const leads = OrganizationService.getTeamLeadsByDepartment(dept);
-                        leads.forEach((l: any) => addName(l.name));
-                      }
-                    }
-
                     if (allAssigned.length === 0) {
                       return <span className="font-semibold text-sky-700">Unassigned</span>;
                     }

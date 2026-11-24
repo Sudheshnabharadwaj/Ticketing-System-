@@ -463,17 +463,6 @@ export const DashboardPage: React.FC = () => {
             if (n && !assignedPersonnel.includes(n)) assignedPersonnel.push(n);
           }
         }
-        if (assignedPersonnel.length === 0) {
-          const rawDepts = row.departments && row.departments.length > 0
-            ? row.departments
-            : (row.department ? String(row.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
-          for (const d of rawDepts) {
-            const orgLeads = OrganizationService.getTeamLeadsByDepartment(d);
-            for (const l of orgLeads) {
-              if (!assignedPersonnel.includes(l.name)) assignedPersonnel.push(l.name);
-            }
-          }
-        }
         if (assignedPersonnel.length === 0 && row.assignedTo && row.assignedTo !== 'Unassigned') {
           assignedPersonnel.push(row.assignedTo);
         }

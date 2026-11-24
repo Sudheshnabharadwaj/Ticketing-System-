@@ -583,17 +583,6 @@ export const TicketManagementPage: React.FC = () => {
                           addName(t.assignedTo);
                         }
 
-                        const depts = (t.departments && t.departments.length > 0)
-                          ? t.departments
-                          : (t.department ? t.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
-
-                        if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
-                          for (const dept of depts) {
-                            const leads = OrganizationService.getTeamLeadsByDepartment(dept);
-                            leads.forEach(l => addName(l.name));
-                          }
-                        }
-
                         if (allAssigned.length === 0) {
                           return (
                             <span className="text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[10.5px]">
@@ -897,17 +886,6 @@ export const TicketManagementPage: React.FC = () => {
                       }
                       if (selectedTicket.assignedTo) {
                         addName(selectedTicket.assignedTo);
-                      }
-
-                      const depts = (selectedTicket.departments && selectedTicket.departments.length > 0)
-                        ? selectedTicket.departments
-                        : (selectedTicket.department ? selectedTicket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
-
-                      if (depts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && depts.length > 1))) {
-                        for (const dept of depts) {
-                          const leads = OrganizationService.getTeamLeadsByDepartment(dept);
-                          leads.forEach(l => addName(l.name));
-                        }
                       }
 
                       return allAssigned.length > 0 ? allAssigned.join(', ') : (selectedTicket.assignedTo || 'Unassigned');

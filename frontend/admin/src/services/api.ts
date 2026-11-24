@@ -477,30 +477,7 @@ function mapBackendTicket(t: BackendTicket): Ticket {
         : Array.isArray((t as any).teamLeads)
         ? (t as any).teamLeads
         : [];
-      if (tls.length > 0) return tls;
-      const rawDepts: string[] = Array.isArray(t.departments) && t.departments.length > 0
-        ? t.departments
-        : (t.department ? String(t.department).replace('&', ',').split(',').map((s) => s.trim()).filter(Boolean) : []);
-      if (rawDepts.length > 0) {
-        const orgLeads: any[] = [];
-        for (const d of rawDepts) {
-          const found = OrganizationService.getTeamLeadsByDepartment(d);
-          for (const l of found) {
-            if (!orgLeads.some((x) => x.id === l.id || x.name === l.name)) {
-              orgLeads.push({
-                id: l.id,
-                name: l.name,
-                role: 'Team Lead',
-                department: l.departmentName || d,
-                email: l.email || '',
-                employeeId: l.employeeId || l.id,
-              });
-            }
-          }
-        }
-        if (orgLeads.length > 0) return orgLeads;
-      }
-      return undefined;
+      return tls.length > 0 ? tls : undefined;
     })(),
     employees: Array.isArray((t as any).employees)
       ? (t as any).employees

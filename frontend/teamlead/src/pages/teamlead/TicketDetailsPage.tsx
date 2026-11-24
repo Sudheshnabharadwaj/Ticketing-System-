@@ -756,20 +756,6 @@ export const TicketDetailsPage: React.FC = () => {
                 addAssigned(single);
               }
 
-              // Fallback: If multiple departments are selected or allAssigned is empty, enrich with department leads
-              const rawDepts = (ticket.departments && ticket.departments.length > 0)
-                ? ticket.departments
-                : (ticket.department ? ticket.department.split(',').map((d: string) => d.trim()).filter(Boolean) : []);
-
-              if (rawDepts.length > 0 && (allAssigned.length === 0 || (allAssigned.length === 1 && rawDepts.length > 1))) {
-                for (const dept of rawDepts) {
-                  const leads = OrganizationService.getTeamLeadsByDepartment(dept);
-                  for (const lead of leads) {
-                    addAssigned(lead.name, 'Team Lead', dept);
-                  }
-                }
-              }
-
               if (allAssigned.length === 0) {
                 return (
                   <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">

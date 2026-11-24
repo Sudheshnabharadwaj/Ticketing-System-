@@ -31,12 +31,12 @@ export const AdminLayout: React.FC = () => {
       })
       .subscribe();
 
-    // 2. Controlled Polling Fallback (15 seconds, non-destructive background sync)
+    // 2. Controlled Polling Fallback (30 seconds, non-destructive background sync)
     const pollInterval = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         notifyUpdate();
       }
-    }, 15000);
+    }, 30000);
 
     return () => {
       window.clearInterval(pollInterval);

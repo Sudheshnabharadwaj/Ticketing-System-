@@ -135,15 +135,6 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                           if (n && !assignedNames.includes(n)) assignedNames.push(n);
                         }
                       }
-                      if (assignedNames.length === 0) {
-                        const depts = ticket.departments || (ticket.department ? [ticket.department] : []);
-                        for (const d of depts) {
-                          const leads = OrganizationService.getTeamLeadsByDepartment(d);
-                          for (const l of leads) {
-                            if (!assignedNames.includes(l.name)) assignedNames.push(l.name);
-                          }
-                        }
-                      }
                       if (assignedNames.length === 0 && ticket.assignedAgent && ticket.assignedAgent !== 'Unassigned') {
                         assignedNames.push(ticket.assignedAgent);
                       }
