@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Ticket } from '../../types/ticket';
 import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
-import { formatDate, getSLABadgeStyle, formatSLAShort } from '../../utils/helpers';
+import { formatDate, getSLABadgeStyle, formatSLAShort, getTicketSLAInfo } from '../../utils/helpers';
 import { AssignTicketModal } from './AssignTicketModal';
 import {
   Eye,
@@ -85,7 +85,7 @@ export const TicketTable: React.FC<TicketTableProps> = ({
               const isUnassigned = !ticket.assignedAgent || ticket.assignedAgent === 'Unassigned';
               const isTeamLeadHandled = ticket.handledBy === 'teamlead' || ticket.assignedToType === 'teamlead';
               const isResolvedOrClosed = ticket.status === 'Resolved' || ticket.status === 'Closed';
-              const shortSla = formatSLAShort(ticket.slaRemaining);
+              const slaInfo = getTicketSLAInfo(ticket);
 
 
               return (
@@ -167,12 +167,10 @@ export const TicketTable: React.FC<TicketTableProps> = ({
                   {/* SLA - Fully readable without truncation */}
                   <td className="py-3 px-4 whitespace-nowrap align-middle">
                     <span
-                      className={`inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap ${getSLABadgeStyle(
-                        ticket.slaStatus
-                      )}`}
+                      className={`inline-flex items-center w-fit px-2.5 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ${slaInfo.badgeStyle}`}
                     >
-                      <Clock className="w-3 h-3 mr-1 shrink-0" />
-                      <span className="whitespace-nowrap">{shortSla}</span>
+                      <Clock className="w-3 h-3 mr-1.5 shrink-0" />
+                      <span className="whitespace-nowrap">{slaInfo.text}</span>
                     </span>
                   </td>
 

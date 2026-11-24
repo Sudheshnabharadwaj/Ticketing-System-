@@ -158,15 +158,14 @@ export const TicketDetailsPage: React.FC = () => {
   const isWorkMode = searchParams.get('mode') === 'work';
   const isFromMyTickets = searchParams.get('source') === 'my-tickets' || location.pathname.includes('/my-tickets') || isCreatedByMe;
   const canReply = Boolean(
-    !isReadOnly && (
-      user?.role === 'teamlead' ||
-      user?.role === 'admin' ||
-      isCreatedByMe ||
-      isAssignedToMe ||
-      isFromMyTickets ||
-      isWorkMode ||
-      (ticket as any)?.can_reply === true
-    )
+    user?.role === 'teamlead' ||
+    user?.role === 'admin' ||
+    isCreatedByMe ||
+    isAssignedToMe ||
+    isFromMyTickets ||
+    isWorkMode ||
+    (ticket as any)?.can_reply === true ||
+    (ticket as any)?.can_chat === true
   );
   const canDeleteAttachment = Boolean(
     user?.role === 'admin' ||

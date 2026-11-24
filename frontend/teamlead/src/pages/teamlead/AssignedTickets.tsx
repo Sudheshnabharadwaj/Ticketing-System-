@@ -10,7 +10,7 @@ import { Pagination } from '../../components/common/Pagination';
 import { EmptyState } from '../../components/common/EmptyState';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import { StatusBadge } from '../../components/common/StatusBadge';
-import { formatDate, getSLABadgeStyle, formatSLAShort } from '../../utils/helpers';
+import { formatDate, getSLABadgeStyle, formatSLAShort, getTicketSLAInfo } from '../../utils/helpers';
 import { Ticket } from '../../types/ticket';
 import { Clock, Eye, CheckCircle2 } from 'lucide-react';
 
@@ -266,7 +266,7 @@ export const AssignedTickets: React.FC = () => {
 
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                   {paginatedTickets.map((ticket) => {
-                    const shortSla = formatSLAShort(ticket.slaRemaining);
+                    const slaInfo = getTicketSLAInfo(ticket);
 
                     return (
                       <tr
@@ -305,12 +305,10 @@ export const AssignedTickets: React.FC = () => {
                         {/* SLA */}
                         <td className="py-3 px-4 whitespace-nowrap align-middle">
                           <span
-                            className={`inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap ${getSLABadgeStyle(
-                              ticket.slaStatus
-                            )}`}
+                            className={`inline-flex items-center w-fit px-2.5 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ${slaInfo.badgeStyle}`}
                           >
-                            <Clock className="w-3 h-3 mr-1 shrink-0" />
-                            <span className="whitespace-nowrap">{shortSla}</span>
+                            <Clock className="w-3 h-3 mr-1.5 shrink-0" />
+                            <span className="whitespace-nowrap">{slaInfo.text}</span>
                           </span>
                         </td>
 

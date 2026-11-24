@@ -34,17 +34,18 @@ export const getPriorityBadgeStyle = (priority: TicketPriority) => {
   }
 };
 
-export const getSLABadgeStyle = (sla: SLAStatus) => {
-  switch (sla) {
-    case 'Within SLA':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    case 'At Risk':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    case 'Breached':
-      return 'bg-red-50 text-red-700 border-red-200';
-    default:
-      return 'bg-slate-50 text-slate-700 border-slate-200';
+export const getSLABadgeStyle = (sla: SLAStatus | string) => {
+  const norm = String(sla || '').toLowerCase();
+  if (norm.includes('breach') || norm.includes('overdue')) {
+    return 'bg-red-50 text-red-700 border-red-200';
   }
+  if (norm.includes('risk')) {
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  if (norm.includes('within') || norm.includes('normal') || norm.includes('on track')) {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  }
+  return 'bg-slate-50 text-slate-700 border-slate-200';
 };
 
 export const formatDate = (dateString?: string) => {
@@ -65,9 +66,130 @@ export const formatDate = (dateString?: string) => {
   }).format(date);
 };
 
+export interface SLAInfo {
+  text: string;
+  badgeStyle: string;
+  isBreached: boolean;
+  isRisk: boolean;
+}
+
+export const getTicketSLAInfo = (ticket: {
+  slaRemaining?: string;
+  slaStatus?: string;
+  slaStatusRaw?: string;
+  dueDate?: string;
+  slaDeadline?: string;
+  createdAt?: string;
+  priority?: string;
+  status?: string;
+}): SLAInfo => {
+  const normStatus = (ticket.status || '').toLowerCase();
+  if (['resolved', 'closed'].includes(normStatus)) {
+    return {
+      text: 'Completed',
+      badgeStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      isBreached: false,
+      isRisk: false,
+    };
+  }
+
+  // 1. If backend already computed slaRemaining
+  let rem = (ticket.slaRemaining || '').trim();
+  const rawSla = String(ticket.slaStatusRaw || ticket.slaStatus || '').toLowerCase();
+
+  if (rawSla.includes('breach') || rem.toLowerCase().includes('breach') || rem.toLowerCase().includes('overdue')) {
+    return {
+      text: 'Breached',
+      badgeStyle: 'bg-red-50 text-red-700 border-red-200',
+      isBreached: true,
+      isRisk: false,
+    };
+  }
+
+  if (rem && !rem.toLowerCase().includes('no sla')) {
+    const clean = rem.replace(/\s*remaining/i, '').trim();
+    if (clean) {
+      const isRisk = rawSla.includes('risk');
+      return {
+        text: clean,
+        badgeStyle: isRisk
+          ? 'bg-amber-50 text-amber-700 border-amber-200'
+          : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        isBreached: false,
+        isRisk,
+      };
+    }
+  }
+
+  // 2. Client-side fallback dynamic calculation from createdAt/dueDate & priority
+  const prio = (ticket.priority || '').toLowerCase();
+  let slaHours = 24;
+  if (prio === 'critical' || prio === 'urgent') slaHours = 4;
+  else if (prio === 'high') slaHours = 8;
+  else if (prio === 'medium') slaHours = 24;
+  else if (prio === 'low') slaHours = 48;
+
+  let deadlineMs = 0;
+  const explicitDue = ticket.dueDate || ticket.slaDeadline;
+  if (explicitDue && explicitDue.trim().length >= 10) {
+    const parsed = new Date(
+      explicitDue.includes(' ') && !explicitDue.includes('T')
+        ? explicitDue.replace(' ', 'T')
+        : explicitDue
+    );
+    if (!isNaN(parsed.getTime())) deadlineMs = parsed.getTime();
+  }
+  if (!deadlineMs && ticket.createdAt) {
+    const cDate = new Date(
+      ticket.createdAt.includes(' ') && !ticket.createdAt.includes('T')
+        ? ticket.createdAt.replace(' ', 'T')
+        : ticket.createdAt
+    );
+    if (!isNaN(cDate.getTime())) {
+      deadlineMs = cDate.getTime() + slaHours * 60 * 60 * 1000;
+    }
+  }
+
+  if (!deadlineMs) {
+    return {
+      text: ticket.slaStatus || 'Within SLA',
+      badgeStyle: getSLABadgeStyle(ticket.slaStatus || 'Within SLA'),
+      isBreached: false,
+      isRisk: false,
+    };
+  }
+
+  const now = Date.now();
+  const diffMs = deadlineMs - now;
+  if (diffMs <= 0) {
+    return {
+      text: 'Breached',
+      badgeStyle: 'bg-red-50 text-red-700 border-red-200',
+      isBreached: true,
+      isRisk: false,
+    };
+  }
+
+  const hours = Math.floor(diffMs / (3600 * 1000));
+  const minutes = Math.floor((diffMs % (3600 * 1000)) / (60 * 1000));
+  const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const isRisk = hours < 4 || diffMs <= 4 * 3600 * 1000;
+
+  return {
+    text: timeStr,
+    badgeStyle: isRisk
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    isBreached: false,
+    isRisk,
+  };
+};
+
 export const formatSLAShort = (slaRemaining: string) => {
   if (!slaRemaining) return '';
-  return slaRemaining.replace(/\s*remaining/i, '').trim();
+  const s = slaRemaining.trim();
+  if (s.toLowerCase().includes('breach') || s.toLowerCase().includes('overdue')) return 'Breached';
+  return s.replace(/\s*remaining/i, '').trim();
 };
 
 export function calculateSLADeadline(
