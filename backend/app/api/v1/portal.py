@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import random
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -1082,7 +1083,7 @@ def team_create_and_assign(body: TeamAssignBatch, context: tuple[dict[str, Any],
     # Update assigned users - merge into existing teams/leads so member stays in both teams
     updated_users = []
     for uid in body.user_ids:
-        existing_u = _find_user(user_id=uid) or {}
+        existing_u = find_user_by_id(uid) or find_user_by_email(uid) or {}
         old_team = str(existing_u.get("team") or "").strip()
         old_lead_id = str(existing_u.get("team_lead_id") or "").strip()
         old_lead_name = str(existing_u.get("team_lead") or "").strip()
@@ -1105,20 +1106,28 @@ def team_create_and_assign(body: TeamAssignBatch, context: tuple[dict[str, Any],
             existing_lead_names.append(tl_name)
         new_lead_name_str = ", ".join(existing_lead_names)
 
-        update_data = {
+        # Update Supabase users table (only valid columns)
+        db_update = {
+            "team": new_team_str,
+            "updated_at": now,
+        }
+        try:
+            r = sb.table("users").update(db_update).eq("id", uid).execute()
+            if r.data:
+                updated_users.append(r.data[0])
+        except Exception as exc:
+            print(f"[portal] Assign user {uid} note: {exc}")
+
+        # Update user_store
+        store_update = {
+            **existing_u,
             "team": new_team_str,
             "team_lead_id": new_lead_id_str,
             "team_lead": new_lead_name_str,
             "updated_at": now,
         }
-        try:
-            r = sb.table("users").update(update_data).eq("id", uid).execute()
-            if r.data:
-                updated_users.append(r.data[0])
-        except Exception as exc:
-            print(f"[portal] Assign user {uid} note: {exc}")
-        if existing_u:
-            save_user({**existing_u, **update_data})
+        save_user(store_update)
+        invalidate_user_cache(uid, existing_u.get("email"))
 
     invalidate_all_users_cache()
     invalidate_team_cache(tl_id)

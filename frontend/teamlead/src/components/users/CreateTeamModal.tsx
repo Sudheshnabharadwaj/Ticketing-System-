@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, UserPlus, Check, Search, Loader2 } from 'lucide-react';
 import { apiRequestSafe, jsonInit } from '../../services/backendAuth';
+import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../hooks/useAuth';
 
 interface CreateTeamModalProps {
@@ -30,23 +31,47 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ isOpen, onClos
     setTeamName(user?.team || `${user?.name || 'Lead'}'s Team`);
     setLoading(true);
     apiRequestSafe<any[]>('/team/all-members')
-      .then((res) => {
-        setLoading(false);
-        if (res.data) {
-          setAllMembers(res.data);
-          // Pre-select users already in this team lead's team
-          const currentTeam = user?.team || '';
-          if (currentTeam) {
-            const currentMembers = res.data
-              .filter((m) => m.team === currentTeam || m.team_lead_id === user?.id)
-              .map((m) => m.id);
-            setSelectedUserIds(currentMembers);
-          }
+      .then(async (res) => {
+        let members: any[] = [];
+        if (res.data && res.data.length > 0) {
+          members = res.data;
         } else {
-          setAllMembers([]);
+          // Direct fallback from supabase if backend returns empty or network error
+          try {
+            const { data } = await supabase
+              .from('users')
+              .select('*')
+              .neq('role', 'admin')
+              .order('name', { ascending: true });
+            members = data || [];
+          } catch (supaErr) {
+            console.warn('Supabase fallback load error:', supaErr);
+          }
+        }
+        setLoading(false);
+        setAllMembers(members);
+        const currentTeam = user?.team || '';
+        if (currentTeam) {
+          const currentMembers = members
+            .filter((m) => {
+              const mTeam = (m.team || '').toLowerCase();
+              return mTeam.includes(currentTeam.toLowerCase()) || m.team_lead_id === user?.id;
+            })
+            .map((m) => m.id);
+          setSelectedUserIds(currentMembers);
         }
       })
-      .catch(() => {
+      .catch(async () => {
+        try {
+          const { data } = await supabase
+            .from('users')
+            .select('*')
+            .neq('role', 'admin')
+            .order('name', { ascending: true });
+          setAllMembers(data || []);
+        } catch {
+          setAllMembers([]);
+        }
         setLoading(false);
       });
   }, [isOpen, user]);
@@ -83,21 +108,52 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ isOpen, onClos
     setSubmitting(true);
     setError(null);
 
-    const res = await apiRequestSafe<any>(
-      '/team/create-and-assign',
-      jsonInit('POST', {
-        team_name: teamName.trim(),
-        user_ids: selectedUserIds,
-      })
-    );
+    let successCount = 0;
+    try {
+      const res = await apiRequestSafe<any>(
+        '/team/create-and-assign',
+        jsonInit('POST', {
+          team_name: teamName.trim(),
+          user_ids: selectedUserIds,
+        })
+      );
+      if (!res.error && res.data) {
+        successCount = res.data.assigned_count ?? selectedUserIds.length;
+      } else if (res.error) {
+        console.warn('Backend /team/create-and-assign failed, attempting direct Supabase fallback:', res.error);
+        throw new Error(res.error);
+      }
+    } catch (apiErr: any) {
+      // Supabase fallback: update team directly in users table
+      try {
+        const now = new Date().toISOString();
+        const tlId = user?.id || '';
+        
+        // Update Team Lead's own team name
+        if (tlId) {
+          await (supabase.from('users') as any).update({ team: teamName.trim(), updated_at: now }).eq('id', tlId);
+        }
 
-    setSubmitting(false);
-
-    if (res.error) {
-      setError(res.error);
-      return;
+        // Fetch current members to merge team without removing previous teams
+        const { data: memberRows } = await supabase.from('users').select('*').in('id', selectedUserIds);
+        for (const row of (memberRows || [])) {
+          const oldTeam = (row.team || '').trim();
+          const existingTeams = oldTeam ? oldTeam.split(/[,;|]+/).map((s: string) => s.trim()).filter(Boolean) : [];
+          if (!existingTeams.includes(teamName.trim())) {
+            existingTeams.push(teamName.trim());
+          }
+          const mergedTeam = existingTeams.join(', ');
+          await (supabase.from('users') as any).update({ team: mergedTeam, updated_at: now }).eq('id', row.id);
+          successCount++;
+        }
+      } catch (fallbackErr: any) {
+        setSubmitting(false);
+        setError(fallbackErr?.message || apiErr?.message || 'Failed to save team details. Please try again.');
+        return;
+      }
     }
 
+    setSubmitting(false);
     onSuccess(`Team "${teamName.trim()}" created/updated with ${selectedUserIds.length} member(s).`);
     window.dispatchEvent(new Event('user-updated'));
     window.dispatchEvent(new Event('storage'));
