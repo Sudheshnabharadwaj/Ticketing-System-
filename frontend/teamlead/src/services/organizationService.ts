@@ -229,11 +229,13 @@ export const OrganizationService = {
       list = EMPLOYEES.filter((emp) => {
         if (emp.teamLeadId === teamLeadId || emp.teamLeadId === leadEmpId) return true;
         const empLeadRef = ((emp as any).team_lead || (emp as any).teamLeadId || '').toLowerCase();
-        if (empLeadRef && (empLeadRef === teamLeadId.toLowerCase() || empLeadRef === leadEmpId.toLowerCase() || (leadName && empLeadRef === leadName))) {
+        const leadRefList = empLeadRef.split(/[,;|]+/).map((s: string) => s.trim()).filter(Boolean);
+        if (leadRefList.some((r: string) => r === teamLeadId.toLowerCase() || r === leadEmpId.toLowerCase() || (leadName && r === leadName))) {
           return true;
         }
         const empTeam = ((emp as any).team || '').toLowerCase();
-        if (empTeam && leadTeam && empTeam === leadTeam) return true;
+        const empTeamList = empTeam.split(/[,;|]+/).map((s: string) => s.trim()).filter(Boolean);
+        if (leadTeam && empTeamList.includes(leadTeam)) return true;
         return false;
       });
     }
@@ -485,48 +487,40 @@ export const OrganizationService = {
               }
             }
 
-            let leadId = u.team_lead_id || u.team_lead || '';
-            if (leadId) {
-              const matchedLead = TEAM_LEADS.find(
-                (tl) =>
-                  tl.id.toLowerCase() === leadId.toLowerCase() ||
-                  tl.employeeId.toLowerCase() === leadId.toLowerCase() ||
-                  tl.name.toLowerCase() === leadId.toLowerCase()
-              );
-              if (matchedLead) leadId = matchedLead.id;
+            // Support multiple team lead IDs and multiple teams
+            const rawLeadRefs = (u.team_lead_id || u.team_lead || '').split(/[,;|]+/).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+            const rawTeams = (u.team || '').split(/[,;|]+/).map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+
+            const matchedLeadIds = new Set<string>();
+            for (const tl of TEAM_LEADS) {
+              const tlId = tl.id.toLowerCase();
+              const tlEmpId = (tl.employeeId || '').toLowerCase();
+              const tlName = (tl.name || '').toLowerCase();
+              const tlTeam = ((tl as any).team || '').toLowerCase();
+
+              const matchesLeadRef = rawLeadRefs.some((r: string) => r === tlId || r === tlEmpId || (tlName && r === tlName));
+              const matchesTeam = tlTeam && rawTeams.includes(tlTeam);
+
+              if (matchesLeadRef || matchesTeam) {
+                matchedLeadIds.add(tl.id);
+              }
             }
-            if (!leadId && u.team) {
-              const uTeamLower = u.team.toLowerCase();
-              const matchingLead = TEAM_LEADS.find(
-                (tl: any) =>
-                  (tl.team && tl.team.toLowerCase() === uTeamLower) ||
-                  tl.id.toLowerCase() === uTeamLower ||
-                  (tl.employeeId && (uTeamLower === tl.employeeId.toLowerCase() || uTeamLower.includes(tl.employeeId.toLowerCase()))) ||
-                  (tl.name && uTeamLower.includes(tl.name.toLowerCase()))
-              );
-              if (matchingLead) leadId = matchingLead.id;
-            }
-            if (!leadId) {
-              const sameDeptLeads = TEAM_LEADS.filter(tl => {
-                const tlDept = tl.departmentName.toLowerCase();
-                const curDept = deptName.toLowerCase();
-                return tlDept === curDept ||
-                  tlDept.includes(curDept) ||
-                  curDept.includes(tlDept);
-              });
-              if (sameDeptLeads.length === 1) leadId = sameDeptLeads[0].id;
-            }
+
+            const primaryLeadId = matchedLeadIds.size > 0 ? Array.from(matchedLeadIds)[0] : '';
 
             const empItem: EmployeeItem = {
               id: u.id,
               employeeId: u.employee_id || u.id,
               name: u.name,
               role: u.designation || 'Team Member',
-              teamLeadId: leadId,
+              teamLeadId: primaryLeadId,
               departmentId: deptObj.id,
               departmentName: deptName,
               email: u.email,
             };
+            (empItem as any).team = u.team;
+            (empItem as any).team_lead = u.team_lead;
+            (empItem as any).team_lead_id = u.team_lead_id;
 
             const existingIdx = EMPLOYEES.findIndex(e => e.id === empItem.id || e.employeeId === empItem.employeeId);
             if (existingIdx >= 0) {
@@ -535,13 +529,14 @@ export const OrganizationService = {
               EMPLOYEES.push(empItem);
             }
 
-            if (leadId) {
-              const current = _leadEmployeesCache.get(leadId) || [];
+            // Cache in all matched leads' employee caches so they appear in both teams
+            matchedLeadIds.forEach((lid) => {
+              const current = _leadEmployeesCache.get(lid) || [];
               if (!current.some(e => e.id === empItem.id)) {
                 current.push(empItem);
-                _leadEmployeesCache.set(leadId, current);
+                _leadEmployeesCache.set(lid, current);
               }
-            }
+            });
           }
         }
 

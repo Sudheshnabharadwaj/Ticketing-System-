@@ -327,24 +327,36 @@ def teamlead_managed_employees(tl_user: dict[str, Any]) -> list[dict[str, Any]]:
         ulead = str(u.get("team_lead_id") or u.get("team_lead") or "").strip().lower()
         is_member = False
 
-        # 1. Explicit team_lead / team_lead_id reference
-        if ulead:
-            for k in tl_keys:
-                if k in ulead:
-                    is_member = True
+        # Split comma/semicolon/pipe separated lists for multi-team and multi-lead assignment
+        emp_leads = [x.strip() for x in re.split(r"[,;|]+", ulead) if x.strip()]
+        emp_teams = [x.strip() for x in re.split(r"[,;|]+", uteam) if x.strip()]
+
+        # 1. Explicit team_lead / team_lead_id reference (single or multiple)
+        if emp_leads:
+            for l_ref in emp_leads:
+                for k in tl_keys:
+                    if k in l_ref:
+                        is_member = True
+                        break
+                if is_member:
                     break
 
-        # 2. Match in employee's team string (e.g. "Gokul (OKIN20061)" or "OKIN20061")
-        if not is_member and uteam:
-            for k in tl_keys:
-                if k in uteam:
-                    is_member = True
+        # 2. Match in employee's team strings (e.g. "Gokul (OKIN20061)" or "OKIN20061")
+        if not is_member and emp_teams:
+            for t_item in emp_teams:
+                for k in tl_keys:
+                    if k in t_item:
+                        is_member = True
+                        break
+                if is_member:
                     break
 
-        # 3. Explicit team name match (when tl_team is a distinct subteam, never a generic department name)
+        # 3. Explicit team name match (single or comma-separated)
         if not is_member and tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
-            if uteam == tl_team:
-                is_member = True
+            for t_item in emp_teams:
+                if t_item == tl_team:
+                    is_member = True
+                    break
 
         if is_member:
             matched.append(u)
@@ -382,11 +394,13 @@ def teamlead_member_index(
     return index
 
 
-def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
-    """Find the specific assigned Team Lead of a user (or the user themselves if they are already a Team Lead)."""
+def find_user_team_leads(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Find all assigned Team Leads of a user (or the user themselves if they are already a Team Lead).
+    Supports multiple team and multiple team lead assignments.
+    """
     role = normalize_role(user.get("role"))
     if role == ROLE_TEAMLEAD:
-        return user
+        return [user]
 
     users = all_users if all_users is not None else fetch_all_users_cached()
     uid = str(user.get("id") or "").strip().lower()
@@ -394,38 +408,62 @@ def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | 
     uteam = str(user.get("team") or "").strip().lower()
     tl_field = str(user.get("team_lead_id") or user.get("team_lead") or "").strip().lower()
 
-    # 1. Direct team_lead_id / team_lead match
-    if tl_field:
-        for u in users:
-            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                tl_id = str(u.get("id") or "").strip().lower()
-                tl_empid = str(u.get("employee_id") or "").strip().lower()
-                tl_name = str(u.get("name") or "").strip().lower()
-                if (tl_id and tl_id == tl_field) or (tl_empid and tl_empid == tl_field) or (tl_name and tl_name in tl_field):
-                    return u
+    emp_leads = [x.strip() for x in re.split(r"[,;|]+", tl_field) if x.strip()]
+    emp_teams = [x.strip() for x in re.split(r"[,;|]+", uteam) if x.strip()]
 
-    # 2. Match in employee's team string (e.g. "Gokul (OKIN20061)", "OKIN20061", "Suryani (OKGEN260001)")
-    if uteam:
-        for u in users:
-            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                tl_id = str(u.get("id") or "").strip().lower()
-                tl_empid = str(u.get("employee_id") or "").strip().lower()
-                tl_name = str(u.get("name") or "").strip().lower()
-                tl_keys = [k for k in (tl_id, tl_empid, tl_name) if k]
+    matched_leads: list[dict[str, Any]] = []
+    seen_lead_ids: set[str] = set()
+
+    for u in users:
+        if normalize_role(u.get("role")) != ROLE_TEAMLEAD:
+            continue
+        tl_id = str(u.get("id") or "").strip().lower()
+        tl_empid = str(u.get("employee_id") or "").strip().lower()
+        tl_name = str(u.get("name") or "").strip().lower()
+        tl_team = str(u.get("team") or "").strip().lower()
+        tl_keys = [k for k in (tl_id, tl_empid, tl_name) if k]
+
+        is_lead_match = False
+        # 1. Check direct team_lead_id / team_lead matches
+        if emp_leads:
+            for l_ref in emp_leads:
                 for k in tl_keys:
-                    if k and k in uteam:
-                        return u
+                    if k in l_ref:
+                        is_lead_match = True
+                        break
+                if is_lead_match:
+                    break
 
-    # 3. Explicit team name match (when tl_team is a distinct subteam, never a generic department name)
-    if uteam:
-        for u in users:
-            if normalize_role(u.get("role")) == ROLE_TEAMLEAD:
-                tl_team = str(u.get("team") or "").strip().lower()
-                if tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
-                    if uteam == tl_team:
-                        return u
+        # 2. Check in employee's team strings (e.g. "Gokul (OKIN20061)", "OKIN20061")
+        if not is_lead_match and emp_teams:
+            for t_item in emp_teams:
+                for k in tl_keys:
+                    if k in t_item:
+                        is_lead_match = True
+                        break
+                if is_lead_match:
+                    break
 
-    return None
+        # 3. Check explicit team name matches
+        if not is_lead_match and tl_team and tl_team not in ("development", "qa team", "it support", "none", "all", "general", ""):
+            for t_item in emp_teams:
+                if t_item == tl_team:
+                    is_lead_match = True
+                    break
+
+        if is_lead_match:
+            lead_canonical_id = str(u.get("id") or "")
+            if lead_canonical_id not in seen_lead_ids:
+                seen_lead_ids.add(lead_canonical_id)
+                matched_leads.append(u)
+
+    return matched_leads
+
+
+def find_user_team_lead(user: dict[str, Any], all_users: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    """Find the primary assigned Team Lead of a user."""
+    leads = find_user_team_leads(user, all_users=all_users)
+    return leads[0] if leads else None
 
 
 # ── Ticket authorization ─────────────────────────────────────────────────────
@@ -986,8 +1024,8 @@ def serialize_ticket(
             emp_uid = emp_item.get("id") or emp_item.get("employeeId")
             emp_user = users_by_id.get(str(emp_uid).lower()) if emp_uid else None
             if emp_user:
-                tl = find_user_team_lead(emp_user, all_users=cached_users)
-                if tl:
+                tls = find_user_team_leads(emp_user, all_users=cached_users)
+                for tl in tls:
                     tl_uid = str(tl.get("id") or "")
                     tl_uname = tl.get("name") or "Team Lead"
                     if not any(tl_entry["id"] == tl_uid for tl_entry in team_leads_list):

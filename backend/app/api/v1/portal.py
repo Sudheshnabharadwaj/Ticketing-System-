@@ -980,8 +980,30 @@ def team_update_user(user_id: str, body: UserAdminUpdate, context: tuple[dict[st
     if data.get("password"):
         updates["password_hash"] = hash_password(data["password"])
     if "team" in data and data["team"] is not None:
-        updates["team_lead_id"] = str(user.get("id") or "")
-        updates["team_lead"] = str(user.get("name") or "")
+        target_team = str(data["team"]).strip()
+        tl_id = str(user.get("id") or "")
+        tl_name = str(user.get("name") or "")
+        
+        # Merge team if new team is provided
+        old_team = str(target.get("team") or "").strip()
+        existing_teams = [t.strip() for t in re.split(r"[,;|]+", old_team) if t.strip()]
+        if target_team and target_team not in existing_teams:
+            existing_teams.append(target_team)
+        updates["team"] = ", ".join(existing_teams) if existing_teams else target_team
+
+        # Merge team lead IDs
+        old_lead_id = str(target.get("team_lead_id") or "").strip()
+        existing_lead_ids = [lid.strip() for lid in re.split(r"[,;|]+", old_lead_id) if lid.strip()]
+        if tl_id and tl_id not in existing_lead_ids:
+            existing_lead_ids.append(tl_id)
+        updates["team_lead_id"] = ", ".join(existing_lead_ids) if existing_lead_ids else tl_id
+
+        # Merge team lead names
+        old_lead_name = str(target.get("team_lead") or "").strip()
+        existing_lead_names = [ln.strip() for ln in re.split(r"[,;|]+", old_lead_name) if ln.strip()]
+        if tl_name and tl_name not in existing_lead_names:
+            existing_lead_names.append(tl_name)
+        updates["team_lead"] = ", ".join(existing_lead_names) if existing_lead_names else tl_name
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided")
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1057,13 +1079,36 @@ def team_create_and_assign(body: TeamAssignBatch, context: tuple[dict[str, Any],
         print(f"[portal] Team lead team update note: {exc}")
     save_user({**user, "team": team_name, "updated_at": now})
 
-    # Update assigned users
+    # Update assigned users - merge into existing teams/leads so member stays in both teams
     updated_users = []
     for uid in body.user_ids:
+        existing_u = _find_user(user_id=uid) or {}
+        old_team = str(existing_u.get("team") or "").strip()
+        old_lead_id = str(existing_u.get("team_lead_id") or "").strip()
+        old_lead_name = str(existing_u.get("team_lead") or "").strip()
+
+        # Merge teams without duplicates
+        existing_teams = [t.strip() for t in re.split(r"[,;|]+", old_team) if t.strip()]
+        if team_name not in existing_teams:
+            existing_teams.append(team_name)
+        new_team_str = ", ".join(existing_teams)
+
+        # Merge team lead IDs without duplicates
+        existing_lead_ids = [lid.strip() for lid in re.split(r"[,;|]+", old_lead_id) if lid.strip()]
+        if tl_id not in existing_lead_ids:
+            existing_lead_ids.append(tl_id)
+        new_lead_id_str = ", ".join(existing_lead_ids)
+
+        # Merge team lead names without duplicates
+        existing_lead_names = [ln.strip() for ln in re.split(r"[,;|]+", old_lead_name) if ln.strip()]
+        if tl_name and tl_name not in existing_lead_names:
+            existing_lead_names.append(tl_name)
+        new_lead_name_str = ", ".join(existing_lead_names)
+
         update_data = {
-            "team": team_name,
-            "team_lead_id": tl_id,
-            "team_lead": tl_name,
+            "team": new_team_str,
+            "team_lead_id": new_lead_id_str,
+            "team_lead": new_lead_name_str,
             "updated_at": now,
         }
         try:
@@ -1072,7 +1117,6 @@ def team_create_and_assign(body: TeamAssignBatch, context: tuple[dict[str, Any],
                 updated_users.append(r.data[0])
         except Exception as exc:
             print(f"[portal] Assign user {uid} note: {exc}")
-        existing_u = _find_user(user_id=uid)
         if existing_u:
             save_user({**existing_u, **update_data})
 
