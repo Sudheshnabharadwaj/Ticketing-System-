@@ -174,6 +174,9 @@ export function mapTicket(row: any): Ticket {
     subCategory: row.sub_category || undefined,
     assignedToType: (row.assigned_to_type || undefined) as Ticket['assignedToType'],
     handledBy: (row.handled_by || undefined) as Ticket['handledBy'],
+    assignedTeamId: row.assigned_team_id || row.assignedTeamId || undefined,
+    assignedTeam: row.team || row.assignedTeam || row.assigned_team || undefined,
+    team: row.team || row.assignedTeam || row.assigned_team || undefined,
     departments: Array.isArray(row.departments) ? row.departments : undefined,
     teamLeads: (() => {
       const tls = Array.isArray(row.team_leads)
@@ -293,6 +296,27 @@ export const ticketService = {
               const uName = String(u.name || '').toLowerCase();
               const uEmail = String(u.email || '').toLowerCase();
               const uTeam = String(u.team || '').toLowerCase();
+
+              // Retrieve team lead's managed employee IDs & emails
+              const managedMemberIds = new Set<string>();
+              const managedMemberEmails = new Set<string>();
+              const managedMemberNames = new Set<string>();
+
+              try {
+                const rawUsers = localStorage.getItem('platform_team_users') || sessionStorage.getItem('platform_team_users');
+                if (rawUsers) {
+                  const parsed = JSON.parse(rawUsers);
+                  if (Array.isArray(parsed)) {
+                    parsed.forEach((m: any) => {
+                      if (m.id) managedMemberIds.add(String(m.id).toLowerCase());
+                      if (m.employeeId) managedMemberIds.add(String(m.employeeId).toLowerCase());
+                      if (m.email) managedMemberEmails.add(String(m.email).toLowerCase());
+                      if (m.name) managedMemberNames.add(String(m.name).toLowerCase());
+                    });
+                  }
+                }
+              } catch {}
+
               mapped = mapped.filter((t: any) => {
                 const agId = String(t.assignedAgentId || '').toLowerCase();
                 const agName = String(t.assignedAgent || '').toLowerCase();
@@ -304,10 +328,39 @@ export const ticketService = {
                 const tlId = String(t.teamLeadId || '').toLowerCase();
                 const tlIds = Array.isArray(t.teamLeadIds) ? t.teamLeadIds.map((x: any) => String(x).toLowerCase()) : [];
 
-                if (uId && (agId === uId || empId === uId || tlId === uId || tlIds.includes(uId))) return true;
+                // 1. Direct match with Team Lead
+                if (uId && (agId === uId || empId === uId || tlId === uId || tlIds.includes(uId) || teamId === uId)) return true;
                 if (uEmail && (agEmail === uEmail || empEmail === uEmail)) return true;
                 if (uName && (agName === uName || empName === uName)) return true;
                 if (uTeam && !['development', 'qa team', 'it support', 'none', 'all', 'general', ''].includes(uTeam) && (teamId === uTeam || teamId.includes(uTeam))) return true;
+
+                // 2. Ticket assigned to or requested by any member belonging to this Team Lead's team
+                if (agId && managedMemberIds.has(agId)) return true;
+                if (empId && managedMemberIds.has(empId)) return true;
+                if (agEmail && managedMemberEmails.has(agEmail)) return true;
+                if (empEmail && managedMemberEmails.has(empEmail)) return true;
+                if (agName && agName !== 'unassigned' && managedMemberNames.has(agName)) return true;
+                if (empName && managedMemberNames.has(empName)) return true;
+
+                // 3. Check tagged employees / members
+                const tagged = [
+                  ...(Array.isArray(t.taggedEmployees) ? t.taggedEmployees : []),
+                  ...(Array.isArray(t.employees) ? t.employees : []),
+                  ...(Array.isArray(t.taggedMembers) ? t.taggedMembers : []),
+                  ...(Array.isArray(t.tagged_members) ? t.tagged_members : []),
+                ];
+                for (const m of tagged) {
+                  const mId = String(m?.id || m?.employeeId || m || '').toLowerCase();
+                  const mEmail = String(m?.email || '').toLowerCase();
+                  const mName = String(m?.name || '').toLowerCase();
+                  if (uId && mId === uId) return true;
+                  if (uEmail && mEmail === uEmail) return true;
+                  if (uName && mName === uName) return true;
+                  if (mId && managedMemberIds.has(mId)) return true;
+                  if (mEmail && managedMemberEmails.has(mEmail)) return true;
+                  if (mName && managedMemberNames.has(mName)) return true;
+                }
+
                 return false;
               });
             }

@@ -893,8 +893,8 @@ def create_ticket(
         assigned_to_type = "employee" if agent_id else "unassigned"
     handled_by = "teamlead" if assigned_to_type == "teamlead" else ("employee" if agent_id else "unassigned")
 
-    # Strictly integer assigned_team_id (or None)
-    assigned_team_id: int | None = None
+    # Assigned team ID (lead ID or team ID)
+    assigned_team_id: str | int | None = None
     if raw_tl_ids:
         first_tl_id = next(iter(raw_tl_ids))
         tl_row = _find_user(user_id=first_tl_id)
@@ -902,27 +902,34 @@ def create_ticket(
             assigned_team_id = (
                 resolve_team_id(tl_row.get("team"))
                 or resolve_team_id(tl_row.get("id"))
+                or str(tl_row.get("id") or "").strip()
                 or resolve_team_id(tl_row.get("department"))
             )
     if not assigned_team_id and agent_id:
         target_row = _find_user(user_id=agent_id)
         if target_row:
-            assigned_team_id = (
-                resolve_team_id(target_row.get("team"))
-                or resolve_team_id(target_row.get("id"))
-                or resolve_team_id(target_row.get("department"))
-            )
+            tl = find_user_team_lead(target_row)
+            if tl:
+                assigned_team_id = str(tl.get("id") or "").strip() or resolve_team_id(tl.get("team"))
+            if not assigned_team_id:
+                assigned_team_id = (
+                    resolve_team_id(target_row.get("team"))
+                    or resolve_team_id(target_row.get("id"))
+                    or resolve_team_id(target_row.get("department"))
+                )
     if not assigned_team_id:
         creator_tl = find_user_team_lead(user)
         if creator_tl:
             assigned_team_id = (
-                resolve_team_id(creator_tl.get("team"))
+                str(creator_tl.get("id") or "").strip()
+                or resolve_team_id(creator_tl.get("team"))
                 or resolve_team_id(creator_tl.get("id"))
                 or resolve_team_id(creator_tl.get("department"))
             )
     if not assigned_team_id and is_teamlead(payload):
         assigned_team_id = (
-            resolve_team_id(user.get("team"))
+            str(user.get("id") or "").strip()
+            or resolve_team_id(user.get("team"))
             or resolve_team_id(user.get("id"))
             or resolve_team_id(user.get("department"))
         )
@@ -1284,11 +1291,15 @@ def assign_ticket(
         updates["priority"] = norm_priority
         updates["sla_due_at"] = _sla_due(norm_priority, created_at=ticket.get("created_at"))
 
-    assigned_team_id: int | None = None
+    assigned_team_id: str | int | None = None
     if target:
         assigned_team_id = resolve_team_id(target.get("team")) or resolve_team_id(target.get("id"))
+        if not assigned_team_id:
+            tl = find_user_team_lead(target)
+            if tl:
+                assigned_team_id = str(tl.get("id") or "").strip() or resolve_team_id(tl.get("team"))
     if not assigned_team_id and is_teamlead(payload):
-        assigned_team_id = resolve_team_id(user.get("team")) or resolve_team_id(user.get("id"))
+        assigned_team_id = str(user.get("id") or "").strip() or resolve_team_id(user.get("team"))
     if assigned_team_id is not None:
         updates["assigned_team_id"] = assigned_team_id
 

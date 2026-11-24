@@ -69,6 +69,9 @@ export interface Ticket {
   assignedToType?: 'teamlead' | 'employee' | 'unassigned';
   handledBy?: 'teamlead' | 'employee' | 'unassigned';
   departments?: string[];
+  assignedTeamId?: string | number | null;
+  assignedTeam?: string | null;
+  team?: string | null;
   taggedMembers?: { id: string; name: string; department: string; avatar?: string }[];
   taggedMemberIds?: string[];
   teamLeads?: { id: string; name: string; employeeId: string; role: string; email: string }[];

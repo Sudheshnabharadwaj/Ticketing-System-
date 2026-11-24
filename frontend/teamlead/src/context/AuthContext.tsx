@@ -146,12 +146,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(() => hasSession && (!cached?.email || !hasToken));
 
   const loadUsers = useCallback(async () => {
-    const result = await apiRequestSafe<any[]>('/team/users');
-    if (result.error) {
-      console.warn('Could not load team users:', result.error);
-      return;
+    try {
+      const result = await apiRequestSafe<any[]>('/team/users');
+      if (!result.error && Array.isArray(result.data)) {
+        const mapped = result.data.map(mapUser);
+        setUsers(mapped);
+        try {
+          localStorage.setItem('platform_team_users', JSON.stringify(mapped));
+        } catch {}
+        return;
+      }
+    } catch {}
+
+    // Fallback: load directly from Supabase for this team lead
+    try {
+      const u = readCachedUser();
+      const uId = u?.id;
+      const uName = u?.name;
+      const uTeam = u?.team;
+      if (uId) {
+        const filters = [`team_lead_id.eq.${uId}`, `team.eq.${uId}`, `team.ilike.%${uId}%`];
+        if (uTeam && !['development', 'qa team', 'it support', 'none', 'all', 'general', ''].includes(uTeam.toLowerCase())) {
+          filters.push(`team.eq.${uTeam}`);
+        }
+        if (uName) {
+          filters.push(`team_lead.eq.${uName}`);
+          filters.push(`team.ilike.%${uName}%`);
+        }
+        const { data: supaEmps } = await supabase.from('users').select('*').or(filters.join(','));
+        if (Array.isArray(supaEmps)) {
+          const mapped = supaEmps
+            .filter((row: any) => {
+              const r = (row.role || '').toLowerCase();
+              const st = (row.status || '').toLowerCase().trim();
+              return st !== 'deleted' && st !== 'inactive' && r !== 'teamlead' && r !== 'admin' && !r.includes('lead');
+            })
+            .map(mapUser);
+          setUsers(mapped);
+          try {
+            localStorage.setItem('platform_team_users', JSON.stringify(mapped));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load team users:', err);
     }
-    setUsers((result.data || []).map(mapUser));
   }, []);
 
   /** Restore the session from the backend token; never trust cached identity. */
@@ -169,6 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           setCurrentUser(cached);
           setIsAuthenticated(true);
+          void loadUsers();
         }
         setIsLoading(false);
         return;
@@ -177,6 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cached?.email) {
           setCurrentUser(cached);
           setIsAuthenticated(true);
+          void loadUsers();
         } else if (result.status === 401 || result.status === 403) {
           clearBackendSession();
           cacheUser(null);
