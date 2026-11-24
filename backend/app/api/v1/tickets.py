@@ -864,45 +864,19 @@ def create_ticket(
         handled_by = "unassigned" 
 
     if raw_tl_ids:
-        permitted_employee_ids: set[str] = set()
+        # Validate that referenced Team Leads exist and have the teamlead role
         for tlid in raw_tl_ids:
             tl_row = _find_user(user_id=tlid)
             if not tl_row or normalize_role(tl_row.get("role")) != ROLE_TEAMLEAD:
                 raise HTTPException(status_code=400, detail=f"Invalid Team Lead ID: {tlid}")
-            if departments:
-                tl_dept = tl_row.get("department")
-                has_custom = any(d.strip().lower() not in {"it support", "it", "finance", "hr", "facilities", "general administration"} for d in departments)
-                if not has_custom and not any(_scopes_overlap(tl_dept, d) for d in departments):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Team Lead {tl_row.get('name') or tlid} does not belong to the selected department(s)",
-                    )
-            managed_rows = teamlead_managed_employees(tl_row)
-            permitted_employee_ids.update(str(m.get("id")) for m in managed_rows)
 
-        # Validate each tagged/assigned employee against the selected Team Lead's managed employees
+        # Any employee can be tagged or assigned regardless of prior team/lead assignments
         for empid in raw_emp_ids:
             if empid in raw_tl_ids:
                 continue
             emp_row = _find_user(user_id=empid)
             if not emp_row:
                 raise HTTPException(status_code=400, detail=f"Employee {empid} not found")
-            if empid not in permitted_employee_ids:
-                tl_depts = [tl.get("department") for tl in (_find_user(user_id=t) for t in raw_tl_ids) if tl]
-                emp_dept = emp_row.get("department")
-                if not any(_scopes_overlap(emp_dept, td) for td in tl_depts):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Employee {emp_row.get('name') or empid} does not belong to the selected Team Lead(s)",
-                    )
-            if departments:
-                emp_dept = emp_row.get("department")
-                has_custom = any(d.strip().lower() not in {"it support", "it", "finance", "hr", "facilities", "general administration"} for d in departments)
-                if not has_custom and not any(_scopes_overlap(emp_dept, d) for d in departments):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Employee {emp_row.get('name') or empid} does not belong to the selected department(s)",
-                    )
 
     # Determine assigned_to_type and handled_by
     if not assigned_to_type:

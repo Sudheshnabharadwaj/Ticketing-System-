@@ -406,7 +406,8 @@ export const TicketDetailsModal: React.FC<TicketDetailsModalProps> = ({
                     (user?.id && ((currentTicket as any).teamLeadIds || []).includes(user.id)) ||
                     (user?.name && (currentTicket as any).assignedTeamLead && (currentTicket as any).assignedTeamLead.toLowerCase().includes(user.name.toLowerCase()))
                   );
-                  const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isCreatedByMe || isAssignedToMe || isAssignedLead);
+                  const isLeadRole = user?.role === 'teamlead' || user?.role === 'admin';
+                  const hasChatAccess = (currentTicket as any).can_chat !== undefined ? (currentTicket as any).can_chat : (isLeadRole || isCreatedByMe || isAssignedToMe || isAssignedLead);
                   const canReply = (currentTicket as any).can_reply !== undefined ? (currentTicket as any).can_reply : hasChatAccess;
 
                   if (!canReply || isReadOnlyMode) {

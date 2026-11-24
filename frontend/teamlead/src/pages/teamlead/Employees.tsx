@@ -6,6 +6,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { AddUserModal } from '../../components/users/AddUserModal';
 import { EditUserModal } from '../../components/users/EditUserModal';
 import { UserDetailsModal } from '../../components/users/UserDetailsModal';
+import { CreateTeamModal } from '../../components/users/CreateTeamModal';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
   UserPlus,
@@ -28,6 +29,7 @@ export const Employees: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('All');
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
@@ -146,13 +148,22 @@ export const Employees: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-3.5 py-1.5 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-3.5 h-3.5" />
-          + Add User
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsCreateTeamModalOpen(true)}
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0 border border-slate-300"
+          >
+            <Users className="w-3.5 h-3.5 text-[#0284C7]" />
+            Create / Manage Team
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-3.5 py-1.5 bg-[#0284C7] hover:bg-[#0369a1] text-white font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            + Add User
+          </button>
+        </div>
       </div>
 
       {/* Controls & Filters */}
@@ -338,6 +349,13 @@ export const Employees: React.FC = () => {
           </div>
         </>
       )}
+
+      {/* Create / Manage Team Modal */}
+      <CreateTeamModal
+        isOpen={isCreateTeamModalOpen}
+        onClose={() => setIsCreateTeamModalOpen(false)}
+        onSuccess={showToast}
+      />
 
       {/* Add User Modal */}
       <AddUserModal

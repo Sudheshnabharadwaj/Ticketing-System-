@@ -138,30 +138,8 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
     }
   }, [selectedDepartments, selectedTeamLeadIds]);
 
-  // Prune any tagged employees that do not belong to the currently selected Team Leads
-  useEffect(() => {
-    if (selectedTeamLeadIds.length === 0) {
-      if (selectedEmployeeIds.length > 0) {
-        onSelectedEmployeesChange([], []);
-      }
-      return;
-    }
-    const allowedEmpIds = new Set<string>();
-    selectedTeamLeadIds.forEach((lid) => {
-      const emps = employeesByLead[lid] || [];
-      emps.forEach((e) => allowedEmpIds.add(e.id));
-    });
-    const allLeadsLoaded = selectedTeamLeadIds.every((lid) => !!employeesByLead[lid] && !loadingByLead[lid]);
-    if (allLeadsLoaded) {
-      const prunedEmpIds = selectedEmployeeIds.filter((id) => allowedEmpIds.has(id));
-      if (prunedEmpIds.length !== selectedEmployeeIds.length) {
-        const prunedEmpObjs = prunedEmpIds
-          .map((id) => OrganizationService.getEmployeeById(id))
-          .filter((e): e is EmployeeItem => !!e);
-        onSelectedEmployeesChange(prunedEmpIds, prunedEmpObjs);
-      }
-    }
-  }, [selectedTeamLeadIds, employeesByLead, loadingByLead, selectedEmployeeIds]);
+  // Pruning removed: Any Team Lead can select/tag any employee or member freely
+  // as per requirement ("any team lead can choose any team member or employee either he is assigned or not its not a prblm")
 
   // Search state stored per Team Lead ID to allow independent search fields
   const [searchQueries, setSearchQueries] = useState<Record<string, string>>({});
@@ -191,18 +169,8 @@ export const TeamLeadEmployeeSelector: React.FC<TeamLeadEmployeeSelectorProps> =
     let updatedIds: string[];
     if (selectedTeamLeadIds.includes(lead.id)) {
       updatedIds = selectedTeamLeadIds.filter((id) => id !== lead.id);
-      // Remove any employees belonging to this deselected Team Lead
-      const teamEmployees = employeesByLead[lead.id] || [];
-      const teamEmpIds = new Set(teamEmployees.map((e) => e.id));
-      const updatedEmpIds = selectedEmployeeIds.filter((id) => !teamEmpIds.has(id));
-      const updatedEmpObjs = updatedEmpIds
-        .map((id) => OrganizationService.getEmployeeById(id))
-        .filter((e): e is EmployeeItem => !!e);
-      onSelectedEmployeesChange(updatedEmpIds, updatedEmpObjs);
     } else {
       updatedIds = [...selectedTeamLeadIds, lead.id];
-      // Immediately clear previously selected employees on Team Lead change
-      onSelectedEmployeesChange([], []);
       void loadEmployeesForLead(lead.id);
     }
 

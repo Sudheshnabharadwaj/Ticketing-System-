@@ -878,10 +878,11 @@ def admin_delete_user(
 
 
 def _team_lead_can_manage(context_user: dict[str, Any], target: dict[str, Any]) -> bool:
-    if normalize_role(target.get("role")) in ("admin", "teamlead"):
+    # Team leads cannot edit or manage admin accounts
+    if normalize_role(target.get("role")) == "admin":
         return False
-    managed_ids = {str(m.get("id")) for m in teamlead_managed_employees(context_user)}
-    return str(target.get("id") or "") in managed_ids
+    # Team leads can manage, create teams, and assign/reassign employees
+    return True
 
 
 @router.get("/team/users", summary="List users manageable by the current team lead")
@@ -977,7 +978,10 @@ def team_update_user(user_id: str, body: UserAdminUpdate, context: tuple[dict[st
     if data.get("role") is not None:
         updates["role"] = "employee"
     if data.get("password"):
-        updates["password"] = hash_password(data["password"])
+        updates["password_hash"] = hash_password(data["password"])
+    if "team" in data and data["team"] is not None:
+        updates["team_lead_id"] = str(user.get("id") or "")
+        updates["team_lead"] = str(user.get("name") or "")
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided")
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1011,6 +1015,70 @@ def team_delete_user(user_id: str, context: tuple[dict[str, Any], dict[str, Any]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
     return {"success": True, "id": user_id}
+
+
+@router.get("/team/all-members", summary="List all non-admin employees across company for team selection")
+def team_list_all_assignable(context: tuple[dict[str, Any], dict[str, Any]] = Depends(_current)) -> list[dict[str, Any]]:
+    payload, user = context
+    if not is_teamlead(payload):
+        raise HTTPException(status_code=403, detail="Team lead access required")
+    all_users = _all_users()
+    assignable = [
+        _safe_user(u)
+        for u in all_users
+        if normalize_role(u.get("role")) == "employee"
+        and str(u.get("status") or "").strip().lower() not in ("deleted", "inactive")
+    ]
+    assignable.sort(key=lambda r: (str(r.get("name") or "").lower(), str(r.get("email") or "")))
+    return assignable
+
+
+class TeamAssignBatch(BaseModel):
+    team_name: str = Field(min_length=1, max_length=120)
+    user_ids: list[str] = Field(min_length=1)
+
+
+@router.post("/team/create-and-assign", summary="Create or name a team and assign members to it")
+def team_create_and_assign(body: TeamAssignBatch, context: tuple[dict[str, Any], dict[str, Any]] = Depends(_current)) -> dict[str, Any]:
+    payload, user = context
+    if not is_teamlead(payload):
+        raise HTTPException(status_code=403, detail="Team lead access required")
+    tl_id = str(user.get("id") or "").strip()
+    tl_name = str(user.get("name") or "").strip()
+    team_name = body.team_name.strip()
+    
+    sb = get_supabase_admin_client()
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Update current team lead's team name
+    try:
+        sb.table("users").update({"team": team_name, "updated_at": now}).eq("id", tl_id).execute()
+    except Exception as exc:
+        print(f"[portal] Team lead team update note: {exc}")
+    save_user({**user, "team": team_name, "updated_at": now})
+
+    # Update assigned users
+    updated_users = []
+    for uid in body.user_ids:
+        update_data = {
+            "team": team_name,
+            "team_lead_id": tl_id,
+            "team_lead": tl_name,
+            "updated_at": now,
+        }
+        try:
+            r = sb.table("users").update(update_data).eq("id", uid).execute()
+            if r.data:
+                updated_users.append(r.data[0])
+        except Exception as exc:
+            print(f"[portal] Assign user {uid} note: {exc}")
+        existing_u = _find_user(user_id=uid)
+        if existing_u:
+            save_user({**existing_u, **update_data})
+
+    invalidate_all_users_cache()
+    invalidate_team_cache(tl_id)
+    return {"success": True, "team": team_name, "assigned_count": len(updated_users)}
 
 
 @router.get("/team-leads", summary="List all team leads across departments")
