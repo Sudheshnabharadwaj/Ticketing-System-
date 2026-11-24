@@ -1019,25 +1019,87 @@ def team_update_user(user_id: str, body: UserAdminUpdate, context: tuple[dict[st
     return _safe_user((res2.data or [])[0])
 
 
-@router.delete("/team/users/{user_id}", summary="Delete an employee under team lead scope")
+@router.delete("/team/users/{user_id}", summary="Remove an employee from team lead's team")
 def team_delete_user(user_id: str, context: tuple[dict[str, Any], dict[str, Any]] = Depends(_current)) -> dict[str, Any]:
     payload, user = context
     if not is_teamlead(payload):
         raise HTTPException(status_code=403, detail="Team lead access required")
     if str(payload.get("sub") or "") == user_id or str(user.get("id") or "") == user_id:
-        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+        raise HTTPException(status_code=400, detail="You cannot remove your own account")
+    
+    tl_id = str(user.get("id") or payload.get("sub") or "").strip()
+    tl_name = str(user.get("name") or "").strip()
+    tl_team = str(user.get("team") or "").strip()
+    tl_keys = [k.lower() for k in (tl_id, str(user.get("employee_id") or ""), tl_name, tl_team) if k]
+
     sb = get_supabase_admin_client()
     res = sb.table("users").select("*").eq("id", user_id).limit(1).execute()
     target = (res.data or [])[0] if (res.data or []) else None
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if not _team_lead_can_manage(user, target):
-        raise HTTPException(status_code=403, detail="Not allowed to delete this user")
+        raise HTTPException(status_code=403, detail="Not allowed to manage this user")
+
+    # When a Team Lead removes an employee, remove them ONLY from this Team Lead's team/lead references.
+    # Do NOT permanently delete the employee or their login credentials.
+    # They remain active and continue accessing their other teams.
+    old_team = str(target.get("team") or "").strip()
+    old_lead_id = str(target.get("team_lead_id") or "").strip()
+    old_lead_name = str(target.get("team_lead") or "").strip()
+
+    # Filter out this team lead's team(s)
+    current_teams = [t.strip() for t in re.split(r"[,;|]+", old_team) if t.strip()]
+    remaining_teams = [
+        t for t in current_teams
+        if t.lower() != tl_team.lower() and not any(k in t.lower() for k in tl_keys)
+    ]
+    new_team_str = ", ".join(remaining_teams)
+
+    # Filter out this team lead's id(s)
+    current_lead_ids = [lid.strip() for lid in re.split(r"[,;|]+", old_lead_id) if lid.strip()]
+    remaining_lead_ids = [
+        lid for lid in current_lead_ids
+        if lid.lower() != tl_id.lower() and lid.lower() != str(user.get("employee_id") or "").lower()
+    ]
+    new_lead_id_str = ", ".join(remaining_lead_ids)
+
+    # Filter out this team lead's name(s)
+    current_lead_names = [ln.strip() for ln in re.split(r"[,;|]+", old_lead_name) if ln.strip()]
+    remaining_lead_names = [
+        ln for ln in current_lead_names
+        if ln.lower() != tl_name.lower()
+    ]
+    new_lead_name_str = ", ".join(remaining_lead_names)
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Update database record
     try:
-        _permanently_delete_user(user_id, actor_id=str(user.get("id") or payload.get("sub") or ""))
+        sb.table("users").update({
+            "team": new_team_str,
+            "status": target.get("status") or "Active",
+            "updated_at": now,
+        }).eq("id", user_id).execute()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Could not delete user: {exc}") from exc
-    return {"success": True, "id": user_id}
+        print(f"[portal] Remove employee from team DB notice: {exc}")
+
+    # Update persistent user store
+    store_u = find_user_by_id(user_id) or find_user_by_email(str(target.get("email") or "")) or target
+    save_user({
+        **store_u,
+        "team": new_team_str,
+        "team_lead_id": new_lead_id_str,
+        "team_lead": new_lead_name_str,
+        "status": target.get("status") or "Active",
+        "updated_at": now,
+    })
+
+    invalidate_all_users_cache()
+    invalidate_team_cache(tl_id)
+    invalidate_user_cache(user_id, str(target.get("email") or ""))
+    invalidate_tickets_cache()
+
+    return {"success": True, "id": user_id, "removed_from_team": True}
 
 
 @router.get("/team/all-members", summary="List all non-admin employees across company for team selection")

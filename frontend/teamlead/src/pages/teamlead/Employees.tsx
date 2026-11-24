@@ -101,10 +101,10 @@ export const Employees: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl shadow-2xl max-w-sm w-full border border-slate-200 animate-in zoom-in-95 duration-150">
           <div className="flex items-center space-x-2 text-rose-600 font-bold text-sm mb-2">
             <AlertTriangle className="w-5 h-5" />
-            <span>Confirm User Deletion</span>
+            <span>Remove Employee from Team</span>
           </div>
           <p className="text-xs text-slate-600 mb-4">
-            Are you sure you want to delete <strong className="text-slate-900">{deletingUser.name}</strong> ({deletingUser.id})? This action cannot be undone.
+            Are you sure you want to remove <strong className="text-slate-900">{deletingUser.name}</strong> ({deletingUser.id}) from your team? They will remain active and continue accessing their other teams.
           </p>
           <div className="flex justify-end space-x-2 text-xs">
             <button
@@ -116,12 +116,12 @@ export const Employees: React.FC = () => {
             <button
               onClick={() => {
                 deleteUser(deletingUser.id);
-                showToast(`Employee ${deletingUser.name} deleted.`);
+                showToast(`Employee ${deletingUser.name} removed from your team.`);
                 setDeletingUser(null);
               }}
               className="px-4 py-1.5 font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-xs cursor-pointer"
             >
-              Delete Employee
+              Remove from Team
             </button>
           </div>
         </div>
@@ -344,7 +344,7 @@ export const Employees: React.FC = () => {
               className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-              <span>Delete</span>
+              <span>Remove from Team</span>
             </button>
           </div>
         </>
